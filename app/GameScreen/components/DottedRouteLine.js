@@ -1,96 +1,159 @@
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
-import { DRIVE_CURVE, DRIVE_LENGTH } from '../constants/route';
+import {
+  DRIVE_CURVE,
+  getSmoothRouteTangentAngle,
+  STOP_PROGRESS,
+} from '../constants/route';
 
-const DOT_SPACING = 0.19;
-const DOT_RADIUS = 0.022;
-const DOT_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.012;
+const RIBBON_SEGMENTS = 900;
+const RIBBON_HALF_WIDTH = 0.0135;
+const ROUTE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.012;
+const ROUTE_LINE_COLOR = '#2C3E50';
+const ROUTE_LINE_OPACITY = 0.6;
 
-const InstancedDotLayer = ({ color, dots, opacity = 1, radius, zOffset }) => {
-  const meshRef = useRef();
+const easeInOutCubic = (value) => (
+  value < 0.5
+    ? 4 * value * value * value
+    : 1 - Math.pow(-2 * value + 2, 3) / 2
+);
 
-  useLayoutEffect(() => {
-    if (!meshRef.current) return;
+const buildRibbonGeometry = (halfWidth, zHeight) => {
+  const vertexCount = (RIBBON_SEGMENTS + 1) * 2;
+  const positions = new Float32Array(vertexCount * 3);
+  const indices = new Uint16Array(RIBBON_SEGMENTS * 6);
+  const point = new THREE.Vector3();
 
-    const transform = new THREE.Matrix4();
+  for (let i = 0; i <= RIBBON_SEGMENTS; i += 1) {
+    const progress = i / RIBBON_SEGMENTS;
+    DRIVE_CURVE.getPointAt(progress, point);
+    const tangentAngle = getSmoothRouteTangentAngle(progress, 0.006);
+    const normalX = -Math.sin(tangentAngle);
+    const normalY = Math.cos(tangentAngle);
 
-    dots.forEach((dot, index) => {
-      transform.makeTranslation(dot.position[0], dot.position[1], dot.position[2] + zOffset);
-      meshRef.current.setMatrixAt(index, transform);
-    });
-    meshRef.current.instanceMatrix.needsUpdate = true;
-  }, [dots, zOffset]);
+    const leftOffset = i * 6;
+    positions[leftOffset] = point.x + normalX * halfWidth;
+    positions[leftOffset + 1] = point.y + normalY * halfWidth;
+    positions[leftOffset + 2] = zHeight;
 
-  return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, dots.length]}>
-      <circleGeometry args={[radius, 12]} />
-      <meshBasicMaterial
-        color={color}
-        opacity={opacity}
-        side={THREE.DoubleSide}
-        toneMapped={false}
-        transparent={opacity < 1}
-      />
-    </instancedMesh>
-  );
+    positions[leftOffset + 3] = point.x - normalX * halfWidth;
+    positions[leftOffset + 4] = point.y - normalY * halfWidth;
+    positions[leftOffset + 5] = zHeight;
+
+    if (i < RIBBON_SEGMENTS) {
+      const v0 = i * 2;
+      const v1 = v0 + 1;
+      const v2 = v0 + 2;
+      const v3 = v0 + 3;
+      const idxOffset = i * 6;
+
+      indices[idxOffset] = v0;
+      indices[idxOffset + 1] = v1;
+      indices[idxOffset + 2] = v2;
+      indices[idxOffset + 3] = v2;
+      indices[idxOffset + 4] = v1;
+      indices[idxOffset + 5] = v3;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.setDrawRange(0, 0);
+  geometry.computeBoundingSphere();
+
+  return geometry;
 };
 
-const InstancedAccents = ({ dots }) => {
-  const meshRef = useRef();
+const DottedRouteLine = ({
+  activeCarProgressRef,
+  driving = false,
+  fromLeg = 0,
+  pathRevealDuration = 0.75,
+  toLeg = 0,
+}) => {
+  const groupRef = useRef();
+  const moveAnimRef = useRef({
+    key: null,
+    elapsed: 0,
+  });
 
-  useLayoutEffect(() => {
-    if (!meshRef.current) return;
-
-    const transform = new THREE.Matrix4();
-    const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI / 4));
-    const scale = new THREE.Vector3(1, 1, 1);
-
-    dots.forEach((dot, index) => {
-      transform.compose(
-        new THREE.Vector3(dot.position[0], dot.position[1], dot.position[2] + 0.008),
-        rotation,
-        scale
-      );
-      meshRef.current.setMatrixAt(index, transform);
-    });
-    meshRef.current.instanceMatrix.needsUpdate = true;
-  }, [dots]);
-
-  return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, dots.length]}>
-      <planeGeometry args={[DOT_RADIUS * 1.12, DOT_RADIUS * 1.12]} />
-      <meshBasicMaterial color="#FFD700" opacity={0.88} side={THREE.DoubleSide} toneMapped={false} transparent={true} />
-    </instancedMesh>
+  const ribbonGeometry = useMemo(
+    () => buildRibbonGeometry(RIBBON_HALF_WIDTH, ROUTE_Z),
+    []
   );
-};
 
-const DottedRouteLine = () => {
-  const routeDots = useMemo(() => (
-    (() => {
-      const dotCount = Math.max(Math.ceil(DRIVE_LENGTH / DOT_SPACING), 1);
+  useFrame((_state, delta) => {
+    const isMoveActive = driving && toLeg > fromLeg;
 
-      return Array.from({ length: dotCount + 1 }, (_value, dotIndex) => {
-        const progress = dotIndex / dotCount;
-        const point = DRIVE_CURVE.getPointAt(progress);
+    if (!isMoveActive) {
+      moveAnimRef.current.key = null;
+      moveAnimRef.current.elapsed = 0;
+      ribbonGeometry.setDrawRange(0, 0);
 
-        return {
-          key: `route-${dotIndex}`,
-          isAccent: dotIndex % 6 === 0,
-          position: [point.x, point.y, DOT_Z],
-        };
-      });
-    })()
-  ), []);
-  const accentDots = useMemo(() => routeDots.filter((dot) => dot.isAccent), [routeDots]);
+      if (groupRef.current) {
+        groupRef.current.visible = false;
+      }
+      return;
+    }
+
+    const moveKey = `${fromLeg}-${toLeg}`;
+    if (moveAnimRef.current.key !== moveKey) {
+      moveAnimRef.current.key = moveKey;
+      moveAnimRef.current.elapsed = 0;
+    } else {
+      moveAnimRef.current.elapsed += delta;
+    }
+
+    const startProgress = STOP_PROGRESS[fromLeg] ?? 0;
+    const endProgress = STOP_PROGRESS[toLeg] ?? 1;
+    const revealDuration = Math.max(pathRevealDuration, 0.4);
+    const revealLinear = THREE.MathUtils.clamp(moveAnimRef.current.elapsed / revealDuration, 0, 1);
+    const revealEased = easeInOutCubic(revealLinear);
+
+    const headProgress = THREE.MathUtils.lerp(startProgress, endProgress, revealEased);
+    const liveCarProgress = activeCarProgressRef?.current ?? startProgress;
+    const tailProgress = THREE.MathUtils.clamp(
+      Math.max(startProgress, liveCarProgress),
+      startProgress,
+      headProgress
+    );
+
+    const remainingProgress = headProgress - tailProgress;
+    if (remainingProgress <= 0.0005 && revealLinear >= 1) {
+      ribbonGeometry.setDrawRange(0, 0);
+      if (groupRef.current) {
+        groupRef.current.visible = false;
+      }
+      return;
+    }
+
+    if (groupRef.current) {
+      groupRef.current.visible = true;
+    }
+
+    const startSegment = Math.floor(tailProgress * RIBBON_SEGMENTS);
+    const endSegment = Math.max(startSegment + 1, Math.ceil(headProgress * RIBBON_SEGMENTS));
+    const indexCount = Math.max(0, (endSegment - startSegment) * 6);
+
+    ribbonGeometry.setDrawRange(startSegment * 6, indexCount);
+  });
 
   return (
-    <>
-      <InstancedDotLayer color="#111111" dots={routeDots} opacity={0.32} radius={DOT_RADIUS * 1.75} zOffset={-0.002} />
-      <InstancedDotLayer color="#FFF1CD" dots={routeDots} radius={DOT_RADIUS * 1.38} zOffset={0.001} />
-      <InstancedDotLayer color="#D71920" dots={routeDots} radius={DOT_RADIUS} zOffset={0.004} />
-      <InstancedAccents dots={accentDots} />
-    </>
+    <group ref={groupRef} visible={false}>
+      <mesh geometry={ribbonGeometry} renderOrder={4} frustumCulled={false}>
+        <meshBasicMaterial
+          color={ROUTE_LINE_COLOR}
+          depthWrite={false}
+          opacity={ROUTE_LINE_OPACITY}
+          side={THREE.DoubleSide}
+          toneMapped={false}
+          transparent={true}
+        />
+      </mesh>
+    </group>
   );
 };
 

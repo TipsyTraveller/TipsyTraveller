@@ -2,50 +2,69 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import { useGLTF } from '@react-three/drei/native';
 import * as THREE from 'three';
-import { MAP_Z } from '../constants/mapCoordinates';
-import { DRIVE_CURVE, DRIVE_LENGTH, STOP_DISTANCES, ROUTE } from '../constants/route';
+import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
+import {
+  DRIVE_CURVE,
+  DRIVE_LENGTH,
+  getSmoothRouteTangentAngle,
+  ROUTE,
+  STOP_DISTANCES,
+} from '../constants/route';
 
-const DRIVE_SPEED = 0.44;
+const DRIVE_SPEED = 0.88;
 const CAR_ROTATION_OFFSET = Math.PI / 2;
-const CAR_MAP_CLEARANCE = 0.08;
-const CAR_BASE_Z = MAP_Z + CAR_MAP_CLEARANCE;
+const CAR_BASE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.022;
 const CAR_BOUNCE_HEIGHT = 0.01;
-const CAR_BOUNCE_SPEED = 9;
-const ROTATION_DAMPING = 18;
+const CAR_BOUNCE_SPEED = 9.5;
+const ROTATION_DAMPING = 20;
 
 const lerpAngle = (from, to, amount) => {
   const diff = Math.atan2(Math.sin(to - from), Math.cos(to - from));
   return from + diff * amount;
 };
 
-const setCarMapPosition = (target, point, bounce = 0) => {
-  target.set(
-    point.x,
-    point.y,
-    CAR_BASE_Z + bounce
+const getCarHeading = (progress) => (
+  getSmoothRouteTangentAngle(progress, 0.005) + CAR_ROTATION_OFFSET
+);
+
+const applyCarTransform = ({
+  pieceRef,
+  bodyRef,
+  progress,
+  targetPoint,
+  moving,
+  clockTime,
+  delta,
+  rotationRef,
+  snapRotation = false,
+}) => {
+  const clampedProgress = THREE.MathUtils.clamp(progress, 0, 1);
+  DRIVE_CURVE.getPointAt(clampedProgress, targetPoint);
+
+  pieceRef.current.position.set(
+    targetPoint.x,
+    targetPoint.y,
+    CAR_BASE_Z
   );
-};
 
-const getTangentAngle = (curve, progress) => {
-  const tangentProgress = THREE.MathUtils.clamp(progress, 0.001, 0.999);
-  const tangent = curve.getTangentAt(tangentProgress);
+  const targetHeading = getCarHeading(clampedProgress);
 
-  return Math.atan2(tangent.y, tangent.x) + CAR_ROTATION_OFFSET;
-};
+  if (snapRotation) {
+    rotationRef.current = targetHeading;
+  } else {
+    const turnAlpha = 1 - Math.exp(-ROTATION_DAMPING * delta);
+    rotationRef.current = lerpAngle(rotationRef.current, targetHeading, turnAlpha);
+  }
 
-const setCarPose = (pieceRef, progress, targetPosition, clock, delta, rotationRef) => {
-  DRIVE_CURVE.getPointAt(progress, targetPosition);
-  setCarMapPosition(
-    pieceRef.current.position,
-    targetPosition,
-    Math.abs(Math.sin(clock.elapsedTime * CAR_BOUNCE_SPEED)) * CAR_BOUNCE_HEIGHT
-  );
-
-  const targetRotation = getTangentAngle(DRIVE_CURVE, progress);
-  const turnSpeed = 1 - Math.exp(-ROTATION_DAMPING * delta);
-
-  rotationRef.current = lerpAngle(rotationRef.current, targetRotation, turnSpeed);
   pieceRef.current.rotation.set(0, 0, rotationRef.current);
+
+  if (bodyRef.current) {
+    const bounce = moving
+      ? Math.abs(Math.sin(clockTime * CAR_BOUNCE_SPEED)) * CAR_BOUNCE_HEIGHT
+      : 0;
+
+    bodyRef.current.position.set(0, 0, bounce);
+  }
 };
 
 const buildCarMaterials = (color) => ({
@@ -148,22 +167,36 @@ const cloneCarScene = (scene, color, model) => {
     clone.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(clone);
     const center = box.getCenter(new THREE.Vector3());
-    clone.position.sub(center);
+    clone.position.set(-center.x, -box.min.y, -center.z);
   }
 
   return clone;
 };
 
-const GamePiece = ({ driving, currentLeg, onMoveComplete, piece, pieceRef, targetLeg }) => {
+const GamePiece = ({
+  activeCarProgressRef,
+  currentLeg,
+  driving,
+  onDriveStart,
+  onLegPass,
+  onMoveComplete,
+  pathRevealDuration = 0.75,
+  piece,
+  pieceRef,
+  targetLeg,
+}) => {
   const { scene } = useGLTF(piece.model.source);
-  const distanceRef = useRef(STOP_DISTANCES[currentLeg] || 0);
-  const rotationRef = useRef(getTangentAngle(DRIVE_CURVE, 0));
+  const initialDistance = STOP_DISTANCES[currentLeg] || 0;
+  const initialProgress = THREE.MathUtils.clamp(initialDistance / DRIVE_LENGTH, 0, 1);
+  const distanceRef = useRef(initialDistance);
+  const rotationRef = useRef(getCarHeading(initialProgress));
   const carPosRef = useRef(new THREE.Vector3());
-  const glowRef = useRef();
+  const bodyRef = useRef();
   const drivingRef = useRef(driving);
   const targetLegRef = useRef(targetLeg);
   const waitingForNextLegRef = useRef(false);
   const delayElapsedRef = useRef(0);
+  const lastReportedLegRef = useRef(currentLeg);
   const hasStartedDrivingRef = useRef(false);
 
   const carScene = useMemo(
@@ -175,62 +208,117 @@ const GamePiece = ({ driving, currentLeg, onMoveComplete, piece, pieceRef, targe
   useEffect(() => {
     drivingRef.current = driving;
 
-    if (!driving) {
+    if (driving) {
+      delayElapsedRef.current = 0;
+      hasStartedDrivingRef.current = false;
+      waitingForNextLegRef.current = false;
+      lastReportedLegRef.current = currentLeg;
+
+      if (activeCarProgressRef) {
+        activeCarProgressRef.current = THREE.MathUtils.clamp(
+          distanceRef.current / DRIVE_LENGTH,
+          0,
+          1
+        );
+      }
+    } else {
       delayElapsedRef.current = 0;
       hasStartedDrivingRef.current = false;
     }
-  }, [driving]);
+  }, [activeCarProgressRef, currentLeg, driving]);
 
   useEffect(() => {
     targetLegRef.current = targetLeg;
   }, [targetLeg]);
 
   useEffect(() => {
-    distanceRef.current = STOP_DISTANCES[currentLeg] || 0;
-    waitingForNextLegRef.current = false;
-  }, [currentLeg]);
+    if (drivingRef.current) return;
 
-  useEffect(() => {
+    const legDistance = STOP_DISTANCES[currentLeg] || 0;
+    const legProgress = THREE.MathUtils.clamp(legDistance / DRIVE_LENGTH, 0, 1);
+    distanceRef.current = legDistance;
+    waitingForNextLegRef.current = false;
+
     if (pieceRef.current) {
-      setCarMapPosition(pieceRef.current.position, ROUTE[0]);
-      pieceRef.current.rotation.set(0, 0, rotationRef.current);
+      applyCarTransform({
+        pieceRef,
+        bodyRef,
+        progress: legProgress,
+        targetPoint: carPosRef.current,
+        moving: false,
+        clockTime: 0,
+        delta: 0.016,
+        rotationRef,
+        snapRotation: true,
+      });
     }
-  }, [pieceRef]);
+  }, [currentLeg, pieceRef]);
 
   useFrame(({ clock }, delta) => {
-    if (glowRef.current) {
-      glowRef.current.visible = drivingRef.current;
-      glowRef.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 5) * 0.08);
-      glowRef.current.material.opacity = 0.22 + Math.sin(clock.elapsedTime * 5) * 0.06;
+    if (!pieceRef.current) return;
+
+    if (!drivingRef.current) {
+      const parkedProgress = THREE.MathUtils.clamp(distanceRef.current / DRIVE_LENGTH, 0, 1);
+      applyCarTransform({
+        pieceRef,
+        bodyRef,
+        progress: parkedProgress,
+        targetPoint: carPosRef.current,
+        moving: false,
+        clockTime: clock.elapsedTime,
+        delta,
+        rotationRef,
+      });
+      return;
     }
 
-    if (!pieceRef.current || !drivingRef.current) return;
     if (waitingForNextLegRef.current) return;
 
+    const totalStartDelay = (piece.startDelay || 0) + pathRevealDuration + 0.08;
     if (!hasStartedDrivingRef.current) {
       delayElapsedRef.current += delta;
 
-      if (delayElapsedRef.current < (piece.startDelay || 0)) {
+      if (delayElapsedRef.current < totalStartDelay) {
         return;
       }
 
       hasStartedDrivingRef.current = true;
+      onDriveStart?.();
     }
 
     const target = targetLegRef.current;
     const targetDistance = STOP_DISTANCES[target] ?? DRIVE_LENGTH;
 
     distanceRef.current = Math.min(distanceRef.current + delta * DRIVE_SPEED, targetDistance);
-    setCarPose(
+    const curveProgress = THREE.MathUtils.clamp(distanceRef.current / DRIVE_LENGTH, 0, 1);
+
+    if (activeCarProgressRef) {
+      activeCarProgressRef.current = curveProgress;
+    }
+
+    for (let legIdx = lastReportedLegRef.current + 1; legIdx < target; legIdx += 1) {
+      if (distanceRef.current >= (STOP_DISTANCES[legIdx] ?? Infinity) - 0.02) {
+        lastReportedLegRef.current = legIdx;
+        onLegPass?.(legIdx);
+      }
+    }
+
+    applyCarTransform({
       pieceRef,
-      THREE.MathUtils.clamp(distanceRef.current / DRIVE_LENGTH, 0, 1),
-      carPosRef.current,
-      clock,
+      bodyRef,
+      progress: curveProgress,
+      targetPoint: carPosRef.current,
+      moving: true,
+      clockTime: clock.elapsedTime,
       delta,
-      rotationRef
-    );
+      rotationRef,
+    });
 
     if (distanceRef.current >= targetDistance) {
+      distanceRef.current = targetDistance;
+      if (activeCarProgressRef) {
+        activeCarProgressRef.current = THREE.MathUtils.clamp(targetDistance / DRIVE_LENGTH, 0, 1);
+      }
       waitingForNextLegRef.current = true;
       onMoveComplete(piece.id, target);
     }
@@ -238,16 +326,14 @@ const GamePiece = ({ driving, currentLeg, onMoveComplete, piece, pieceRef, targe
 
   return (
     <group ref={pieceRef} position={[ROUTE[0].x, ROUTE[0].y, CAR_BASE_Z]}>
-      <mesh ref={glowRef} position={[0, 0, -0.072]} visible={false}>
-        <circleGeometry args={[0.42, 32]} />
-        <meshBasicMaterial color={piece.color} opacity={0.22} transparent={true} side={THREE.DoubleSide} />
-      </mesh>
-      <primitive
-        object={carScene}
-        scale={modelTransform.scale}
-        position={modelTransform.position}
-        rotation={modelTransform.rotation}
-      />
+      <group ref={bodyRef}>
+        <primitive
+          object={carScene}
+          scale={modelTransform.scale}
+          position={modelTransform.position}
+          rotation={modelTransform.rotation}
+        />
+      </group>
     </group>
   );
 };

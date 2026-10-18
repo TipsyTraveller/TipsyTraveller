@@ -36,8 +36,11 @@ const GamePiecesFallback = ({ gamePieces, teamProgress }) => (
   </>
 );
 
-const CountryMarkersFallback = ({ currentLeg }) => {
-  const activeMarker = Math.min(currentLeg + 1, MARKERS.length - 1);
+const CountryMarkersFallback = ({ currentLeg, targetLeg }) => {
+  const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
+    ? targetLeg
+    : currentLeg + 1;
+  const activeMarker = destinationLeg % MARKERS.length;
 
   return (
     <>
@@ -58,17 +61,24 @@ const CountryMarkersFallback = ({ currentLeg }) => {
 };
 
 const GameScene = ({
+  activeCarProgressRef,
+  activeTeamColor,
   cameraMode,
   canvasStyle,
   currentLeg,
   diceEnabled,
   driving,
   gamePieces,
+  moveFromLeg,
+  moveTargetLeg,
   movingPieceId,
   moveTargets,
   onDiceRoll,
   onDiceRollStart,
+  onDriveStart,
+  onLegPass,
   onMoveComplete,
+  pathRevealDuration,
   pieceRefs,
   targetRef,
   teamProgress,
@@ -89,26 +99,36 @@ const GameScene = ({
     <directionalLight position={[8, -7, 9]} intensity={1.25} />
     <directionalLight position={[-6, 5, 4]} intensity={0.32} color="#8fd8ff" />
 
-    <CameraController mode={cameraMode} targetRef={targetRef} />
-
     <Suspense fallback={<MapFallback />}>
       <MapPlane />
     </Suspense>
+    <DottedRouteLine
+      activeCarProgressRef={activeCarProgressRef}
+      activeColor={activeTeamColor}
+      driving={driving}
+      fromLeg={moveFromLeg}
+      pathRevealDuration={pathRevealDuration}
+      toLeg={moveTargetLeg}
+    />
     <Suspense fallback={<GamePiecesFallback gamePieces={gamePieces} teamProgress={teamProgress} />}>
       <GamePieces
+        activeCarProgressRef={activeCarProgressRef}
         driving={driving}
         gamePieces={gamePieces}
-        teamProgress={teamProgress}
-        pieceRefs={pieceRefs}
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
+        onDriveStart={onDriveStart}
+        onLegPass={onLegPass}
         onMoveComplete={onMoveComplete}
+        pathRevealDuration={pathRevealDuration}
+        pieceRefs={pieceRefs}
+        teamProgress={teamProgress}
       />
     </Suspense>
-    <DottedRouteLine />
-    <Suspense fallback={<CountryMarkersFallback currentLeg={currentLeg} />}>
-      <CountryMarkers currentLeg={currentLeg} />
+    <Suspense fallback={<CountryMarkersFallback currentLeg={currentLeg} targetLeg={moveTargetLeg} />}>
+      <CountryMarkers currentLeg={currentLeg} targetLeg={moveTargetLeg} />
     </Suspense>
+    <CameraController mode={cameraMode} targetRef={targetRef} />
     <BoardDice enabled={diceEnabled} onRollComplete={onDiceRoll} onRollStart={onDiceRollStart} />
   </Canvas>
 );

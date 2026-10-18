@@ -3,16 +3,23 @@ import { useFrame } from '@react-three/fiber/native';
 import { RoundedBox } from '@react-three/drei/native';
 import * as THREE from 'three';
 import { DICE_BOUNDS } from '../constants/diceBounds';
-import { MAP_CY, MAP_H, MAP_W, MAP_Z } from '../constants/mapCoordinates';
+import { MAP_CY, MAP_H, MAP_RELIEF_DEPTH, MAP_W, MAP_Z } from '../constants/mapCoordinates';
 
 const DICE_SIZE = 0.48;
 const HALF_SIZE = DICE_SIZE / 2;
-const DICE_Z = MAP_Z + HALF_SIZE + 0.035;
-const LAND_POSITION = new THREE.Vector3(0.45, -0.95, DICE_Z);
-const IDLE_CENTER = new THREE.Vector3(-0.7, -1.65, 0);
-const IDLE_Z = MAP_Z + 1.15;
-const IDLE_BOB_HEIGHT = 0.08;
-const HOLD_Z = MAP_Z + 1.45;
+const DICE_Z = MAP_Z + MAP_RELIEF_DEPTH + HALF_SIZE + 0.025;
+const LAND_POSITION = new THREE.Vector3(-0.15, -0.65, DICE_Z);
+const IDLE_CENTER = new THREE.Vector3(-0.5, -3.55, 0);
+const IDLE_Z = 2.0;
+const IDLE_BOB_HEIGHT = 0.065;
+const HOLD_Z = 2.15;
+const HOLD_PLANE = new THREE.Plane(new THREE.Vector3(0, 0, 1), -HOLD_Z);
+const HOLD_BOUNDS = {
+  minX: -2.2,
+  maxX: 1.8,
+  minY: -4.4,
+  maxY: -1.4,
+};
 const THROW_DURATION = 1.75;
 const AIRBORNE_END = 0.42;
 const PIP_OFFSET = DICE_SIZE * 0.25;
@@ -101,6 +108,24 @@ const clampToMap = (point) => new THREE.Vector3(
   THREE.MathUtils.clamp(point.y, DICE_BOUNDS.minY + HALF_SIZE, DICE_BOUNDS.maxY - HALF_SIZE),
   point.z
 );
+const clampToHoldPlane = (point) => new THREE.Vector3(
+  THREE.MathUtils.clamp(point.x, HOLD_BOUNDS.minX, HOLD_BOUNDS.maxX),
+  THREE.MathUtils.clamp(point.y, HOLD_BOUNDS.minY, HOLD_BOUNDS.maxY),
+  HOLD_Z
+);
+const getHoldPlanePoint = (event, fallback) => {
+  const planePoint = new THREE.Vector3();
+
+  if (event?.ray?.intersectPlane(HOLD_PLANE, planePoint)) {
+    return clampToHoldPlane(planePoint);
+  }
+
+  if (event?.point) {
+    return clampToHoldPlane(event.point);
+  }
+
+  return fallback.clone().setZ(HOLD_Z);
+};
 
 const DicePips = ({ pipPositions = PIP_POSITIONS, pipRadius = PIP_RADIUS, value }) => (
   <>
@@ -251,7 +276,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     resultAnimationRef.current.active = false;
     setResultPreview(null);
 
-    const holdTarget = diceRef.current.position.clone().setZ(HOLD_Z);
+    const holdTarget = getHoldPlanePoint(event, diceRef.current.position);
 
     stateRef.current = {
       ...stateRef.current,
@@ -264,10 +289,9 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
   };
 
   const updateHeldPosition = (event) => {
-    if (stateRef.current.mode !== 'held' || !event.point) return;
+    if (stateRef.current.mode !== 'held') return;
 
-    const clampedPoint = clampToMap(event.point);
-    const nextDragPoint = clampedPoint.clone().setZ(HOLD_Z);
+    const nextDragPoint = getHoldPlanePoint(event, stateRef.current.holdTarget);
     const dragDelta = nextDragPoint.clone().sub(stateRef.current.lastDragPoint);
 
     if (dragDelta.lengthSq() > 0.0001) {
@@ -275,7 +299,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
       stateRef.current.lastDragPoint.copy(nextDragPoint);
     }
 
-    stateRef.current.holdTarget.set(clampedPoint.x, clampedPoint.y, HOLD_Z);
+    stateRef.current.holdTarget.copy(nextDragPoint);
   };
 
   const beginThrow = (event) => {
@@ -283,13 +307,12 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
 
     event.stopPropagation();
 
-    if (event.point) {
+    if (event.ray || event.point) {
       updateHeldPosition(event);
     }
 
     const result = randomFace();
     const finalRotation = FACE_ROTATIONS[result];
-    const impactPosition = stateRef.current.holdTarget.clone().setZ(DICE_Z);
     const throwDirection = stateRef.current.dragVelocity.clone();
 
     if (throwDirection.lengthSq() < 0.0001) {
@@ -299,6 +322,14 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     }
 
     const throwStrength = THREE.MathUtils.clamp(stateRef.current.dragVelocity.length() * 7, 0, 1);
+    const holdOffsetX = stateRef.current.holdTarget.x - IDLE_CENTER.x;
+    const holdOffsetY = stateRef.current.holdTarget.y - IDLE_CENTER.y;
+    const throwBoost = 0.25 + throwStrength * 0.35;
+    const impactPosition = clampToMap(new THREE.Vector3(
+      LAND_POSITION.x + holdOffsetX * 1.2 + throwDirection.x * throwBoost,
+      LAND_POSITION.y + holdOffsetY * 1.2 + throwDirection.y * throwBoost,
+      DICE_Z
+    ));
     const rollDistance = 0.42 + throwStrength * 0.24 + Math.random() * 0.1;
     const endPosition = clampToMap(new THREE.Vector3(
       impactPosition.x + throwDirection.x * rollDistance,
@@ -484,7 +515,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
         onPointerUp={beginThrow}
         material={interactionMaterial}
       >
-        <planeGeometry args={[MAP_W, MAP_H]} />
+        <planeGeometry args={[MAP_W * 2, MAP_H * 2]} />
       </mesh>
       <group
         ref={diceRef}

@@ -1,28 +1,39 @@
 import GamePiece from './GamePiece';
 
 const GamePieces = ({
+  activeCarProgressRef,
   driving,
   gamePieces,
   movingPieceId,
   moveTargets,
-  teamProgress,
-  pieceRefs,
+  onDriveStart,
+  onLegPass,
   onMoveComplete,
+  pathRevealDuration,
+  pieceRefs,
+  teamProgress,
 }) => (
   <>
-    {gamePieces.map((piece) => {
+    {gamePieces.map((piece, index) => {
       const progress = teamProgress[piece.id] || { currentLeg: 0, isDone: false };
       const targetLeg = moveTargets[piece.id] ?? progress.currentLeg;
+      const isPieceDriving = driving && movingPieceId === piece.id && !progress.isDone;
 
       return (
         <GamePiece
           key={`${piece.id}-${piece.model.id}`}
+          activeCarProgressRef={isPieceDriving ? activeCarProgressRef : null}
+          currentLeg={progress.currentLeg}
+          driving={isPieceDriving}
+          onDriveStart={isPieceDriving ? onDriveStart : null}
+          onLegPass={isPieceDriving ? onLegPass : null}
+          onMoveComplete={onMoveComplete}
+          pathRevealDuration={pathRevealDuration}
           piece={piece}
           pieceRef={pieceRefs[piece.id]}
-          driving={driving && movingPieceId === piece.id && !progress.isDone}
-          currentLeg={progress.currentLeg}
           targetLeg={targetLeg}
-          onMoveComplete={onMoveComplete}
+          teamCount={gamePieces.length}
+          teamIndex={index}
         />
       );
     })}
