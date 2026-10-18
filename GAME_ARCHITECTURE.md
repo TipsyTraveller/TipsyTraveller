@@ -491,25 +491,31 @@ framing while keeping the same source coordinates.
 `MapPlane` builds the map in 3D space from three visual layers:
 
 1. A large dark-blue ocean plane that matches the Canvas background, so no board boundary or horizon edge is visible.
-2. A shallow extruded land relief generated from the continuous land silhouette in `assets/map.svg`, plus an unlit cream cap over its top surface.
-3. A dark internal-border mesh derived from shared edges between neighboring
-   country paths and raised slightly above the land surface.
+2. A shallow extruded land relief generated from the welded `st2..st9` country paths in `assets/map.svg`, plus an unlit cream cap over its top surface.
+3. A dark border mesh (`CountryBorders`) derived from the same welded country outlines — covering both deduplicated internal borders and outer coastal/island edges — raised slightly above the land surface.
 
 The board no longer renders a raster map underneath the vector geometry. The
 GLB is scaled to the current `MAP_VIEWPORT` without rectangular clipping,
 keeping the active Western Europe route large while allowing the surrounding
-ocean to continue naturally. The top land surface uses an unlit cream material
-(`#FAF3E0`), keeping its color stable instead of applying a scene-wide dark
-lighting tint. The exposed relief sides retain a darker lit material so
-coastlines still read as three-dimensional; the ocean is deep blue (`#20364B`).
-The generator compares neighboring country outlines and
-emits only one canonical copy of a matched land boundary. It closes short gaps
-caused by differing curve subdivisions so borders stay continuous through
-bends. Unmatched outlines are treated as coastlines and omitted, avoiding
-doubled or stray lines around peninsulas and islands. Border geometry is also
-limited to the active Western Europe
+ocean to continue naturally. The top land surface uses an unlit, non-tone-mapped cream material
+(`#FFF1CD`), keeping its warm palette color stable instead of being bleached
+toward white by ACES Filmic tone mapping or darkened by scene lighting. The
+exposed relief sides retain a darker lit material so coastlines still read as
+three-dimensional; the ocean uses the primary dark-blue palette color
+(`#2C3E50`) with tone mapping disabled so the ocean plane and Canvas background
+match.
+Because `assets/map.svg` stores long country paths using 1-decimal-place relative
+commands that accumulate slight drift along long perimeters (and caused the
+separate `st1` Eurasia silhouette to drift up to `1.5` SVG units relative to
+the `st2..st9` country paths in Western Europe), `scripts/build-vector-map.mjs`
+welds reversed twin curves between adjacent countries back to canonical shared
+knot positions before building all three meshes (`RaisedLand`, `LandTop`, and
+`CountryBorders`) from the exact same country shapes. Shared internal border
+segments are deduplicated while coastal and island outlines are preserved, so
+every country border and coastline edge has a clean line that aligns with the
+3D land surface. Border geometry is limited to the active Western Europe
 viewport to keep the mobile asset smaller. The GLB is prebuilt so Expo Go does
-not need to parse, triangulate, extrude, or compare the large SVG at runtime.
+not need to parse, triangulate, extrude, or weld the large SVG at runtime.
 Route dots render above the raised land and border geometry.
 
 ### Route curve

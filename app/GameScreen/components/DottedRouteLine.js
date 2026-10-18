@@ -29,6 +29,7 @@ const InstancedDotLayer = ({ color, dots, opacity = 1, radius, zOffset }) => {
         color={color}
         opacity={opacity}
         side={THREE.DoubleSide}
+        toneMapped={false}
         transparent={opacity < 1}
       />
     </instancedMesh>
@@ -59,7 +60,7 @@ const InstancedAccents = ({ dots }) => {
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, dots.length]}>
       <planeGeometry args={[DOT_RADIUS * 1.12, DOT_RADIUS * 1.12]} />
-      <meshBasicMaterial color="#FFD700" opacity={0.88} side={THREE.DoubleSide} transparent={true} />
+      <meshBasicMaterial color="#FFD700" opacity={0.88} side={THREE.DoubleSide} toneMapped={false} transparent={true} />
     </instancedMesh>
   );
 };
