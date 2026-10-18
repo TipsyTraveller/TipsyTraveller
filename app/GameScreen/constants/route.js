@@ -13,17 +13,17 @@ export const ROUTE = [BELGIUM, FRANCE, SPAIN_TOP, PORTUGAL, SPAIN_R, ITALY, GERM
 export const MARKERS = ROUTE.slice(0, -1);
 
 export const DRIVE_LEGS = [
-  [BELGIUM, svgPoint(528, 307), svgPoint(526, 312), FRANCE],
-  [FRANCE, svgPoint(521, 323), svgPoint(516, 329), SPAIN_TOP],
-  [SPAIN_TOP, svgPoint(507, 337), svgPoint(500, 341), PORTUGAL],
-  [PORTUGAL, svgPoint(499, 346), svgPoint(511, 346), svgPoint(516, 342), SPAIN_R],
-  [SPAIN_R, svgPoint(528, 334), svgPoint(537, 330), svgPoint(545, 332), ITALY],
-  [ITALY, svgPoint(552, 320), svgPoint(550, 308), GERMANY],
-  [GERMANY, svgPoint(541, 296), svgPoint(535, 298), BELGIUM],
+  [BELGIUM, svgPoint(527, 306), svgPoint(525, 312), FRANCE],
+  [FRANCE, svgPoint(520, 322), svgPoint(516, 327), SPAIN_TOP],
+  [SPAIN_TOP, svgPoint(503, 334), svgPoint(496, 337), PORTUGAL],
+  [PORTUGAL, svgPoint(495, 347), svgPoint(503, 348), svgPoint(512, 346), SPAIN_R],
+  [SPAIN_R, svgPoint(528, 335), svgPoint(538, 333), svgPoint(546, 334), ITALY],
+  [ITALY, svgPoint(553, 326), svgPoint(552, 316), svgPoint(549, 307), GERMANY],
+  [GERMANY, svgPoint(541, 296), svgPoint(535, 297), BELGIUM],
 ];
 
 export const DRIVE_CURVES = DRIVE_LEGS.map(
-  (points) => new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.2)
+  (points) => new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.45)
 );
 export const DRIVE_LENGTHS = DRIVE_CURVES.map((curve) => curve.getLength());
 
@@ -34,11 +34,39 @@ export const DRIVE_PATH_POINTS = DRIVE_LEGS.reduce((points, leg, legIndex) => {
 
   return [...points, ...leg.slice(1)];
 }, []);
-export const DRIVE_CURVE = new THREE.CatmullRomCurve3(DRIVE_PATH_POINTS, false, 'centripetal', 0.2);
+export const DRIVE_CURVE = new THREE.CatmullRomCurve3(DRIVE_PATH_POINTS, false, 'centripetal', 0.45);
+DRIVE_CURVE.arcLengthDivisions = 1400;
+DRIVE_CURVE.updateArcLengths();
 export const DRIVE_LENGTH = DRIVE_CURVE.getLength();
 
+const tangentSampleBack = new THREE.Vector3();
+const tangentSampleAhead = new THREE.Vector3();
+
+export const getSmoothRouteTangentAngle = (progress, lookWindow = 0.005) => {
+  const clamped = THREE.MathUtils.clamp(progress, 0, 1);
+  const backU = Math.max(0, clamped - lookWindow * 0.4);
+  const aheadU = Math.min(1, clamped + lookWindow * 0.6);
+
+  if (aheadU - backU < 1e-4) {
+    const tangent = DRIVE_CURVE.getTangentAt(THREE.MathUtils.clamp(clamped, 0.001, 0.999));
+    return Math.atan2(tangent.y, tangent.x);
+  }
+
+  DRIVE_CURVE.getPointAt(backU, tangentSampleBack);
+  DRIVE_CURVE.getPointAt(aheadU, tangentSampleAhead);
+
+  return Math.atan2(
+    tangentSampleAhead.y - tangentSampleBack.y,
+    tangentSampleAhead.x - tangentSampleBack.x
+  );
+};
+
+export const getPathRevealDuration = (moveCount) => (
+  moveCount > 0 ? 0.45 + moveCount * 0.22 : 0
+);
+
 const findStopProgress = (stop, startProgress) => {
-  const sampleCount = 1200;
+  const sampleCount = 1400;
   let closestProgress = startProgress;
   let closestDistance = Infinity;
 

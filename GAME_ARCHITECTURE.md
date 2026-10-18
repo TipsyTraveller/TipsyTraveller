@@ -253,12 +253,16 @@ stateDiagram-v2
 | `state` | Current phase listed above |
 | `activeTeamIndex` | Index of the team whose turn it is |
 | `lastRoll` | Most recent die result |
-| `remainingMoves` | Number of route legs in the current move; this value is set initially and not decremented during movement |
+| `remainingMoves` | Remaining route legs in the current move, decremented as intermediate stops are crossed |
 | `movingPieceId` | Team ID whose model should animate |
+| `moveStartLeg` | Starting leg of the active move used to lay out the animated route path |
+| `passedLeg` | Latest stop crossed during the current move |
+| `isCarDriving` | Whether the path reveal has finished and the active vehicle is currently driving |
 | `moveTargets` | Map of team ID to destination leg |
 | `currentChallenge` | Challenge record for the latest non-final landing |
 | `teamProgress` | Per-team `{ currentLeg, isDone }` data |
 | `pieceRefs` | React refs for each Three.js vehicle group, used by the camera |
+| `activeCarProgressRef` | React ref tracking the active vehicle's normalized curve progress so the route ribbon trims behind the car |
 
 ### Turn rotation
 
@@ -448,16 +452,16 @@ physical-device board. The route and die do not load external models.
 ```text
 Canvas
 ├── Lights
-├── CameraController
 ├── Suspense(MapFallback)
 │   └── MapPlane
+├── DottedRouteLine (animated route ribbon, caps, chevrons, and waypoint rings)
 ├── Suspense(GamePiecesFallback)
 │   └── GamePieces
 │       └── GamePiece × 2 or 3
-├── DottedRouteLine (four instanced mesh layers)
 ├── Suspense(CountryMarkersFallback)
 │   └── CountryMarkers
 │       └── CountryMarker × 7
+├── CameraController
 └── BoardDice
 ```
 
@@ -516,44 +520,45 @@ every country border and coastline edge has a clean line that aligns with the
 3D land surface. Border geometry is limited to the active Western Europe
 viewport to keep the mobile asset smaller. The GLB is prebuilt so Expo Go does
 not need to parse, triangulate, extrude, or weld the large SVG at runtime.
-Route dots render above the raised land and border geometry.
+The animated route path renders above the raised land and border geometry.
 
 ### Route curve
 
-Each travel leg is an array of country endpoints plus intermediate control points. Each leg becomes a centripetal Catmull-Rom curve. The legs are also flattened into a single `DRIVE_CURVE`.
+Each travel leg is an array of country endpoints plus intermediate control points. Each leg becomes a centripetal Catmull-Rom curve. The legs are also flattened into a single `DRIVE_CURVE` with `1,400` arc-length divisions.
 
 The global curve is used for:
 
-- Route-dot placement.
+- Animated route-ribbon geometry.
 - Vehicle positions.
-- Vehicle tangent/heading.
+- Smooth look-ahead vehicle tangent/heading.
 - Mapping country stops to travel distances.
 
-For every intermediate country stop, the code samples up to 1,200 points on the remaining curve to find the closest point. That produces `STOP_PROGRESS`, which is multiplied by the curve length to create `STOP_DISTANCES`.
+For every intermediate country stop, the code samples up to 1,400 points on the remaining curve to find the closest point. That produces `STOP_PROGRESS`, which is multiplied by the curve length to create `STOP_DISTANCES`.
 
-### Dotted route
+### Animated route line
 
-Dots are placed approximately every `0.19` world units along the global curve. Each dot has shadow, cream, and red layers. Every sixth dot receives a small yellow diamond accent.
+Instead of static dots across the entire map, `DottedRouteLine` precomputes a single sleek semi-transparent ribbon geometry (`#2C3E50`, `opacity: 0.6`) along `DRIVE_CURVE` and uses `BufferGeometry.setDrawRange` so no geometry buffers are reallocated per frame:
 
-The dot list is memoized so it is not recalculated on each React render.
+- When a dice roll determines the move target, the ribbon smoothly draws out (`easeInOutCubic`) from the active vehicle’s current stop to the target stop before the vehicle begins driving.
+- As the vehicle drives along the path, `activeCarProgressRef` advances the tail of the ribbon with the vehicle so the path is consumed cleanly into the destination stop.
 
 ### Country markers
 
 - The marker model is `assets/models/location.glb`.
 - Every marker clones the shared GLTF scene.
 - Mesh materials are replaced with red or gold `MeshStandardMaterial` instances.
-- The next destination is considered active.
+- While waiting to roll, the next stop is active; during a move, the destination stop for that roll is highlighted as active.
 - Active markers rotate and display a pulsing outer ring.
-- Marker geometry is re-centered with a Three.js bounding box before placement.
+- Marker geometry is centered horizontally and aligned at its bottom tip (`box.min.y`) with a Three.js bounding box so the pin stands above the map surface.
 
 ### Camera
 
 The camera has two modes:
 
-- `done`: smoothly returns to a fixed board overview.
-- `follow`: follows the active vehicle using a fixed offset.
+- `done`: smoothly returns to a fixed board overview (and stays in overview during the initial route-path reveal after a roll).
+- `follow`: follows the active vehicle using a fixed offset once the vehicle begins driving along the revealed path.
 
-Position and look-at target are interpolated every frame. The interpolation factor is derived from frame delta and capped at 1, preventing frame-rate-dependent jumps.
+Position and look-at target are interpolated every frame using exponential damping (`1 - Math.exp(-damping * delta)`), preventing frame-rate-dependent jumps.
 
 ---
 
@@ -583,22 +588,22 @@ The die keeps its high-frequency animation state in refs rather than React state
 ### Interaction sequence
 
 1. Pointer down on the die calls `beginPickup`.
-2. Pointer movement is projected onto an invisible board-sized plane.
-3. The point is clamped to `DICE_BOUNDS` so the die remains on the board.
+2. Pointer movement is projected onto a foreground hold plane at `HOLD_Z` so the held die stays directly under the pointer.
+3. The held point is clamped to `HOLD_BOUNDS` in the foreground, while landing and roll targets are clamped to `DICE_BOUNDS` on the board.
 4. Recent drag displacement is smoothed into a throw direction.
 5. Pointer up generates a random result from 1 through 6.
 6. Throw strength slightly modifies rolling distance.
 7. The die animates through a parabolic airborne stage.
 8. It rolls and bounces toward the final position.
 9. Rotation is interpolated to an orientation that shows the result face.
-10. `onRollComplete(result)` tells `GameScreen` to move the vehicle.
+10. `onRollComplete(result)` tells `GameScreen` to lay out the animated path and move the vehicle.
 11. A camera-facing result card rises above the landing position for 2.4 seconds.
 
 The throw lasts 1.75 seconds; the first 42% is airborne.
 
 ### HUD roll shortcut
 
-The `Roll Dice` button in `TourControl` calls `GameScreen.handleRoll()` directly. It generates the same random range but does not animate the die. This is useful as a fallback when pointer interaction is inconvenient.
+The `Roll Dice` button in `TourControl` calls `GameScreen.handleRoll()` directly. It generates the same random range and triggers the animated route path and vehicle movement without animating the 3D die. This is useful as a fallback when pointer interaction is inconvenient.
 
 ---
 
@@ -624,7 +629,7 @@ Each record contains:
 - Bundled GLB source.
 - Whether to normalize its origin.
 - Whether to preserve texture-based materials.
-- Per-model scale, position, and rotation corrections.
+- Per-model scale, position, and orthogonal rotation corrections.
 
 Unknown IDs fall back to the classic car. Every team also defaults to the classic car when no model selection is present.
 
@@ -635,18 +640,16 @@ Unknown IDs fall back to the classic car. Every team also defaults to the classi
 - Disables frustum culling on child meshes.
 - Replaces materials with team-colored paint, dark parts, glass, or lights for the classic-style model.
 - For `preserveMaterials` models, clones a visible texture into a basic material, sets sRGB color space, and disables `flipY`.
-- Optionally computes a bounding box and subtracts its center to normalize the model origin.
+- Computes a bounding box to center X/Z and align the bottom of the tires (`box.min.y`) to the board surface.
 
 ### Motion
 
-- Progress is stored as distance along the global route curve.
-- Each frame adds `delta × 0.44` world units while driving.
-- Position comes from `DRIVE_CURVE.getPointAt(normalizedDistance)`.
-- Heading comes from the route tangent plus a 90-degree model correction.
-- Angular interpolation uses shortest-angle math to avoid full spins at the `−π/π` boundary.
-- A small sine bounce gives the car motion.
-- The active moving vehicle gets a pulsing team-colored glow.
-- When target distance is reached, `onMoveComplete(teamId, targetLeg)` fires exactly once.
+- After a roll, the vehicle waits for the animated route path to lay out (`getPathRevealDuration`) before driving.
+- Progress is stored as distance along the global route curve, advancing by `delta × 0.88` world units per frame while driving.
+- Position comes directly from `DRIVE_CURVE.getPointAt(normalizedDistance)`.
+- Heading comes from a tight look-ahead chord tangent (`getSmoothRouteTangentAngle`) plus a 90-degree model correction, interpolated with shortest-angle exponential damping.
+- An inner body group applies the driving sine bounce so the root group tracked by the camera remains free of vertical bounce jitter.
+- Crossed intermediate stops decrement `remainingMoves` in `GameScreen`, and when the target stop is reached, `onMoveComplete(teamId, targetLeg)` fires exactly once.
 
 ---
 
@@ -1040,14 +1043,14 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 Because the development shortcut is enabled:
 
 1. Run `npm start`, scan the QR code, and open the project in Expo Go.
-2. Confirm the map, instanced dotted route, pins, GLTF vehicles, and 3D die render.
+2. Confirm the map, pins, GLTF vehicles, and 3D die render cleanly without static route dots.
 3. Drag and throw the die.
-4. Confirm the result popup matches the top die face.
-5. Confirm the active vehicle follows the route.
-6. Confirm the camera follows during movement and returns to overview afterward.
+4. Confirm the result popup matches the top die face and the animated route path lays out from the active vehicle to the destination stop.
+5. Confirm the active vehicle smoothly accelerates, follows the animated route path, and brakes into the destination stop while consuming the path.
+6. Confirm the camera stays in overview during the path reveal, follows during vehicle movement, and returns to overview afterward.
 7. Confirm the appropriate challenge appears.
 8. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
-9. Use the HUD roll button and confirm it moves without a die animation.
+9. Use the HUD roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
 
 ### Smoke test: full multiplayer flow
 
@@ -1102,7 +1105,6 @@ camera motion, GLTF appearance, and final 3D performance.
 5. **Duration is unused.** Short/medium/long do not alter route length, target score, or timer.
 6. **No winner model.** The game waits for all teams instead of ranking the first finisher.
 7. **Challenges are honor-based.** Pass/fail and penalties are not recorded.
-8. **Remaining-moves HUD is static.** It shows the move length but does not decrement at each crossed stop.
 
 ### Firebase and identity
 
@@ -1268,7 +1270,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `app/GameScreen/GameScreen.js` | Local game state machine and scene/overlay orchestration |
 | `components/GameScene.js` | Canvas and 3D scene composition |
 | `components/MapPlane.js` | Continuous ocean plane and raised vector-map viewport |
-| `components/DottedRouteLine.js` | Instanced decorative curved route |
+| `components/DottedRouteLine.js` | Animated route path ribbon, flowing chevrons, and waypoint rings |
 | `components/CountryMarkers.js` | Destination markers and active-marker animation |
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |

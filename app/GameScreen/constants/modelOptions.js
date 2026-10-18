@@ -1,3 +1,6 @@
+const CAR1_ROTATION = [Math.PI / 2, Math.PI / 2, 0];
+const STANDARD_VEHICLE_ROTATION = [Math.PI / 2, 0, 0];
+
 export const MODEL_OPTIONS = [
   {
     id: 'car1',
@@ -7,7 +10,7 @@ export const MODEL_OPTIONS = [
     transform: {
       scale: [0.03, 0.03, 0.03],
       position: [0, 0, 0],
-      rotation: [-1.71, 1.3, -3.0838],
+      rotation: CAR1_ROTATION,
     },
   },
   {
@@ -18,8 +21,8 @@ export const MODEL_OPTIONS = [
     preserveMaterials: true,
     transform: {
       scale: [0.045, 0.045, 0.045],
-      position: [0, 0, 0.08],
-      rotation: [-1.71, 2.9583, -3.0838],
+      position: [0, 0, 0],
+      rotation: STANDARD_VEHICLE_ROTATION,
     },
   },
   {
@@ -30,7 +33,7 @@ export const MODEL_OPTIONS = [
     transform: {
       scale: [0.001, 0.001, 0.001],
       position: [0, 0, 0],
-      rotation: [-1.71, 2.9583, -3.0838],
+      rotation: STANDARD_VEHICLE_ROTATION,
     },
   },
   {
@@ -41,8 +44,8 @@ export const MODEL_OPTIONS = [
     preserveMaterials: true,
     transform: {
       scale: [0.053, 0.053, 0.053],
-      position: [0, 0, 0.08],
-      rotation: [-1.71, 2.9583, -3.0838],
+      position: [0, 0, 0],
+      rotation: STANDARD_VEHICLE_ROTATION,
     },
   },
   {
@@ -53,8 +56,8 @@ export const MODEL_OPTIONS = [
     preserveMaterials: true,
     transform: {
       scale: [0.052, 0.052, 0.052],
-      position: [0, 0, 0.08],
-      rotation: [-1.71, 2.9583, -3.0838],
+      position: [0, 0, 0],
+      rotation: STANDARD_VEHICLE_ROTATION,
     },
   },
   {
@@ -65,8 +68,8 @@ export const MODEL_OPTIONS = [
     preserveMaterials: true,
     transform: {
       scale: [0.053, 0.053, 0.053],
-      position: [0, 0, 0.08],
-      rotation: [-1.71, 2.9583, -3.0838],
+      position: [0, 0, 0],
+      rotation: STANDARD_VEHICLE_ROTATION,
     },
   },
   {
@@ -77,8 +80,8 @@ export const MODEL_OPTIONS = [
     preserveMaterials: true,
     transform: {
       scale: [0.05, 0.05, 0.05],
-      position: [0, 0, 0.08],
-      rotation: [-1.71, 2.9583, -3.0838],
+      position: [0, 0, 0],
+      rotation: STANDARD_VEHICLE_ROTATION,
     },
   },
   {
@@ -89,8 +92,8 @@ export const MODEL_OPTIONS = [
     preserveMaterials: true,
     transform: {
       scale: [0.052, 0.052, 0.052],
-      position: [0, 0, 0.08],
-      rotation: [-1.71, 2.9583, -3.0838],
+      position: [0, 0, 0],
+      rotation: STANDARD_VEHICLE_ROTATION,
     },
   },
 ];

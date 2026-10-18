@@ -26,7 +26,7 @@ const CountryMarker = ({ position, active }) => {
     clone.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(clone);
     const center = box.getCenter(new THREE.Vector3());
-    clone.position.sub(center);
+    clone.position.set(-center.x, -box.min.y, -center.z);
 
     return clone;
   }, [scene, active]);
@@ -66,15 +66,18 @@ const CountryMarker = ({ position, active }) => {
           <meshBasicMaterial color={markerColor} opacity={0.32} transparent={true} side={THREE.DoubleSide} />
         </mesh>
       )}
-      <group rotation={[Math.PI / 2, 0, 0]}>
+      <group position={[0, 0, -0.05]} rotation={[Math.PI / 2, 0, 0]}>
         <primitive object={marker} />
       </group>
     </group>
   );
 };
 
-const CountryMarkers = ({ currentLeg }) => {
-  const activeMarker = Math.min(currentLeg + 1, MARKERS.length - 1);
+const CountryMarkers = ({ currentLeg, targetLeg }) => {
+  const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
+    ? targetLeg
+    : currentLeg + 1;
+  const activeMarker = destinationLeg % MARKERS.length;
 
   return (
     <>

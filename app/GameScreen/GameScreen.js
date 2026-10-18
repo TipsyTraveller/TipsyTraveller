@@ -8,7 +8,13 @@ import TourControl from './components/TourControl';
 import { getChallengeForStop } from './constants/challenges';
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
 import { getDefaultModelOption, getModelOption } from './constants/modelOptions';
-import { DRIVE_LEGS, ROUTE, STOP_NAMES } from './constants/route';
+import {
+  DRIVE_LEGS,
+  getPathRevealDuration,
+  ROUTE,
+  STOP_NAMES,
+  STOP_PROGRESS,
+} from './constants/route';
 
 const getFocusedPiece = (gamePieces, teamProgress) => (
   gamePieces.find((piece) => !teamProgress[piece.id]?.isDone) || gamePieces[0]
@@ -38,8 +44,12 @@ const GameScreen = ({ route }) => {
   const [lastRoll, setLastRoll] = useState(null);
   const [remainingMoves, setRemainingMoves] = useState(0);
   const [movingPieceId, setMovingPieceId] = useState(null);
+  const [moveStartLeg, setMoveStartLeg] = useState(0);
+  const [passedLeg, setPassedLeg] = useState(0);
+  const [isCarDriving, setIsCarDriving] = useState(false);
   const [moveTargets, setMoveTargets] = useState({});
   const [currentChallenge, setCurrentChallenge] = useState(null);
+  const activeCarProgressRef = useRef(0);
   const baseGamePieces = useMemo(() => getGamePiecesForGame(gameData), [gameData?.nrOfPlayers]);
   const gamePieces = useMemo(() => (
     baseGamePieces.map((piece, index) => ({
@@ -67,11 +77,15 @@ const GameScreen = ({ route }) => {
   }, []);
 
   useEffect(() => {
+    activeCarProgressRef.current = 0;
     setState('waiting');
     setActiveTeamIndex(0);
     setLastRoll(null);
     setRemainingMoves(0);
     setMovingPieceId(null);
+    setMoveStartLeg(0);
+    setPassedLeg(0);
+    setIsCarDriving(false);
     setMoveTargets({});
     setCurrentChallenge(null);
     setTeamProgress(createInitialTeamProgress(baseGamePieces));
@@ -81,11 +95,15 @@ const GameScreen = ({ route }) => {
   const activeProgress = teamProgress[activePiece?.id] || { currentLeg: 0, isDone: false };
 
   const handleRestart = () => {
+    activeCarProgressRef.current = 0;
     setState('waiting');
     setActiveTeamIndex(0);
     setLastRoll(null);
     setRemainingMoves(0);
     setMovingPieceId(null);
+    setMoveStartLeg(0);
+    setPassedLeg(0);
+    setIsCarDriving(false);
     setMoveTargets({});
     setCurrentChallenge(null);
     setTeamProgress(createInitialTeamProgress(gamePieces));
@@ -115,16 +133,31 @@ const GameScreen = ({ route }) => {
   const handleRoll = (value = rollDice()) => {
     if (!['waiting', 'rolling'].includes(state) || !activePiece || activeProgress.isDone) return;
 
-    const targetLeg = Math.min(activeProgress.currentLeg + value, DRIVE_LEGS.length);
+    const startLeg = activeProgress.currentLeg;
+    const targetLeg = Math.min(startLeg + value, DRIVE_LEGS.length);
 
+    activeCarProgressRef.current = STOP_PROGRESS[startLeg] ?? 0;
     setLastRoll(value);
-    setRemainingMoves(targetLeg - activeProgress.currentLeg);
+    setMoveStartLeg(startLeg);
+    setPassedLeg(startLeg);
+    setIsCarDriving(false);
+    setRemainingMoves(targetLeg - startLeg);
     setMovingPieceId(activePiece.id);
     setMoveTargets((previousTargets) => ({
       ...previousTargets,
       [activePiece.id]: targetLeg,
     }));
     setState('moving');
+  };
+
+  const handleDriveStart = () => {
+    setIsCarDriving(true);
+  };
+
+  const handleLegPass = (crossedLeg) => {
+    const activeTarget = moveTargets[activePiece?.id] ?? activeProgress.currentLeg;
+    setPassedLeg(crossedLeg);
+    setRemainingMoves(Math.max(activeTarget - crossedLeg, 1));
   };
 
   const handleMoveComplete = (pieceId, landedLeg) => {
@@ -143,6 +176,7 @@ const GameScreen = ({ route }) => {
         [pieceId]: nextTeamProgress[pieceId],
       };
     });
+    setIsCarDriving(false);
     setMovingPieceId(null);
     setRemainingMoves(0);
 
@@ -165,27 +199,44 @@ const GameScreen = ({ route }) => {
   const focusedPiece = activePiece || getFocusedPiece(gamePieces, teamProgress);
   const focusedProgress = teamProgress[focusedPiece?.id] || { currentLeg: 0, isDone: false };
   const currentLeg = focusedProgress.currentLeg;
-  const cameraMode = state === 'moving' ? 'follow' : 'done';
+  const moveTargetLeg = state === 'moving'
+    ? (moveTargets[activePiece?.id] ?? currentLeg)
+    : null;
+  const pathRevealDuration = getPathRevealDuration(
+    moveTargetLeg !== null ? Math.max(0, moveTargetLeg - moveStartLeg) : 0
+  );
+  const cameraMode = state === 'moving' && isCarDriving ? 'follow' : 'done';
   const targetRef = pieceRefs.current[focusedPiece?.id];
-  const fromName = STOP_NAMES[currentLeg];
-  const toName = STOP_NAMES[Math.min(currentLeg + 1, STOP_NAMES.length - 1)];
+  const hudCurrentLeg = state === 'moving' ? passedLeg : currentLeg;
+  const fromName = STOP_NAMES[hudCurrentLeg];
+  const toName = STOP_NAMES[Math.min(
+    state === 'moving' && moveTargetLeg !== null ? moveTargetLeg : hudCurrentLeg + 1,
+    STOP_NAMES.length - 1
+  )];
   const progress = `${currentLeg + 1} / ${ROUTE.length - 1}`;
   const canRoll = state === 'waiting' && !activeProgress.isDone;
 
   return (
     <View style={styles.container}>
       <GameScene
+        activeCarProgressRef={activeCarProgressRef}
+        activeTeamColor={activePiece?.color}
         cameraMode={cameraMode}
         canvasStyle={styles.canvas}
         currentLeg={currentLeg}
         diceEnabled={canRoll}
         driving={state === 'moving'}
         gamePieces={gamePieces}
+        moveFromLeg={moveStartLeg}
+        moveTargetLeg={moveTargetLeg ?? currentLeg}
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
         onDiceRollStart={handleDiceRollStart}
         onDiceRoll={handleRoll}
+        onDriveStart={handleDriveStart}
+        onLegPass={handleLegPass}
         onMoveComplete={handleMoveComplete}
+        pathRevealDuration={pathRevealDuration}
         pieceRefs={pieceRefs.current}
         targetRef={targetRef}
         teamProgress={teamProgress}

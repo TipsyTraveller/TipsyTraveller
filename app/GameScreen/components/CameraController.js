@@ -1,24 +1,30 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { DONE_LOOK, DONE_POS, FOLLOW_OFFSET } from '../constants/camera';
 
+const FOLLOW_DAMPING = 4.5;
+const OVERVIEW_DAMPING = 3.2;
+
 const CameraController = ({ mode, targetRef }) => {
   const { camera } = useThree();
-  const lookAt = useRef(new THREE.Vector3(1.17, 0.13, 0));
+  const lookAt = useRef(DONE_LOOK.clone());
+  const desiredCameraPosition = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((_state, delta) => {
-    const speed = Math.min(delta * 3.0, 1);
+    const isFollow = mode === 'follow' && Boolean(targetRef?.current);
+    const damping = isFollow ? FOLLOW_DAMPING : OVERVIEW_DAMPING;
+    const alpha = 1 - Math.exp(-damping * delta);
 
-    if (mode === 'follow' && targetRef?.current) {
+    if (isFollow) {
       const targetPosition = targetRef.current.position;
-      const cameraPosition = targetPosition.clone().add(FOLLOW_OFFSET);
+      desiredCameraPosition.copy(targetPosition).add(FOLLOW_OFFSET);
 
-      camera.position.lerp(cameraPosition, speed);
-      lookAt.current.lerp(targetPosition.clone(), speed);
+      camera.position.lerp(desiredCameraPosition, alpha);
+      lookAt.current.lerp(targetPosition, alpha);
     } else {
-      camera.position.lerp(DONE_POS, speed);
-      lookAt.current.lerp(DONE_LOOK, speed);
+      camera.position.lerp(DONE_POS, alpha);
+      lookAt.current.lerp(DONE_LOOK, alpha);
     }
 
     camera.lookAt(lookAt.current);
