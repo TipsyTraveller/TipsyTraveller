@@ -1,23 +1,23 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-export default function LowerButtonContainer ({ LeftButtonVisible, LeftButtonCopy, handleLeftButton, RightButtonCopy, handleRightButton }) {
+export default function LowerButtonContainer ({ LeftButtonVisible, LeftButtonCopy, handleLeftButton, RightButtonCopy, handleRightButton, RightButtonDisabled = false }) {
 
     const style = StyleSheet.create({
         container: {
             width: "100%",
             flexDirection: "row",
-            justifyContent: LeftButtonVisible === true ? "space-between" : "flex-end"
+            justifyContent: LeftButtonVisible === true ? "space-between" : "flex-end",
+            gap: 12,
         },
         buttonLeftContainer: {
-            width: "45%",
+            flex: 1,
         },  
         buttonRightContainer: {
-            width: "45%",
-            alignItems: "flex-end",
+            flex: 1,
         },
         button: {
-            width: 170,
-            height: 55,
+            width: "100%",
+            minHeight: 54,
             borderRadius: 50,
             backgroundColor: "#FFF1CD",
             borderWidth: 4,
@@ -27,7 +27,10 @@ export default function LowerButtonContainer ({ LeftButtonVisible, LeftButtonCop
         },
         buttonCopy: { 
             fontFamily: "dogicapixelbold",
-            fontSize: 25
+            fontSize: 16,
+        },
+        buttonDisabled: {
+            opacity: 0.42,
         }
     })
 
@@ -36,8 +39,9 @@ export default function LowerButtonContainer ({ LeftButtonVisible, LeftButtonCop
             {
                 LeftButtonVisible &&
                 <View style={ style.buttonLeftContainer}>
-                    <Pressable 
-                        style={ style.button }
+                    <Pressable
+                        accessibilityRole="button"
+                        style={({ pressed }) => [style.button, pressed && { opacity: 0.75 }]}
                         onPress={ handleLeftButton }
                     >
                         <Text style={ style.buttonCopy }>
@@ -47,8 +51,14 @@ export default function LowerButtonContainer ({ LeftButtonVisible, LeftButtonCop
                 </View>
             }
             <View style={ style.buttonRightContainer}>
-                <Pressable 
-                    style={ style.button }
+                <Pressable
+                    accessibilityRole="button"
+                    disabled={RightButtonDisabled}
+                    style={({ pressed }) => [
+                        style.button,
+                        RightButtonDisabled && style.buttonDisabled,
+                        pressed && { opacity: 0.75 },
+                    ]}
                     onPress={ handleRightButton }
                 >
                     <Text style={ style.buttonCopy }>

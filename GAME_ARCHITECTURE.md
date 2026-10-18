@@ -109,7 +109,7 @@ This document distinguishes between the visible product concept and what the cur
 - Reconnection recognizes the original host device, but no full game-state restoration exists.
 - Difficulty and duration are stored in Firebase but do not modify gameplay.
 - Profile and settings icons are visible but have no actions.
-- The lobby `RULES` button logs to the console instead of opening rules.
+- The lobby `RULES` button opens a concise rules summary. Profile and settings icons remain decorative.
 - The game shows “Tour complete” when all teams finish, but it does not rank teams or announce a winner.
 
 ### Development-mode behavior
@@ -347,6 +347,7 @@ Purpose: entry point for normal sessions.
 - Shows the tagline “Take a roadtrip and drink your way to victory!”
 - `CREATE GAME` navigates to `CreateGameScreen`.
 - `JOIN GAME` navigates to `JoinGameScreen`.
+- The content scrolls when necessary and the globe/wordmark scales to the available phone height instead of relying on a fixed-size layout.
 - Profile and settings icons are decorative at present.
 
 ### `CreateGameScreen`
@@ -358,6 +359,10 @@ Purpose: collect the room configuration in three sequential steps.
 3. Player range: `1-4`, `5-8`, or `9-12`.
 
 The next button only advances after the current option is selected. The final step navigates to `HostName` with the settings as route parameters.
+The back control returns to the previous setup step before leaving the setup flow, and the next control is visibly disabled until the current choice is made.
+The setup globe and wordmark use a larger compact presentation, while each option group is anchored near the bottom controls so the choices remain visually connected to the navigation arrows.
+
+When the host returns from an existing lobby, the same setup screen is opened in edit mode with the current choices preselected. Completing the steps transactionally updates the existing `games/{gameID}` record while preserving its ID, host metadata, and `players/{gameID}` roster. A player-range reduction is rejected if the current roster would not fit or Team 3 still has members.
 
 Current caveat: difficulty and duration are persisted but are not consumed by the game rules. All three duration choices also reuse the beer-bottle images originally used for difficulty.
 
@@ -375,7 +380,9 @@ Creation sequence:
 6. Initialize `players/{code}` with a counter and three empty team placeholders.
 7. Push the host into Team 1 as `isLeader: true`.
 8. Register an `onDisconnect` update that writes `disconnectedAt` on the game.
-9. Navigate to `LobbyScreen`.
+9. Reset navigation to `Home → LobbyScreen`, removing the completed setup and username screens so native back navigation cannot accidentally repeat room creation.
+
+The username form uses a keyboard-avoiding, scrollable layout. Empty input is disabled, repeated submissions are blocked while creation is in progress, and connection failures are surfaced to the player.
 
 ### `JoinGameScreen`
 
@@ -387,6 +394,7 @@ Purpose: validate a room, restore host identity if appropriate, and join a team.
 - If the saved device ID matches `hostDeviceID`, the player is recognized as the host, the disconnect marker is cleared, and a new disconnect handler is registered.
 - A device already found in a team is not inserted again.
 - New players are assigned to the least populated team allowed by the selected player range.
+- The PIN and username form moves above the software keyboard, supports moving focus from the PIN to the username, prevents repeated join attempts, and shows recoverable connection errors.
 
 ### `LobbyScreen`
 
@@ -399,8 +407,10 @@ Purpose: show synchronized teams and allow the host to start.
 - Only the host can start.
 - Start atomically clears any earlier `teamModels` choices and writes `games/{gameID}/status = "characterSelection"`, ensuring every required leader makes a fresh selection for the session.
 - Every lobby client observing that status navigates to `CharacterSelection`.
-
-The `RULES` button is currently a placeholder.
+- Native swipe-back is disabled on the lobby. For hosts, the visible back control opens the explicit edit-settings route; the completed username/creation flow is no longer retained beneath the lobby.
+- Team panels scroll independently of the fixed room header and lower controls, keeping large rosters usable on shorter phones.
+- The optional local-player field moves above the keyboard and blocks empty or duplicate submissions.
+- The `RULES` button opens a concise overview of the current turn and completion rules.
 
 ### `CharacterSelection`
 
@@ -409,7 +419,8 @@ Purpose: let every device identified as a team leader independently choose that 
 - Loads vehicle GLBs on demand instead of eagerly uploading every embedded 2048×2048 texture to the mobile GPU.
 - Locates the current device in the passed `teamMembers` object.
 - Only leaders see the model carousel and confirm button; other players see the shared readiness state.
-- The selection UI uses a compact phone-first garage layout with horizontal readiness pills, a bounded preview, and smaller controls.
+- The selection UI follows the setup flow's cream, white-card, teal-accent visual system, with team-readiness badges and the rotating vehicle contained in a light garage card.
+- The garage content scrolls on short screens, and the 3D preview height scales to the available viewport.
 - The preview and board use the same normalized vehicle renderer, so differently sized source models have a consistent scale, ground position, material treatment, and orientation.
 - The preview rotates continuously and labels the bundled models with player-facing names such as Rally Truck, Party Van, Moon Buggy, and Disco Cruiser.
 - Confirm writes the selected model ID to `games/{gameID}/teamModels/{teamKey}`.
@@ -429,6 +440,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Creates a ref and progress record for each team.
 - Handles rolling, movement targets, landings, challenges, turn switching, finish state, and restart.
 - Unlocks orientation on unmount.
+- The native HUD and turn control respect landscape safe-area insets, while long challenge tickets become scrollable and use a compact layout on short landscape viewports.
 
 ---
 
@@ -832,6 +844,22 @@ The lobby ultimately reloads the canonical game record from Firebase.
 }
 ```
 
+### LobbyScreen → CreateGameScreen (host edits)
+
+```js
+{
+  editingGameID,
+  gameSettings: {
+    difficulty,
+    duration,
+    nrOfPlayers,
+    persons
+  }
+}
+```
+
+Completing this edit flow returns to the same mounted `LobbyScreen` for the same game ID; its realtime listener receives the updated settings. The edit path does not call the room-creation or host-insertion path.
+
 ### CharacterSelection → GameScreen
 
 ```js
@@ -870,6 +898,13 @@ The lobby ultimately reloads the canonical game record from Firebase.
 | `scripts/build-vector-map.mjs` | Regenerates the runtime GLB from `assets/map.svg` |
 | `assets/models/location.glb` | Country pin geometry |
 | `assets/models/*.glb` | Selectable team vehicles |
+
+The shared home/setup globe renderer sizes the Lottie artboard with its source
+aspect ratio and compensates for the source artwork being authored left of the
+composition's center. It also crops the animation upward so the globe clears
+the separately rendered wordmark. This keeps the visible globe, rather than
+only its transparent Lottie canvas, aligned consistently on iOS, Android, and
+web.
 
 ### Metro asset support
 
@@ -1124,7 +1159,6 @@ camera motion, GLTF appearance, and final 3D performance.
 6. `PlayerBox` and `TeamContainer` wrap the removal callback in a confusing way; it works through the wrapper but the prop signature is inconsistent.
 7. No TypeScript, schema validation, error boundary, test suite, or lint command is configured.
 8. Firebase failures are mostly logged rather than surfaced with consistent recovery UI.
-9. Fonts are loaded, but the root component does not wait for the font-loading result before rendering.
 
 ### 3D and assets
 

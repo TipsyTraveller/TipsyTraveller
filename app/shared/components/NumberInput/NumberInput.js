@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import {
     TextInput,
     StyleSheet,
@@ -6,7 +6,7 @@ import {
     Platform
 } from 'react-native';
 
-export default function NumberInput({ placeholder, value, setValue }) {
+export default function NumberInput({ placeholder, value, setValue, inputRef, onSubmitEditing }) {
 
     const handleChange = (text) => {
         // Allow only digits
@@ -20,9 +20,13 @@ export default function NumberInput({ placeholder, value, setValue }) {
                 style={styles.inputfield}
                 value={value}
                 placeholder={placeholder}
+                ref={inputRef}
                 keyboardType={ Platform.OS === "ios" ? "number-pad" : "numeric"}
                 onChangeText={handleChange}
                 returnKeyType={ "done" }
+                onSubmitEditing={onSubmitEditing}
+                maxLength={4}
+                textContentType="oneTimeCode"
             />
         </View>
     );
@@ -31,15 +35,17 @@ export default function NumberInput({ placeholder, value, setValue }) {
 const styles = StyleSheet.create({
     inputfieldContainer: {
         backgroundColor: "#D9D9D9",
-        paddingVertical: 10,
-        marginTop: 20,
+        minHeight: 56,
+        marginTop: 14,
         borderRadius: 10,
         alignItems: "center",
         justifyContent: "center",
     },
     inputfield: {
-        width: "60%",
-        fontSize: 18,
+        width: "100%",
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        fontSize: 16,
         textAlign: "center",
         fontFamily: "dogicapixelbold",
         letterSpacing: 10,

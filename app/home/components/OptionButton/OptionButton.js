@@ -9,6 +9,7 @@ export default function OptionButton ({ ButtonCopy, onPress, color}){
   
   return (
     <TouchableOpacity 
+      accessibilityRole="button"
       style={ [
         style.buttonContainer,
           { backgroundColor: color },
@@ -29,9 +30,9 @@ const style = StyleSheet.create({
 
       alignItems: "center",
       justifyContent: "center",
-      height: 100,
-      borderRadius: 20,
-      marginBottom: 20,
+      minHeight: 72,
+      borderRadius: 18,
+      marginBottom: 14,
       shadowColor: '#000',
         shadowOffset: {
             width: 0,
@@ -44,7 +45,7 @@ const style = StyleSheet.create({
     },
     buttonCopy: {
       color: "#393939",
-      fontSize: 25,
+      fontSize: 18,
       fontWeight: 600,
         fontFamily: "dogicapixelbold",
     },

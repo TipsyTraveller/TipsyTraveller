@@ -1,22 +1,24 @@
 import {StyleSheet, Text, TouchableOpacity, View} from "react-native";
-export default function PlayerBox ({ name, onRemovePlayer, teamNr}) {
-    const removePlayer = async () => {
-
-    }
+export default function PlayerBox ({ name, isLeader, onRemovePlayer, canRemove }) {
     return (
         <View style={ style.playerBoxContainer }>
             <Text style={ style.text }>
                 { name }
             </Text>
 
-            <View style={ style.removePlayerContainer }>
-                <TouchableOpacity onPress={() => onRemovePlayer(teamNr, name)}>
-                    <Text style={ style.text }>
-                        X
-                    </Text>
+            {isLeader ? (
+                <Text style={style.leaderText}>LEADER</Text>
+            ) : canRemove ? (
+                <TouchableOpacity
+                    accessibilityLabel={`Remove ${name}`}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    style={style.removePlayerContainer}
+                    onPress={onRemovePlayer}
+                >
+                    <Text style={style.removeText}>X</Text>
                 </TouchableOpacity>
-
-            </View>
+            ) : null}
         </View>
     )
 }  
@@ -24,18 +26,32 @@ export default function PlayerBox ({ name, onRemovePlayer, teamNr}) {
 const style = StyleSheet.create({
     playerBoxContainer: {
         backgroundColor: "rgba(247, 108, 94, .56)",
-        paddingHorizontal: 15,
-        paddingVertical: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 9,
         borderRadius: 10,
 
-        flexDirection: 'row'
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     text: {
         fontSize: 16,
         fontFamily: "dogicapixel"
     },
     removePlayerContainer: {
-        marginLeft: 10 
+        marginLeft: 10,
+        minWidth: 20,
+        alignItems: 'center',
+    },
+    removeText: {
+        color: '#8B1116',
+        fontFamily: 'dogicapixelbold',
+        fontSize: 13,
+    },
+    leaderText: {
+        marginLeft: 10,
+        color: '#2C3E50',
+        fontFamily: 'dogicapixelbold',
+        fontSize: 7,
     },
 
 })

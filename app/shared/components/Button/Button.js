@@ -1,10 +1,12 @@
 import { Text, View, StyleSheet, TouchableOpacity} from "react-native";
 
-export default function Button ({ handlePress, buttonCopy }) {
+export default function Button ({ handlePress, buttonCopy, disabled = false }) {
     return(
         <View style={ styles.container }>
             <TouchableOpacity
-                style={ styles.button }
+                accessibilityRole="button"
+                disabled={disabled}
+                style={[styles.button, disabled && styles.buttonDisabled]}
                 onPress={ handlePress }
             >
                 <Text style={ styles.buttonCopy }>
@@ -22,8 +24,9 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     button: {
-        width: 175,
-        height: 55,
+        width: "100%",
+        maxWidth: 280,
+        minHeight: 56,
         borderRadius: 50,
         backgroundColor: "#FFF1CD",
         borderWidth: 4,
@@ -33,7 +36,9 @@ const styles = StyleSheet.create({
     },
     buttonCopy: {
         fontFamily: "dogicapixelbold",
-        fontSize: 25
-    }
+        fontSize: 18,
+        textTransform: "uppercase",
+    },
+    buttonDisabled: { opacity: 0.5 },
 
 })

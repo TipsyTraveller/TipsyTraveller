@@ -1,10 +1,16 @@
 import { TouchableOpacity, Text, StyleSheet } from "react-native"
 
-export default function BackButton ({ navigation }) {
+export default function BackButton ({ navigation, onPress }) {
 
     return(
-         <TouchableOpacity style={ styles.buttonContainer } onPress={ () => navigation.goBack() }>
-            <Text style={ styles.buttonText }>Back</Text>
+         <TouchableOpacity
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+            hitSlop={8}
+            style={ styles.buttonContainer }
+            onPress={onPress || (() => navigation.goBack())}
+         >
+            <Text style={ styles.buttonText }>{'<'} BACK</Text>
         </TouchableOpacity>
     )
 }
@@ -12,15 +18,16 @@ export default function BackButton ({ navigation }) {
 const styles = StyleSheet.create({
     buttonContainer: {
         backgroundColor: "#C4C4C4",
-        width: "12%",
-        height: 30,
+        minWidth: 78,
+        minHeight: 40,
+        paddingHorizontal: 12,
         justifyContent: "center",
         alignItems: "center",
         borderRadius: 8,
     },
     buttonText: {
         color: "black",
-        fontSize: 10,
+        fontSize: 9,
         fontWeight: "bold",
         fontFamily: "dogicapixel",
     },

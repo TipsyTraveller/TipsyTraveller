@@ -1,5 +1,6 @@
-import { SafeAreaView, StyleSheet, Text, View} from "react-native";
-import {useEffect, useState} from "react";
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useState } from "react";
 import {ref, set, get, onDisconnect, child, push, serverTimestamp} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -8,25 +9,22 @@ import Button from "../shared/components/Button/Button"
 import Header from "../shared/components/Header/Header";
 import MainAnimation from "../shared/components/MainAnimation/MainAnimation";
 import InputField from "../shared/components/InputField/InputField";
-import NumberInput from "../shared/components/NumberInput/NumberInput";
-
-//STYLE
-import { AndroidSafeView } from "../shared/styles/SafeAreaView/SafeAreaView";
 
 export default function HostName ({ navigation, route }) {
     const [userName, setUserName] = useState('');
+    const [isCreating, setIsCreating] = useState(false);
     const gameSettings = route.params;
     const isHost = true;
-    useEffect(() => {
-        //console.log( userName);
-    }, [userName]);
-
     const handleCreate = async () => {
-        let gameExists = false;
-        if (userName === "" ){
-            //TODO popup toevoegen
+        const trimmedUserName = userName.trim();
+        if (!trimmedUserName || isCreating){
+            if (!trimmedUserName) Alert.alert("Username required", "Enter a username to create the game.");
             return;
-        }try {
+        }
+
+        Keyboard.dismiss();
+        setIsCreating(true);
+        try {
             let deviceID = await AsyncStorage.getItem("deviceID");
             if(!deviceID){
                 deviceID = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -35,22 +33,32 @@ export default function HostName ({ navigation, route }) {
             const newGameID = await generateUniqueGame(gameSettings);
             await set(ref(db, `players/${newGameID}`), {playerCounter: 0, team1: "", team2: "", team3: ""});
             const playersRef = ref(db, `players/${newGameID}/team${1}`);
-            push(playersRef, {name:userName, isLeader: true, deviceID: deviceID} );
+            await push(playersRef, {name: trimmedUserName, isLeader: true, deviceID: deviceID} );
 
             //testcleanup na disconnecten
             const gamesRef = ref(db, `games/${newGameID}`);
-            const players = ref(db, `players/${newGameID}`);
             // await onDisconnect(gamesRef).remove();
-            // await onDisconnect(players).remove();
             await onDisconnect(gamesRef).update({disconnectedAt: serverTimestamp()});
-            navigation.navigate("LobbyScreen", {
-                gameID: newGameID,
-                isHost: isHost,
-                hostName: userName,
-                ...gameSettings,
+            navigation.reset({
+                index: 1,
+                routes: [
+                    { name: "Home" },
+                    {
+                        name: "LobbyScreen",
+                        params: {
+                            gameID: newGameID,
+                            isHost: isHost,
+                            hostName: trimmedUserName,
+                            gameSettings,
+                        },
+                    },
+                ],
             });
         } catch (error) {
             console.log("error creating game",error);
+            Alert.alert("Could not create game", "Check your connection and try again.");
+        } finally {
+            setIsCreating(false);
         }
     }
     const generateRandomNumber = () => {
@@ -60,7 +68,7 @@ export default function HostName ({ navigation, route }) {
         }
         return code;
     }
-    const generateUniqueGame = async (gameSettings) => {
+    const generateUniqueGame = async (settings) => {
         let newGameID = generateRandomNumber();
         let gameExists = true;
 
@@ -70,8 +78,8 @@ export default function HostName ({ navigation, route }) {
                 gameExists = false;
                 let deviceID = await AsyncStorage.getItem("deviceID");
                 await set(ref(db, `games/${newGameID}`),{
-                    ...gameSettings,
-                    HostName: userName,
+                    ...settings,
+                    HostName: userName.trim(),
                     createdAt: Date.now(),
                     hostDeviceID: deviceID,
                     status: "lobby"
@@ -85,30 +93,42 @@ export default function HostName ({ navigation, route }) {
 
     }
     return(
-        <SafeAreaView style={[ style.mainContainer, AndroidSafeView.AndroidSafeView]}>
+        <SafeAreaView style={style.mainContainer}>
             <Header
                 showBackButton={ true }
                 navigation={ navigation }
             />
-            <MainAnimation />
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={style.keyboardView}
+            >
+                <ScrollView
+                    contentContainerStyle={style.content}
+                    keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <MainAnimation compact />
 
+                    <View style={ style.lowerContainer }>
+                        <View style={ style.inputContainer}>
+                            <Text style={ style.inputLabel }>ENTER USERNAME</Text>
+                            <InputField
+                                placeholder="USERNAME"
+                                value={ userName }
+                                setValue={ setUserName }
+                                onSubmitEditing={handleCreate}
+                            />
+                        </View>
 
-            <View style={ style.lowerContainer }>
-
-                <View style={ style.inputContainer}>
-                    <Text style={ style.inputLabel }>ENTER USERNAME</Text>
-                    <InputField
-                        placeholder="USERNAME "
-                        value={ userName }
-                        setValue={ setUserName }
-                    />
-                </View>
-
-                <Button
-                    buttonCopy={ 'Create' }
-                    handlePress={ handleCreate }
-                />
-            </View>
+                        <Button
+                            buttonCopy={isCreating ? 'Creating...' : 'Create'}
+                            disabled={isCreating || !userName.trim()}
+                            handlePress={ handleCreate }
+                        />
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }
@@ -116,13 +136,21 @@ export default function HostName ({ navigation, route }) {
 const style = StyleSheet.create({
     mainContainer: {
         backgroundColor: "#FAF3E0",
-        height: "100%",
+        flex: 1,
+    },
+    keyboardView: {
+        flex: 1,
+    },
+    content: {
+        flexGrow: 1,
         alignItems: "center",
-        justifyContent: "space-between"
+        justifyContent: "space-between",
+        paddingBottom: 24,
     },
     lowerContainer:{
-        height: "50%",
-        width: "90%"
+        width: "90%",
+        maxWidth: 520,
+        paddingBottom: 12,
     },
     inputContainer: {
         paddingBottom: 50,

@@ -1,15 +1,22 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import {
     TextInput,
     StyleSheet,
     View
 } from 'react-native';
 
-export default function InputField({ placeholder, value, setValue }) {
+export default function InputField({
+    placeholder,
+    value,
+    setValue,
+    inputRef,
+    maxLength = 24,
+    onSubmitEditing,
+    returnKeyType = "done",
+}) {
 
 
     const handleChange = (text) => {
-        // Allow only digits
         setValue(text);
     };
 
@@ -20,6 +27,12 @@ export default function InputField({ placeholder, value, setValue }) {
                 value={value}
                 placeholder={placeholder}
                 onChangeText={handleChange}
+                ref={inputRef}
+                maxLength={maxLength}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType={returnKeyType}
+                onSubmitEditing={onSubmitEditing}
             />
         </View>
     );
@@ -28,15 +41,17 @@ export default function InputField({ placeholder, value, setValue }) {
 const styles = StyleSheet.create({
     inputfieldContainer: {
         backgroundColor: "#D9D9D9",
-        paddingVertical: 10,
-        marginTop: 20,
+        minHeight: 56,
+        marginTop: 14,
         borderRadius: 10,
         alignItems: "center",
         justifyContent: "center",
     },
     inputfield: {
-        width: "60%",
-        fontSize: 18,
+        width: "100%",
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        fontSize: 16,
         textAlign: "center",
         fontFamily: "dogicapixelbold",
         placeholderLetterSpacing: 0,

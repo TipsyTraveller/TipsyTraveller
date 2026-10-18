@@ -3,13 +3,13 @@ import {
     Keyboard,
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView,
+    ScrollView,
     StyleSheet,
     Text,
-    TouchableWithoutFeedback,
     View
 } from "react-native";
-import {useEffect, useState} from "react";
+import { useRef, useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {ref, set, get, onDisconnect, child, push, serverTimestamp} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,27 +20,24 @@ import MainAnimation from "../shared/components/MainAnimation/MainAnimation";
 import InputField from "../shared/components/InputField/InputField";
 import NumberInput from "../shared/components/NumberInput/NumberInput";
 
-//STYLE
-import { AndroidSafeView } from "../shared/styles/SafeAreaView/SafeAreaView";
-
 export default function JoinGame ({ navigation }) {
     const [gamePin, setGamePin] = useState('');
     const [userName, setUserName] = useState('');
-
-    useEffect(() => {
-        console.log(gamePin, userName);
-    }, [gamePin, userName]);
+    const [isJoining, setIsJoining] = useState(false);
+    const userNameInputRef = useRef(null);
 
     const handleJoin = async () => {
-         let gameExists = false;
-        if (userName === ""|| gamePin === "" ){
-            Alert.alert("Error", "Please enter a valid game ID");
+        if (!userName.trim() || gamePin.length !== 4 || isJoining){
+            if (!isJoining) Alert.alert("Missing details", "Enter a four-digit game PIN and a username.");
             return;
-        }else {
+        }
+
+        Keyboard.dismiss();
+        setIsJoining(true);
+        try {
             const snapshot = await get(child(ref(db),`games/${gamePin}`));
 
             if(snapshot.exists()){
-                gameExists = true;
                 const gameSettings = snapshot.val();
                 
                 // Check if game has expired (10 minutes)
@@ -66,7 +63,6 @@ export default function JoinGame ({ navigation }) {
                     await onDisconnect(ref(db, `games/${gamePin}`)).update({disconnectedAt: serverTimestamp()});
                 }
                 
-                console.log("game exists", gameSettings);
                 const joinSuccess = await addPlayerToRightTeam(gameSettings);
                 if (joinSuccess) {
                     navigation.navigate( "LobbyScreen" , {gameID: gamePin, isHost: currentUserIsHost, gameSettings});
@@ -76,6 +72,11 @@ export default function JoinGame ({ navigation }) {
                 //console.log("game not found");
                 Alert.alert("Error", "Please enter a valid game ID");
             }
+        } catch (error) {
+            console.log("error joining game", error);
+            Alert.alert("Could not join game", "Check your connection and try again.");
+        } finally {
+            setIsJoining(false);
         }
     }
     const addPlayerToRightTeam = async (gameSettings) => {
@@ -116,7 +117,7 @@ export default function JoinGame ({ navigation }) {
                 const isLeader = teamNr === 2 && team2Count === 0;
 
                 await push(ref(db, `players/${gamePin}/team${teamNr}`), {
-                    name: userName,
+                    name: userName.trim(),
                     isLeader: isLeader,
                     deviceID: deviceID
                 });
@@ -134,7 +135,7 @@ export default function JoinGame ({ navigation }) {
                 const isLeader = teamNr === 2 && team2Count === 0;
 
                 await push(ref(db, `players/${gamePin}/team${teamNr}`), {
-                    name: userName,
+                    name: userName.trim(),
                     isLeader: isLeader,
                     deviceID: deviceID
                 });
@@ -161,7 +162,7 @@ export default function JoinGame ({ navigation }) {
                 const isLeader = currentTeamCount === 0;
 
                 await push(ref(db, `players/${gamePin}/team${teamNr}`), {
-                    name: userName,
+                    name: userName.trim(),
                     isLeader: isLeader,
                     deviceID: deviceID
                 });
@@ -172,37 +173,52 @@ export default function JoinGame ({ navigation }) {
         return false;
     }
     return(
-        <SafeAreaView style={[ style.mainContainer, AndroidSafeView.AndroidSafeView]}>
+        <SafeAreaView style={style.mainContainer}>
             <Header
                 showBackButton={ true }
                 navigation={ navigation }
             />
-            <MainAnimation />
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={style.keyboardView}
+            >
+                <ScrollView
+                    contentContainerStyle={style.content}
+                    keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <MainAnimation compact />
 
+                    <View style={ style.lowerContainer }>
+                        <View style={ style.inputContainer}>
+                            <Text style={ style.inputLabel }>ENTER GAME PIN</Text>
+                            <NumberInput
+                                placeholder="GAME PIN"
+                                value={ gamePin }
+                                setValue={ setGamePin }
+                                onSubmitEditing={() => userNameInputRef.current?.focus()}
+                            />
+                        </View>
+                        <View style={ style.inputContainer}>
+                            <Text style={ style.inputLabel }>ENTER USERNAME</Text>
+                            <InputField
+                                inputRef={userNameInputRef}
+                                placeholder="USERNAME"
+                                value={ userName }
+                                setValue={ setUserName }
+                                onSubmitEditing={handleJoin}
+                            />
+                        </View>
 
-            <View style={ style.lowerContainer }>
-                <View style={ style.inputContainer}>
-                    <Text style={ style.inputLabel }>ENTER GAME PIN</Text>
-                    <NumberInput
-                        placeholder="GAME PIN"
-                        value={ gamePin }
-                        setValue={ setGamePin }
-                    />
-                </View>
-                <View style={ style.inputContainer}>
-                    <Text style={ style.inputLabel }>ENTER USERNAME</Text>
-                    <InputField
-                        placeholder="USERNAME "
-                        value={ userName }
-                        setValue={ setUserName }
-                    />
-                </View>
-
-                <Button
-                    buttonCopy={ 'Join' }
-                    handlePress={ handleJoin }
-                />
-            </View>
+                        <Button
+                            buttonCopy={isJoining ? 'Joining...' : 'Join'}
+                            disabled={isJoining || gamePin.length !== 4 || !userName.trim()}
+                            handlePress={ handleJoin }
+                        />
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 
@@ -211,17 +227,24 @@ export default function JoinGame ({ navigation }) {
 const style = StyleSheet.create({
     mainContainer: {
         backgroundColor: "#FAF3E0",
-        height: "100%",
+        flex: 1,
+    },
+    keyboardView: {
+        flex: 1,
+    },
+    content: {
+        flexGrow: 1,
         alignItems: "center",
-        justifyContent: "space-between"
+        justifyContent: "space-between",
+        paddingBottom: 24,
     },
     lowerContainer:{
-        flex: 1,
-        justifyContent: "center",
-        width: "90%"
+        width: "90%",
+        maxWidth: 520,
+        paddingBottom: 12,
     },
     inputContainer: {
-        paddingBottom: 35,
+        paddingBottom: 24,
     },
     inputLabel: {
         fontSize: 18,

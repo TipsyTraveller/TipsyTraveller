@@ -1,10 +1,12 @@
-import { View, StyleSheet, Image, Text, SafeAreaView , TouchableOpacity} from "react-native";
+import { Alert, View, StyleSheet, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
+import { get, ref, runTransaction } from "firebase/database";
+import { db } from "../../firebaseConfig";
 
 //COMPONENTS
 import MainAnimation from "../shared/components/MainAnimation/MainAnimation";
 import GameSettingOptionContainer from "./components/GameSettingOptionContainer";
-import {AndroidSafeView} from "../shared/styles/SafeAreaView/SafeAreaView";
 import Header from "../shared/components/Header/Header";
 //IMAGES
 import difficultyEasyImage from "../../assets/images/beer-flesje.png"
@@ -23,25 +25,105 @@ import LowerButtonContainer from "../shared/components/LowerButtonContainer/Lowe
  * @property { Function } setGameSettings 
  */
 
-export default function SelectionPages ({ navigation }) {
+const DEFAULT_GAME_SETTINGS = {
+    difficulty: "",
+    duration: "",
+    nrOfPlayers: "",
+    persons: {}
+};
+
+const PLAYER_CAPACITY = {
+    "1-4": 4,
+    "5-8": 8,
+    "9-12": 12,
+};
+
+const countTeamMembers = (players) => (
+    ["team1", "team2", "team3"].reduce((total, teamKey) => {
+        const team = players?.[teamKey];
+        return total + (team && typeof team === "object" ? Object.keys(team).length : 0);
+    }, 0)
+);
+
+export default function SelectionPages ({ navigation, route }) {
 
     const [currentSetting, setCurrentSetting] = useState("difficulty")
-    const [gameSettings, setGameSettings] = useState({
-        difficulty: "",
-        duration: "",
-        nrOfPlayers: "",
-        persons: {}
-    })
+    const [gameSettings, setGameSettings] = useState(DEFAULT_GAME_SETTINGS)
+    const [isSaving, setIsSaving] = useState(false);
+    const editingGameID = route.params?.editingGameID;
 
     useEffect(() => {
-        console.log(currentSetting)
-    }, [currentSetting])
+        if (!editingGameID) return;
 
-    useEffect(() => {
-        console.log(gameSettings)
-    }, [gameSettings])
+        setGameSettings({
+            ...DEFAULT_GAME_SETTINGS,
+            ...route.params?.gameSettings,
+        });
+        setCurrentSetting("difficulty");
+    }, [editingGameID, route.params?.gameSettings]);
 
-    const handleNextSetting =async () => {
+    const saveExistingGame = async () => {
+        if (!editingGameID || isSaving) return;
+
+        setIsSaving(true);
+        try {
+            const playersSnapshot = await get(ref(db, `players/${editingGameID}`));
+            const players = playersSnapshot.val() || {};
+            const playerCount = countTeamMembers(players);
+            const nextCapacity = PLAYER_CAPACITY[gameSettings.nrOfPlayers];
+            const team3 = players.team3;
+            const team3HasMembers = team3 && typeof team3 === "object" && Object.keys(team3).length > 0;
+
+            if (playerCount > nextCapacity) {
+                Alert.alert(
+                    "Player range too small",
+                    `${playerCount} players are already in this game. Choose a range that fits everyone.`
+                );
+                return;
+            }
+
+            if (gameSettings.nrOfPlayers !== "9-12" && team3HasMembers) {
+                Alert.alert(
+                    "Team 3 is in use",
+                    "Choose 9-12 players while Team 3 still has members."
+                );
+                return;
+            }
+
+            const transaction = await runTransaction(
+                ref(db, `games/${editingGameID}`),
+                (currentGame) => {
+                    if (!currentGame || currentGame.status !== "lobby") return;
+
+                    return {
+                        ...currentGame,
+                        difficulty: gameSettings.difficulty,
+                        duration: gameSettings.duration,
+                        nrOfPlayers: gameSettings.nrOfPlayers,
+                    };
+                }
+            );
+
+            if (!transaction.committed) {
+                Alert.alert(
+                    "Game can no longer be edited",
+                    "The room may have closed or moved on from the lobby."
+                );
+                return;
+            }
+
+            navigation.goBack();
+        } catch (error) {
+            console.log("Unable to update game settings", error);
+            Alert.alert("Could not update settings", "Check your connection and try again.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleNextSetting = async () => {
+
+        if (isSaving) return;
 
         if(currentSetting === "difficulty" && gameSettings.difficulty !== ""){
             setCurrentSetting("duration")
@@ -49,8 +131,11 @@ export default function SelectionPages ({ navigation }) {
             setCurrentSetting("nrOfPlayers")
         }else if(currentSetting === "nrOfPlayers" && gameSettings.nrOfPlayers !== ""){
             try{
-
-                navigation.navigate( "HostName" ,  gameSettings);
+                if (editingGameID) {
+                    await saveExistingGame();
+                } else {
+                    navigation.navigate( "HostName" ,  gameSettings);
+                }
             } catch(err){
                 console.log(err);
             }
@@ -60,8 +145,16 @@ export default function SelectionPages ({ navigation }) {
     }
 
     const handleBackButton = () => {
-        navigation.goBack();
+        if (currentSetting === "duration") {
+            setCurrentSetting("difficulty");
+        } else if (currentSetting === "nrOfPlayers") {
+            setCurrentSetting("duration");
+        } else {
+            navigation.goBack();
+        }
     }
+
+    const currentSelection = gameSettings[currentSetting];
 
     /** @type {GameSettingOption} */
     const difficultySettings = {
@@ -94,30 +187,36 @@ export default function SelectionPages ({ navigation }) {
     };
 
     return(
-        <SafeAreaView style={[style.mainContainer, AndroidSafeView.AndroidSafeView]}>
+        <SafeAreaView style={style.mainContainer}>
             <Header 
                 navigation={ navigation } 
                 showBackButton={ false }
             />
-            <MainAnimation />
+            <ScrollView
+                bounces={false}
+                contentContainerStyle={style.content}
+                style={style.scroll}
+                showsVerticalScrollIndicator={false}
+            >
+                <MainAnimation compact />
 
-            {
-                currentSetting === "difficulty" ? (
+                {currentSetting === "difficulty" ? (
                     <GameSettingOptionContainer GameSettingOption={ difficultySettings } />
                 ) : currentSetting === "duration" ? (
                     <GameSettingOptionContainer GameSettingOption={ durationSettings } />
                 ) : (
                     <GameSettingOptionContainer GameSettingOption={ playerSettings } />
-                )
-            }
+                )}
+            </ScrollView>
 
             <View style={ style.lowerButtonContainerWrapper }>
                 <LowerButtonContainer 
                     LeftButtonVisible={ true }
                     LeftButtonCopy={ "<-" }
                     handleLeftButton={ handleBackButton }
-                    RightButtonCopy={ "->" }
+                    RightButtonCopy={isSaving ? "SAVING" : "->"}
                     handleRightButton={ handleNextSetting }
+                    RightButtonDisabled={!currentSelection || isSaving}
                 />
             </View>
         </SafeAreaView>
@@ -127,18 +226,23 @@ export default function SelectionPages ({ navigation }) {
 const style = StyleSheet.create({
     mainContainer: {
         backgroundColor: "#FAF3E0",
-        height: "100%",
+        flex: 1,
         alignItems: "center",
     },
-    buttonContainer: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        backgroundColor: "#FFF1CD",
-        borderWidth: 1,
-        borderColor: "#2C3E50"
+    content: {
+        flexGrow: 1,
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    scroll: {
+        flex: 1,
+        width: "100%",
     },
     lowerButtonContainerWrapper: {
-        paddingHorizontal: 20
+        width: "100%",
+        maxWidth: 620,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
     }
 })

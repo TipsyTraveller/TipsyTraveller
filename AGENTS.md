@@ -94,6 +94,7 @@ Choose verification proportionate to the change and report exactly what ran.
   board, navigation, multiplayer setup, reconnection, or 3D performance.
 - Test native or GPU-sensitive work on the affected platform; do not infer
   physical-device performance from the simulator.
+- testing can be done in web version localhost:8081
 - If a check cannot be run, say why. Never present an unrun check as passing.
 - Do not quietly introduce a test framework, formatter, linter, or large
   dependency merely to validate one unrelated change.
@@ -122,3 +123,4 @@ date only after reconciling the relevant sections with the implementation.
   unless the user explicitly requests that action.
 - Keep each task scoped to the requested outcome and summarize changed files,
   behavioral impact, verification evidence, and remaining risks.
+- For every feature that you are asked to implement or change make a new working branch.

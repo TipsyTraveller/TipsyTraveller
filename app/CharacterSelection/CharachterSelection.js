@@ -1,11 +1,11 @@
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { onValue, ref, runTransaction, set } from 'firebase/database';
 import { Canvas, useFrame } from '@react-three/fiber/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../firebaseConfig';
 import Header from '../shared/components/Header/Header';
-import { AndroidSafeView } from '../shared/styles/SafeAreaView/SafeAreaView';
 import VehicleModel from '../GameScreen/components/VehicleModel';
 import { GAME_PIECES } from '../GameScreen/constants/gamePieces';
 import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
@@ -32,6 +32,7 @@ export default function CharacterSelection({ navigation, route }) {
   const [playerTeam, setPlayerTeam] = useState(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const { height } = useWindowDimensions();
   const hasNavigatedRef = useRef(false);
   const selectedModel = MODEL_OPTIONS[selectedModelIndex];
   const requiredTeamKeys = useMemo(
@@ -139,6 +140,9 @@ export default function CharacterSelection({ navigation, route }) {
         ref(db, `games/${gameID}/teamModels/${playerTeam}`),
         selectedModel.id
       );
+    } catch (error) {
+      console.log('Unable to save vehicle selection', error);
+      Alert.alert('Could not save vehicle', 'Check your connection and try again.');
     } finally {
       setIsSaving(false);
     }
@@ -147,97 +151,119 @@ export default function CharacterSelection({ navigation, route }) {
   const choiceIsSaved = confirmedModelId === selectedModel.id;
 
   return (
-    <SafeAreaView style={[styles.mainContainer, AndroidSafeView.AndroidSafeView]}>
+    <SafeAreaView style={styles.mainContainer}>
       <Header showBackButton navigation={navigation} />
 
-      <View style={styles.titleContainer}>
-        <Text style={styles.title}>
-          {isTeamLeader && playerTeam
-            ? `${getTeamLabel(playerTeam)} GARAGE`
-            : 'VEHICLE SELECTION'}
-        </Text>
-        <Text style={styles.subtitle}>
-          {readyTeamCount} / {requiredTeamKeys.length} TEAMS READY
-        </Text>
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        style={styles.scroll}
+      >
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>SELECT VEHICLE</Text>
+          <Text style={styles.subtitle}>
+            {isTeamLeader && playerTeam
+              ? `${getTeamLabel(playerTeam).toUpperCase()} GARAGE`
+              : 'YOUR TEAM LEADER IS PICKING'}
+          </Text>
+        </View>
 
-      <View style={styles.readinessContainer}>
-        {requiredTeamKeys.map((teamKey) => {
-          const modelId = liveGameData?.teamModels?.[teamKey];
-          const model = MODEL_OPTIONS.find((option) => option.id === modelId);
-          return (
-            <View
-              key={teamKey}
-              style={[
-                styles.readinessPill,
-                model && styles.readinessPillReady,
-              ]}
-            >
-              <View
-                style={[styles.teamDot, { backgroundColor: getTeamColor(teamKey) }]}
-              />
-              <Text style={styles.readinessTeam}>{getTeamLabel(teamKey)}</Text>
-              <Text style={model ? styles.readyText : styles.choosingText}>
-                {model ? 'READY' : 'PICKING'}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-
-      <View style={styles.lowerContainer}>
-        {isTeamLeader ? (
-          <>
-            <View style={styles.modelPreview}>
-              <Canvas camera={{ position: [0, 0.45, 3.1], fov: 38 }}>
-                <ambientLight intensity={1.6} />
-                <hemisphereLight args={['#fff7df', '#223144', 1.4]} />
-                <directionalLight position={[3, 4, 4]} intensity={2.2} />
-                <Suspense fallback={null}>
-                  <RotatingVehiclePreview
-                    color={getTeamColor(playerTeam)}
-                    model={selectedModel}
+        <View style={styles.readinessContainer}>
+          <Text style={styles.readinessLabel}>
+            {readyTeamCount} / {requiredTeamKeys.length} TEAMS READY
+          </Text>
+          <View style={styles.readinessTeams}>
+            {requiredTeamKeys.map((teamKey) => {
+              const modelId = liveGameData?.teamModels?.[teamKey];
+              const model = MODEL_OPTIONS.find((option) => option.id === modelId);
+              return (
+                <View
+                  key={teamKey}
+                  style={[
+                    styles.readinessPill,
+                    model && styles.readinessPillReady,
+                  ]}
+                >
+                  <View
+                    style={[styles.teamDot, { backgroundColor: getTeamColor(teamKey) }]}
                   />
-                </Suspense>
-              </Canvas>
-            </View>
-
-            <View style={styles.selectorContainer}>
-              <TouchableOpacity onPress={handlePreviousModel} style={styles.arrowButton}>
-                <Text style={styles.arrowText}>{'<'}</Text>
-              </TouchableOpacity>
-              <View style={styles.modelNameContainer}>
-                <Text style={styles.modelName}>{selectedModel.label}</Text>
-                <Text style={styles.modelCount}>
-                  {selectedModelIndex + 1} / {MODEL_OPTIONS.length}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={handleNextModel} style={styles.arrowButton}>
-                <Text style={styles.arrowText}>{'>'}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              disabled={choiceIsSaved || isSaving}
-              onPress={handleConfirm}
-              style={[
-                styles.confirmButton,
-                (choiceIsSaved || isSaving) && styles.confirmButtonDisabled,
-              ]}
-            >
-              <Text style={styles.confirmText}>
-                {isSaving ? 'SAVING...' : choiceIsSaved ? 'RIDE SELECTED' : 'SELECT THIS RIDE'}
-              </Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.waitingContainer}>
-            <Text style={styles.waitingText}>
-              Your team leader is choosing a vehicle. The game starts when every team is ready.
-            </Text>
+                  <Text style={styles.readinessTeam}>{getTeamLabel(teamKey)}</Text>
+                  <Text style={model ? styles.readyText : styles.choosingText}>
+                    {model ? 'READY' : 'PICKING'}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
-        )}
-      </View>
+        </View>
+
+        <View style={styles.lowerContainer}>
+          {isTeamLeader ? (
+            <View style={styles.selectionCard}>
+              <View style={[styles.modelPreview, { height: Math.max(150, Math.min(230, height * 0.3)) }]}>
+                <Canvas camera={{ position: [0, 0.45, 3.1], fov: 38 }}>
+                  <ambientLight intensity={1.8} />
+                  <hemisphereLight args={['#fff7df', '#223144', 1.4]} />
+                  <directionalLight position={[3, 4, 4]} intensity={2.2} />
+                  <Suspense fallback={null}>
+                    <RotatingVehiclePreview
+                      color={getTeamColor(playerTeam)}
+                      model={selectedModel}
+                    />
+                  </Suspense>
+                </Canvas>
+              </View>
+
+              <View style={styles.selectorContainer}>
+                <TouchableOpacity
+                  accessibilityLabel="Previous vehicle"
+                  accessibilityRole="button"
+                  onPress={handlePreviousModel}
+                  style={styles.arrowButton}
+                >
+                  <Text style={styles.arrowText}>{'‹'}</Text>
+                </TouchableOpacity>
+                <View style={styles.modelNameContainer}>
+                  <Text style={styles.modelName}>{selectedModel.label}</Text>
+                  <Text style={styles.modelCount}>
+                    RIDE {selectedModelIndex + 1} OF {MODEL_OPTIONS.length}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  accessibilityLabel="Next vehicle"
+                  accessibilityRole="button"
+                  onPress={handleNextModel}
+                  style={styles.arrowButton}
+                >
+                  <Text style={styles.arrowText}>{'›'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                accessibilityRole="button"
+                disabled={choiceIsSaved || isSaving}
+                onPress={handleConfirm}
+                style={[
+                  styles.confirmButton,
+                  (choiceIsSaved || isSaving) && styles.confirmButtonDisabled,
+                ]}
+              >
+                <Text style={styles.confirmText}>
+                  {isSaving ? 'SAVING...' : choiceIsSaved ? 'RIDE SELECTED' : 'SELECT THIS RIDE'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.waitingContainer}>
+              <Text style={styles.waitingTitle}>HANG TIGHT!</Text>
+              <Text style={styles.waitingText}>
+                Your team leader is choosing a vehicle. The game starts when every team is ready.
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -262,43 +288,63 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF3E0',
     alignItems: 'center',
   },
-  titleContainer: {
-    width: '92%',
-    marginTop: 2,
-    flexDirection: 'row',
+  content: {
+    flexGrow: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingBottom: 20,
+  },
+  scroll: {
+    width: '100%',
+  },
+  titleContainer: {
+    width: '90%',
+    maxWidth: 620,
+    marginTop: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C3E50',
   },
   title: {
     color: '#2C3E50',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 14,
-    lineHeight: 20,
+    fontFamily: 'dogicapixel',
+    fontSize: 18,
+    lineHeight: 24,
   },
   subtitle: {
     color: '#7A7468',
     fontFamily: 'dogicapixel',
     fontSize: 9,
+    marginTop: 6,
   },
   readinessContainer: {
-    width: '92%',
-    marginTop: 8,
+    width: '90%',
+    maxWidth: 620,
+    marginTop: 12,
+  },
+  readinessLabel: {
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 9,
+    marginBottom: 8,
+  },
+  readinessTeams: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   readinessPill: {
-    minHeight: 30,
-    paddingHorizontal: 9,
-    borderRadius: 15,
-    backgroundColor: '#FFF1CD',
-    borderWidth: 1,
-    borderColor: '#D8CFB9',
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#E6DDC8',
     flexDirection: 'row',
     alignItems: 'center',
   },
   readinessPillReady: {
     borderColor: '#1BA39C',
+    backgroundColor: '#E6F6F3',
   },
   teamDot: {
     width: 8,
@@ -323,37 +369,49 @@ const styles = StyleSheet.create({
     fontSize: 8,
   },
   lowerContainer: {
-    flex: 1,
-    width: '92%',
+    width: '90%',
+    maxWidth: 620,
     alignItems: 'center',
-    paddingBottom: 10,
+    marginTop: 14,
+  },
+  selectionCard: {
+    width: '100%',
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 8,
   },
   modelPreview: {
     width: '100%',
-    height: 190,
-    marginVertical: 8,
     overflow: 'hidden',
-    borderRadius: 12,
-    backgroundColor: '#223144',
+    borderRadius: 14,
+    backgroundColor: '#FFF1CD',
   },
   selectorContainer: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginVertical: 12,
   },
   arrowButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: '#1BA39C',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFF1CD',
+    borderWidth: 3,
+    borderColor: '#2C3E50',
     alignItems: 'center',
     justifyContent: 'center',
   },
   arrowText: {
-    color: '#FFFFFF',
-    fontSize: 20,
+    color: '#2C3E50',
+    fontSize: 30,
+    lineHeight: 32,
     fontFamily: 'dogicapixelbold',
   },
   modelNameContainer: {
@@ -364,8 +422,9 @@ const styles = StyleSheet.create({
   modelName: {
     color: '#2C3E50',
     textAlign: 'center',
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'dogicapixelbold',
+    textTransform: 'uppercase',
   },
   modelCount: {
     color: '#7A7468',
@@ -375,24 +434,40 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     width: '100%',
-    minHeight: 44,
-    borderRadius: 10,
-    backgroundColor: '#D71920',
+    minHeight: 58,
+    borderRadius: 16,
+    backgroundColor: '#1BA39C',
     alignItems: 'center',
     justifyContent: 'center',
   },
   confirmButtonDisabled: {
-    backgroundColor: '#1BA39C',
+    opacity: 0.55,
   },
   confirmText: {
-    color: '#FFFFFF',
+    color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
-    fontSize: 10,
+    fontSize: 12,
   },
   waitingContainer: {
-    flex: 1,
+    width: '100%',
+    minHeight: 210,
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 24,
+    paddingVertical: 30,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  waitingTitle: {
+    color: '#1BA39C',
+    textAlign: 'center',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 18,
+    marginBottom: 16,
   },
   waitingText: {
     color: '#2C3E50',
