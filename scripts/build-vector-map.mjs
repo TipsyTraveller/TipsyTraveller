@@ -14,8 +14,7 @@ const MAP_HEIGHT = 15;
 const MAP_CENTER_Y = 0.5;
 const RELIEF_DEPTH = 0.055;
 const BORDER_MARGIN = 28;
-const BORDER_MATCH_DISTANCE = 1.8;
-const BORDER_GRID_SIZE = 2.5;
+const CURVE_DIVISIONS = 5;
 const BORDER_BOUNDS = {
   minX: 445 - BORDER_MARGIN,
   maxX: 620 + BORDER_MARGIN,
@@ -64,41 +63,280 @@ const mergeOrThrow = (geometries, label) => {
   return merged;
 };
 
-const pointToSegmentDistanceSquared = (point, start, end) => {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared === 0) return point.distanceToSquared(start);
-
-  const projection = THREE.MathUtils.clamp(
-    ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared,
-    0,
-    1
-  );
-  const closestX = start.x + projection * dx;
-  const closestY = start.y + projection * dy;
-  const distanceX = point.x - closestX;
-  const distanceY = point.y - closestY;
-  return distanceX * distanceX + distanceY * distanceY;
+const driftWeight = (subPathEntry, knotIndex) => {
+  const curveCount = subPathEntry.curves.length;
+  const distanceFromOrigin = Math.min(knotIndex, curveCount - knotIndex);
+  return 1 / (1 + distanceFromOrigin * 1.5);
 };
 
-const borderCellKey = (x, y) => (
-  `${Math.floor(x / BORDER_GRID_SIZE)}:${Math.floor(y / BORDER_GRID_SIZE)}`
-);
+const knotKey = (subPathId, knotIndex) => `${subPathId}:${knotIndex}`;
+
+const pointKey = (point) => `${Math.round(point.x * 1000)}:${Math.round(point.y * 1000)}`;
+
+const segmentEdgeKey = (start, end) => {
+  const startKey = pointKey(start);
+  const endKey = pointKey(end);
+  return startKey < endKey ? `${startKey}|${endKey}` : `${endKey}|${startKey}`;
+};
 
 const svg = await fs.readFile(SOURCE_PATH, 'utf8');
 const { paths } = new SVGLoader().parse(svg);
+const countryPaths = paths.filter((path) => (
+  /^st[2-9]$/.test(path.userData.node.getAttribute('class') || '')
+));
 
-const silhouettePath = paths.find((path) => path.userData.node.getAttribute('class') === 'st1');
-if (!silhouettePath) {
-  throw new Error('The SVG does not contain the st1 continuous land silhouette.');
+if (countryPaths.length === 0) {
+  throw new Error('The SVG does not contain st2..st9 country paths.');
 }
 
-const landShapes = SVGLoader.createShapes(silhouettePath);
+// Country paths in map.svg use 1-decimal-place relative commands that accumulate
+// slight drift along long perimeters. Weld reversed twin curves between adjacent
+// countries back to their canonical shared positions before building meshes.
+const subPaths = [];
+countryPaths.forEach((path, countryIndex) => {
+  path.subPaths.forEach((subPath) => {
+    const curves = subPath.curves.filter((curve) => curve.getLength() > 1e-4);
+    subPath.curves = curves;
+    if (curves.length === 0) return;
+
+    const knots = curves.map((curve) => (curve.v0 || curve.v1).clone());
+    subPaths.push({
+      countryIndex,
+      curves,
+      id: subPaths.length,
+      knots,
+      subPath,
+    });
+  });
+});
+
+const curveEntries = [];
+for (const subPathEntry of subPaths) {
+  const curveCount = subPathEntry.curves.length;
+  for (let knotIndex = 0; knotIndex < curveCount; knotIndex += 1) {
+    const curve = subPathEntry.curves[knotIndex];
+    const start = subPathEntry.knots[knotIndex];
+    const end = subPathEntry.knots[(knotIndex + 1) % curveCount];
+    curveEntries.push({
+      curve,
+      delta: end.clone().sub(start),
+      end,
+      knotIndex,
+      midpoint: curve.getPoint(0.5),
+      start,
+      subPathEntry,
+    });
+  }
+}
+
+const bestMatchForCurve = new Array(curveEntries.length).fill(-1);
+for (let index = 0; index < curveEntries.length; index += 1) {
+  const current = curveEntries[index];
+  let bestCandidateIndex = -1;
+  let bestScore = Infinity;
+
+  for (let candidateIndex = 0; candidateIndex < curveEntries.length; candidateIndex += 1) {
+    const candidate = curveEntries[candidateIndex];
+    if (current.subPathEntry.countryIndex === candidate.subPathEntry.countryIndex) continue;
+
+    const maxPositionDistance = (
+      current.subPathEntry.curves.length > 200 || candidate.subPathEntry.curves.length > 200
+        ? 2.0
+        : 0.85
+    );
+    const positionDistance = Math.max(
+      current.start.distanceTo(candidate.end),
+      current.end.distanceTo(candidate.start)
+    );
+    if (positionDistance > maxPositionDistance) continue;
+
+    const reversedCandidateDelta = candidate.delta.clone().negate();
+    const shapeDistance = current.delta.distanceTo(reversedCandidateDelta);
+    const currentMidOffset = current.midpoint
+      .clone()
+      .sub(current.start.clone().add(current.end).multiplyScalar(0.5));
+    const candidateMidOffset = candidate.midpoint
+      .clone()
+      .sub(candidate.start.clone().add(candidate.end).multiplyScalar(0.5));
+    const midpointShapeDistance = currentMidOffset.distanceTo(candidateMidOffset);
+
+    if (shapeDistance > 0.35 || midpointShapeDistance > 0.25) continue;
+
+    const score = positionDistance * 0.25 + shapeDistance + midpointShapeDistance;
+    if (score < bestScore) {
+      bestScore = score;
+      bestCandidateIndex = candidateIndex;
+    }
+  }
+
+  bestMatchForCurve[index] = bestCandidateIndex;
+}
+
+const twinMatches = [];
+for (let index = 0; index < curveEntries.length; index += 1) {
+  const partnerIndex = bestMatchForCurve[index];
+  if (partnerIndex > index && bestMatchForCurve[partnerIndex] === index) {
+    twinMatches.push({
+      first: curveEntries[index],
+      second: curveEntries[partnerIndex],
+    });
+  }
+}
+
+const knotParent = new Map();
+const findRoot = (key) => {
+  let root = key;
+  while (knotParent.has(root) && knotParent.get(root) !== root) {
+    root = knotParent.get(root);
+  }
+  let current = key;
+  while (current !== root) {
+    const next = knotParent.get(current);
+    knotParent.set(current, root);
+    current = next;
+  }
+  return root;
+};
+
+const unionKnots = (firstKey, secondKey) => {
+  const firstRoot = findRoot(firstKey);
+  const secondRoot = findRoot(secondKey);
+  if (firstRoot !== secondRoot) {
+    knotParent.set(secondRoot, firstRoot);
+  }
+};
+
+for (const { first, second } of twinMatches) {
+  const firstCount = first.subPathEntry.curves.length;
+  const secondCount = second.subPathEntry.curves.length;
+  const firstStartKey = knotKey(first.subPathEntry.id, first.knotIndex);
+  const firstEndKey = knotKey(first.subPathEntry.id, (first.knotIndex + 1) % firstCount);
+  const secondStartKey = knotKey(second.subPathEntry.id, second.knotIndex);
+  const secondEndKey = knotKey(second.subPathEntry.id, (second.knotIndex + 1) % secondCount);
+
+  knotParent.set(firstStartKey, findRoot(firstStartKey));
+  knotParent.set(firstEndKey, findRoot(firstEndKey));
+  knotParent.set(secondStartKey, findRoot(secondStartKey));
+  knotParent.set(secondEndKey, findRoot(secondEndKey));
+
+  unionKnots(firstStartKey, secondEndKey);
+  unionKnots(firstEndKey, secondStartKey);
+}
+
+const knotGroups = new Map();
+for (const key of knotParent.keys()) {
+  const root = findRoot(key);
+  const group = knotGroups.get(root) || [];
+  group.push(key);
+  knotGroups.set(root, group);
+}
+
+const canonicalPositions = new Map();
+for (const keys of knotGroups.values()) {
+  let sumX = 0;
+  let sumY = 0;
+  let sumWeight = 0;
+
+  for (const key of keys) {
+    const [subPathId, knotIndex] = key.split(':').map(Number);
+    const subPathEntry = subPaths[subPathId];
+    const weight = driftWeight(subPathEntry, knotIndex) ** 2;
+    const point = subPathEntry.knots[knotIndex];
+    sumX += point.x * weight;
+    sumY += point.y * weight;
+    sumWeight += weight;
+  }
+
+  const target = new THREE.Vector2(sumX / sumWeight, sumY / sumWeight);
+  for (const key of keys) {
+    canonicalPositions.set(key, target);
+  }
+}
+
+for (const subPathEntry of subPaths) {
+  const knotCount = subPathEntry.knots.length;
+  const pinnedOffsets = new Array(knotCount).fill(null);
+  const pinnedIndices = [];
+
+  for (let knotIndex = 0; knotIndex < knotCount; knotIndex += 1) {
+    const key = knotKey(subPathEntry.id, knotIndex);
+    if (canonicalPositions.has(key)) {
+      pinnedOffsets[knotIndex] = canonicalPositions.get(key).clone().sub(subPathEntry.knots[knotIndex]);
+      pinnedIndices.push(knotIndex);
+    }
+  }
+
+  const shifts = Array.from({ length: knotCount }, () => new THREE.Vector2(0, 0));
+  if (pinnedIndices.length === 1) {
+    for (let knotIndex = 0; knotIndex < knotCount; knotIndex += 1) {
+      shifts[knotIndex].copy(pinnedOffsets[pinnedIndices[0]]);
+    }
+  } else if (pinnedIndices.length > 1) {
+    for (let pinCursor = 0; pinCursor < pinnedIndices.length; pinCursor += 1) {
+      const startIndex = pinnedIndices[pinCursor];
+      const endIndex = pinnedIndices[(pinCursor + 1) % pinnedIndices.length];
+      const startOffset = pinnedOffsets[startIndex];
+      const endOffset = pinnedOffsets[endIndex];
+      const span = (endIndex - startIndex + knotCount) % knotCount;
+
+      for (let step = 0; step <= span; step += 1) {
+        const knotIndex = (startIndex + step) % knotCount;
+        const progress = span === 0 ? 0 : step / span;
+        shifts[knotIndex].lerpVectors(startOffset, endOffset, progress);
+      }
+    }
+  }
+
+  for (let knotIndex = 0; knotIndex < knotCount; knotIndex += 1) {
+    const startShift = shifts[knotIndex];
+    const endShift = shifts[(knotIndex + 1) % knotCount];
+    const startPoint = subPathEntry.knots[knotIndex].clone().add(startShift);
+    const endPoint = subPathEntry.knots[(knotIndex + 1) % knotCount].clone().add(endShift);
+    const curve = subPathEntry.curves[knotIndex];
+
+    if (curve.isCubicBezierCurve) {
+      curve.v0.copy(startPoint);
+      curve.v1.add(new THREE.Vector2().lerpVectors(startShift, endShift, 1 / 3));
+      curve.v2.add(new THREE.Vector2().lerpVectors(startShift, endShift, 2 / 3));
+      curve.v3.copy(endPoint);
+    } else if (curve.isLineCurve) {
+      curve.v1.copy(startPoint);
+      curve.v2.copy(endPoint);
+    }
+  }
+}
+
+for (const { first, second } of twinMatches) {
+  const firstCurve = first.curve;
+  const secondCurve = second.curve;
+  if (firstCurve.isCubicBezierCurve && secondCurve.isCubicBezierCurve) {
+    const controlOne = firstCurve.v1.clone().add(secondCurve.v2).multiplyScalar(0.5);
+    const controlTwo = firstCurve.v2.clone().add(secondCurve.v1).multiplyScalar(0.5);
+    firstCurve.v1.copy(controlOne);
+    secondCurve.v2.copy(controlOne);
+    firstCurve.v2.copy(controlTwo);
+    secondCurve.v1.copy(controlTwo);
+  }
+}
+
+for (const subPathEntry of subPaths) {
+  subPathEntry.subPath.curves = subPathEntry.curves.filter((curve) => {
+    const start = curve.v0 || curve.v1;
+    const end = curve.v3 || curve.v2;
+    return start.distanceTo(end) > 1e-3;
+  });
+}
+
+const landShapes = [];
+for (const path of countryPaths) {
+  path.subPaths = path.subPaths.filter((subPath) => subPath.curves.length >= 2);
+  landShapes.push(...SVGLoader.createShapes(path));
+}
+
 const landGeometries = landShapes.map((shape) => {
   const geometry = new THREE.ExtrudeGeometry(shape, {
     bevelEnabled: false,
-    curveSegments: 5,
+    curveSegments: CURVE_DIVISIONS,
     depth: RELIEF_DEPTH,
     steps: 1,
   });
@@ -118,136 +356,58 @@ const land = new THREE.Mesh(landGeometry, topMaterial);
 land.name = 'RaisedLand';
 
 const topGeometries = landShapes.map((shape) => {
-  const geometry = new THREE.ShapeGeometry(shape, 5);
+  const geometry = new THREE.ShapeGeometry(shape, CURVE_DIVISIONS);
   geometry.applyMatrix4(sourceToMap);
   geometry.translate(0, 0, RELIEF_DEPTH + 0.001);
   return geometry;
 });
 const landTopGeometry = mergeVertices(mergeOrThrow(topGeometries, 'land top'), 0.0001);
 const landTopMaterial = new THREE.MeshBasicMaterial({
-  color: '#FAF3E0',
+  color: '#FFF1CD',
   side: THREE.DoubleSide,
 });
 const landTop = new THREE.Mesh(landTopGeometry, landTopMaterial);
 landTop.name = 'LandTop';
 landTop.renderOrder = 1;
 
-const countrySegments = [];
-for (const [countryIndex, path] of paths.entries()) {
-  const className = path.userData.node.getAttribute('class') || '';
-  if (!/^st[2-9]$/.test(className)) continue;
+// Build CountryBorders directly from the welded country shape rings (both internal
+// borders and coastal/island outlines) so every country edge has a clean line that
+// aligns exactly with the LandTop and RaisedLand meshes.
+const borderSegmentsByKey = new Map();
+const collectRingSegments = (ring) => {
+  if (!ring || ring.length < 2) return;
+  const closedRing = ring[0].distanceTo(ring[ring.length - 1]) < 1e-4
+    ? ring.slice(0, -1)
+    : ring;
+  if (closedRing.length < 2) return;
 
-  for (const [subPathIndex, subPath] of path.subPaths.entries()) {
-    const points = subPath.getPoints(3);
-    for (let index = 1; index < points.length; index += 1) {
-      const start = points[index - 1];
-      const end = points[index];
-      const outsideViewport = (
-        Math.max(start.x, end.x) < BORDER_BOUNDS.minX
-        || Math.min(start.x, end.x) > BORDER_BOUNDS.maxX
-        || Math.max(start.y, end.y) < BORDER_BOUNDS.minY
-        || Math.min(start.y, end.y) > BORDER_BOUNDS.maxY
-      );
-      if (outsideViewport) continue;
+  for (let index = 0; index < closedRing.length; index += 1) {
+    const start = closedRing[index];
+    const end = closedRing[(index + 1) % closedRing.length];
+    if (start.distanceTo(end) < 1e-4) continue;
 
-      const direction = end.clone().sub(start);
-      const length = direction.length();
-      if (length < 0.08) continue;
+    const outsideViewport = (
+      Math.max(start.x, end.x) < BORDER_BOUNDS.minX
+      || Math.min(start.x, end.x) > BORDER_BOUNDS.maxX
+      || Math.max(start.y, end.y) < BORDER_BOUNDS.minY
+      || Math.min(start.y, end.y) > BORDER_BOUNDS.maxY
+    );
+    if (outsideViewport) continue;
 
-      countrySegments.push({
-        countryIndex,
-        direction: direction.divideScalar(length),
-        end,
-        id: countrySegments.length,
-        midpoint: start.clone().add(end).multiplyScalar(0.5),
-        segmentIndex: index - 1,
-        start,
-        subPathIndex,
-      });
+    const edgeKey = segmentEdgeKey(start, end);
+    if (!borderSegmentsByKey.has(edgeKey)) {
+      borderSegmentsByKey.set(edgeKey, { start, end });
     }
   }
+};
+
+for (const shape of landShapes) {
+  const { shape: outerRing, holes } = shape.extractPoints(CURVE_DIVISIONS);
+  collectRingSegments(outerRing);
+  holes.forEach(collectRingSegments);
 }
 
-const segmentGrid = new Map();
-for (const segment of countrySegments) {
-  const key = borderCellKey(segment.midpoint.x, segment.midpoint.y);
-  const cell = segmentGrid.get(key) || [];
-  cell.push(segment);
-  segmentGrid.set(key, cell);
-}
-
-const maxDistanceSquared = BORDER_MATCH_DISTANCE * BORDER_MATCH_DISTANCE;
-const matchedRuns = new Map();
-const segmentLookup = new Map(countrySegments.map((segment) => [
-  `${segment.countryIndex}:${segment.subPathIndex}:${segment.segmentIndex}`,
-  segment,
-]));
-
-for (const segment of countrySegments) {
-  const gridX = Math.floor(segment.midpoint.x / BORDER_GRID_SIZE);
-  const gridY = Math.floor(segment.midpoint.y / BORDER_GRID_SIZE);
-  let bestMatch = null;
-  let bestDistanceSquared = Infinity;
-
-  for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-    for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-      const nearby = segmentGrid.get(`${gridX + offsetX}:${gridY + offsetY}`) || [];
-
-      for (const candidate of nearby) {
-        if (candidate.countryIndex === segment.countryIndex) continue;
-
-        // Keep roughly parallel edges, regardless of inconsistent source winding.
-        // This remains stable through bends without matching perpendicular crossings.
-        if (Math.abs(segment.direction.dot(candidate.direction)) < 0.35) continue;
-
-        const distanceSquared = pointToSegmentDistanceSquared(
-          segment.midpoint,
-          candidate.start,
-          candidate.end
-        );
-        if (distanceSquared > maxDistanceSquared || distanceSquared >= bestDistanceSquared) continue;
-
-        bestDistanceSquared = distanceSquared;
-        bestMatch = candidate;
-      }
-    }
-  }
-
-  if (!bestMatch || segment.countryIndex > bestMatch.countryIndex) continue;
-
-  const runKey = `${segment.countryIndex}:${segment.subPathIndex}:${bestMatch.countryIndex}`;
-  const run = matchedRuns.get(runKey) || new Set();
-  run.add(segment.segmentIndex);
-  matchedRuns.set(runKey, run);
-}
-
-const sharedBorderById = new Map();
-for (const [runKey, matchedIndices] of matchedRuns) {
-  const [countryIndex, subPathIndex] = runKey.split(':').map(Number);
-  const sortedIndices = [...matchedIndices].sort((a, b) => a - b);
-  const completedIndices = new Set(sortedIndices);
-
-  // Country outlines use different curve subdivisions. Close only short holes
-  // between confirmed matches so a shared border stays continuous through bends.
-  for (let index = 1; index < sortedIndices.length; index += 1) {
-    const previous = sortedIndices[index - 1];
-    const current = sortedIndices[index];
-    if (current - previous > 5) continue;
-
-    for (let missing = previous + 1; missing < current; missing += 1) {
-      completedIndices.add(missing);
-    }
-  }
-
-  for (const segmentIndex of completedIndices) {
-    const segment = segmentLookup.get(`${countryIndex}:${subPathIndex}:${segmentIndex}`);
-    if (segment) sharedBorderById.set(segment.id, segment);
-  }
-}
-
-const sharedBorderSegments = [...sharedBorderById.values()];
-
-const borderPositions = sharedBorderSegments.flatMap(({ start, end }) => [
+const borderPositions = [...borderSegmentsByKey.values()].flatMap(({ start, end }) => [
   start.x, start.y, RELIEF_DEPTH + 0.003,
   end.x, end.y, RELIEF_DEPTH + 0.003,
 ]);

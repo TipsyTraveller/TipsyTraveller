@@ -14,8 +14,8 @@ import * as THREE from 'three';
 
 const OCEAN_W = 240;
 const OCEAN_H = 180;
-export const OCEAN_COLOR = '#20364B';
-const LAND_COLOR = '#FAF3E0';
+export const OCEAN_COLOR = '#2C3E50';
+export const LAND_COLOR = '#FFF1CD';
 const RELIEF_COLOR = '#B8AD92';
 const BORDER_COLOR = '#6A6253';
 const VECTOR_SCALE_X = 1 / MAP_VIEWPORT_WIDTH;
@@ -40,6 +40,7 @@ const prepareVectorMap = (scene) => {
         color: BORDER_COLOR,
         depthWrite: false,
         opacity: 0.92,
+        toneMapped: false,
         transparent: true,
       });
       child.renderOrder = 2;
@@ -50,6 +51,7 @@ const prepareVectorMap = (scene) => {
       child.material = new THREE.MeshBasicMaterial({
         color: LAND_COLOR,
         side: THREE.DoubleSide,
+        toneMapped: false,
       });
       child.renderOrder = 1;
       return;
@@ -74,7 +76,7 @@ const MapPlane = () => {
     <group>
       <mesh position={[0, MAP_CY, MAP_Z]}>
         <planeGeometry args={[OCEAN_W, OCEAN_H]} />
-        <meshBasicMaterial color={OCEAN_COLOR} />
+        <meshBasicMaterial color={OCEAN_COLOR} toneMapped={false} />
       </mesh>
 
       <primitive

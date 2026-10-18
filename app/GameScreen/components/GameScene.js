@@ -13,7 +13,7 @@ import { MARKERS, ROUTE } from '../constants/route';
 const MapFallback = () => (
   <mesh position={[0, MAP_CY, MAP_Z]}>
     <planeGeometry args={[240, 180]} />
-    <meshBasicMaterial color={OCEAN_COLOR} />
+    <meshBasicMaterial color={OCEAN_COLOR} toneMapped={false} />
   </mesh>
 );
 
