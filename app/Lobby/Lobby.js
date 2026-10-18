@@ -6,7 +6,7 @@ import TeamContainer from "./components/TeamContainer";
 import LowerButtonContainer from "../shared/components/LowerButtonContainer/LowerButtonContainer";
 import InputField from "../shared/components/InputField/InputField";
 //FIREBASE
-import {set, ref,push,child, onValue, off, get, runTransaction, remove} from "firebase/database";
+import {set, ref,push,child, onValue, off, get, runTransaction, remove, update} from "firebase/database";
 import { db } from "../../firebaseConfig";
 //STYLES
 import { AndroidSafeView } from "../shared/styles/SafeAreaView/SafeAreaView";
@@ -172,7 +172,10 @@ export default function Lobby ({ navigation, route }) {
             return;
         }
         console.log("next");
-        await set(ref(db, `games/${gameID}/status`), "characterSelection");
+        await update(ref(db, `games/${gameID}`), {
+            status: "characterSelection",
+            teamModels: null,
+        });
         
     }
 

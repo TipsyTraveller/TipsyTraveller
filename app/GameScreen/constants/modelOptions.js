@@ -1,100 +1,50 @@
-const CAR1_ROTATION = [Math.PI / 2, Math.PI / 2, 0];
-const STANDARD_VEHICLE_ROTATION = [Math.PI / 2, 0, 0];
-
 export const MODEL_OPTIONS = [
   {
     id: 'car1',
-    label: 'Classic Car',
+    label: 'Rally Truck',
     source: require('../../../assets/models/car1.glb'),
-    normalizeOrigin: true,
-    transform: {
-      scale: [0.03, 0.03, 0.03],
-      position: [0, 0, 0],
-      rotation: CAR1_ROTATION,
-    },
+    yaw: Math.PI / 2,
   },
   {
     id: 'vehicle001',
-    label: 'Vehicle 1',
+    label: 'Neon Nomad',
     source: require('../../../assets/models/vehicle001.glb'),
-    normalizeOrigin: true,
     preserveMaterials: true,
-    transform: {
-      scale: [0.045, 0.045, 0.045],
-      position: [0, 0, 0],
-      rotation: STANDARD_VEHICLE_ROTATION,
-    },
   },
   {
     id: 'minivan',
-    label: 'Minivan',
+    label: 'Party Van',
     source: require('../../../assets/models/minivan.glb'),
-    normalizeOrigin: true,
-    transform: {
-      scale: [0.001, 0.001, 0.001],
-      position: [0, 0, 0],
-      rotation: STANDARD_VEHICLE_ROTATION,
-    },
   },
   {
     id: 'vehicle002',
-    label: 'Vehicle 2',
+    label: 'Moon Buggy',
     source: require('../../../assets/models/vehicle002.glb'),
-    normalizeOrigin: true,
     preserveMaterials: true,
-    transform: {
-      scale: [0.053, 0.053, 0.053],
-      position: [0, 0, 0],
-      rotation: STANDARD_VEHICLE_ROTATION,
-    },
   },
   {
     id: 'vehicle003',
-    label: 'Vehicle 3',
+    label: 'Disco Cruiser',
     source: require('../../../assets/models/vehicle003.glb'),
-    normalizeOrigin: true,
     preserveMaterials: true,
-    transform: {
-      scale: [0.052, 0.052, 0.052],
-      position: [0, 0, 0],
-      rotation: STANDARD_VEHICLE_ROTATION,
-    },
   },
   {
     id: 'vehicle004',
-    label: 'Vehicle 4',
+    label: 'Turbo Comet',
     source: require('../../../assets/models/vehicle004.glb'),
-    normalizeOrigin: true,
     preserveMaterials: true,
-    transform: {
-      scale: [0.053, 0.053, 0.053],
-      position: [0, 0, 0],
-      rotation: STANDARD_VEHICLE_ROTATION,
-    },
   },
   {
     id: 'vehicle005',
-    label: 'Vehicle 5',
+    label: 'Road Rocket',
     source: require('../../../assets/models/vehicle005.glb'),
-    normalizeOrigin: true,
     preserveMaterials: true,
-    transform: {
-      scale: [0.05, 0.05, 0.05],
-      position: [0, 0, 0],
-      rotation: STANDARD_VEHICLE_ROTATION,
-    },
   },
   {
     id: 'vehicle006',
-    label: 'Vehicle 6',
+    label: 'Cosmic Camper',
     source: require('../../../assets/models/vehicle006.glb'),
-    normalizeOrigin: true,
     preserveMaterials: true,
-    transform: {
-      scale: [0.052, 0.052, 0.052],
-      position: [0, 0, 0],
-      rotation: STANDARD_VEHICLE_ROTATION,
-    },
   },
 ];
 

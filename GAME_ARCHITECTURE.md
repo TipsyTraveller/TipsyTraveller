@@ -93,6 +93,7 @@ This document distinguishes between the visible product concept and what the cur
 - Realtime lobby roster updates.
 - Basic host reconnection/expiration metadata.
 - Team-leader vehicle selection with a rotating 3D preview.
+- Independent team-leader choices with shared readiness and synchronized entry into the game.
 - Landscape 3D board.
 - Interactive 3D die with pickup, drag, throw, bounce, and result animation.
 - Alternative HUD button for immediately generating a roll.
@@ -105,7 +106,6 @@ This document distinguishes between the visible product concept and what the cur
 ### Partially implemented
 
 - Multiplayer synchronization stops after lobby/model selection. Live turns and board progress are local React state.
-- Team leaders can select vehicles, but the character-selection screen does not coordinate completion across all teams.
 - Reconnection recognizes the original host device, but no full game-state restoration exists.
 - Difficulty and duration are stored in Firebase but do not modify gameplay.
 - Profile and settings icons are visible but have no actions.
@@ -117,12 +117,12 @@ This document distinguishes between the visible product concept and what the cur
 `app/app/devGameRoute.js` currently contains:
 
 ```js
-export const START_ON_DEV_GAME_SCREEN = __DEV__ && true;
+export const START_ON_DEV_GAME_SCREEN = false;
 ```
 
-Therefore, every development build starts directly on `GameScreen` with mock data. The home, setup, join, lobby, and character-selection screens still exist, but they are bypassed unless this flag is changed to `false`.
+Therefore, development and production builds start on `Home` and follow the full setup or join flow. Developers can temporarily change this flag to `__DEV__ && true` to start directly on `GameScreen` with mock data without affecting production builds.
 
-The development game creates two teams and assigns both the classic car. Its room ID is `DEV-0000`; it does not create that room in Firebase.
+The development game creates two teams and assigns both the Rally Truck. Its room ID is `DEV-0000`; it does not create that room in Firebase.
 
 ---
 
@@ -191,7 +191,8 @@ flowchart TD
     HostName -->|Create Firebase room| Lobby[Lobby]
     Join -->|Validate room and join team| Lobby
     Lobby -->|Host sets status to characterSelection| Character[Character Selection]
-    Character -->|Leader stores team model| Game[GameScreen]
+    Character -->|Every team leader selects a model| Ready[All teams ready]
+    Ready -->|Host transaction sets status to game| Game[GameScreen]
     Game --> Roll[Roll die]
     Roll --> Move[Move vehicle]
     Move -->|Non-final stop| Challenge[Country challenge]
@@ -396,24 +397,27 @@ Purpose: show synchronized teams and allow the host to start.
 - The host may remove non-leaders.
 - Once the minimum team-leader count is reached, the host may manually add local/offline players by name.
 - Only the host can start.
-- Start writes `games/{gameID}/status = "characterSelection"`.
+- Start atomically clears any earlier `teamModels` choices and writes `games/{gameID}/status = "characterSelection"`, ensuring every required leader makes a fresh selection for the session.
 - Every lobby client observing that status navigates to `CharacterSelection`.
 
 The `RULES` button is currently a placeholder.
 
 ### `CharacterSelection`
 
-Purpose: let a device identified as a team leader choose that team’s vehicle.
+Purpose: let every device identified as a team leader independently choose that team’s vehicle and coordinate entry into the game.
 
-- Preloads all GLB vehicle assets.
+- Loads vehicle GLBs on demand instead of eagerly uploading every embedded 2048×2048 texture to the mobile GPU.
 - Locates the current device in the passed `teamMembers` object.
-- Only leaders see the model carousel and confirm button.
-- The preview clones the GLTF scene and rotates it continuously at `0.5` radians per second.
+- Only leaders see the model carousel and confirm button; other players see the shared readiness state.
+- The selection UI uses a compact phone-first garage layout with horizontal readiness pills, a bounded preview, and smaller controls.
+- The preview and board use the same normalized vehicle renderer, so differently sized source models have a consistent scale, ground position, material treatment, and orientation.
+- The preview rotates continuously and labels the bundled models with player-facing names such as Rally Truck, Party Van, Moon Buggy, and Disco Cruiser.
 - Confirm writes the selected model ID to `games/{gameID}/teamModels/{teamKey}`.
-- Confirm then replaces the screen with `GameScreen` on that device.
-- Non-leaders see “Waiting for teamleader...”.
+- The screen subscribes to the game record so every client sees which teams are still choosing.
+- When every required team has selected a model, the host transactionally changes the room status from `characterSelection` to `game`.
+- Every client observing `status: "game"` replaces the selection screen with `GameScreen` using the complete model map.
 
-Current caveat: this screen does not subscribe to model selections or a game-start status. A non-leader does not automatically proceed, and leaders may enter the game at different times with incomplete model data.
+Current caveat: vehicle readiness is synchronized, but the live board state after this transition remains local to each device.
 
 ### `GameScreen`
 
@@ -421,7 +425,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 
 - Locks the device to landscape while mounted.
 - Creates two or three game pieces based on `nrOfPlayers`.
-- Resolves model choices from `gameData.teamModels`, falling back to the classic car.
+- Resolves model choices from `gameData.teamModels`, falling back to the Rally Truck.
 - Creates a ref and progress record for each team.
 - Handles rolling, movement targets, landings, challenges, turn switching, finish state, and restart.
 - Unlocks orientation on unmount.
@@ -613,34 +617,32 @@ The `Roll Dice` button in `TourControl` calls `GameScreen.handleRoll()` directly
 
 `MODEL_OPTIONS` defines eight vehicles:
 
-- Classic Car
-- Vehicle 1
-- Minivan
-- Vehicle 2
-- Vehicle 3
-- Vehicle 4
-- Vehicle 5
-- Vehicle 6
+- Rally Truck
+- Neon Nomad
+- Party Van
+- Moon Buggy
+- Disco Cruiser
+- Turbo Comet
+- Road Rocket
+- Cosmic Camper
 
 Each record contains:
 
 - Stable ID stored in Firebase.
 - Human-readable label.
 - Bundled GLB source.
-- Whether to normalize its origin.
 - Whether to preserve texture-based materials.
-- Per-model scale, position, and orthogonal rotation corrections.
 
-Unknown IDs fall back to the classic car. Every team also defaults to the classic car when no model selection is present.
+Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally Truck when no model selection is present.
 
 ### Model preparation
 
-`GamePiece` clones the loaded GLTF scene so teams do not mutate one shared scene instance. It then:
+`VehicleModel` clones the loaded GLTF scene so previews and teams do not mutate one shared scene instance. It then:
 
 - Disables frustum culling on child meshes.
 - Replaces materials with team-colored paint, dark parts, glass, or lights for the classic-style model.
-- For `preserveMaterials` models, clones a visible texture into a basic material, sets sRGB color space, and disables `flipY`.
-- Computes a bounding box to center X/Z and align the bottom of the tires (`box.min.y`) to the board surface.
+- For `preserveMaterials` models, web keeps a cloned PBR material while native Expo GL uses a lightweight unlit material backed by the already-loaded shared texture. Both paths set sRGB color space and disable `flipY`.
+- Computes a bounding box to center the model, align its lowest point to the ground, and normalize its footprint before applying a common preview or board scale.
 
 ### Motion
 
@@ -1040,21 +1042,19 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 
 ### Smoke test: Expo Go on a physical phone
 
-Because the development shortcut is enabled:
-
-1. Run `npm start`, scan the QR code, and open the project in Expo Go.
-2. Confirm the map, pins, GLTF vehicles, and 3D die render cleanly without static route dots.
-3. Drag and throw the die.
-4. Confirm the result popup matches the top die face and the animated route path lays out from the active vehicle to the destination stop.
-5. Confirm the active vehicle smoothly accelerates, follows the animated route path, and brakes into the destination stop while consuming the path.
-6. Confirm the camera stays in overview during the path reveal, follows during vehicle movement, and returns to overview afterward.
-7. Confirm the appropriate challenge appears.
-8. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
-9. Use the HUD roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
+1. Temporarily change `START_ON_DEV_GAME_SCREEN` to `__DEV__ && true`.
+2. Run `npm start`, scan the QR code, and open the project in Expo Go.
+3. Confirm the map, pins, GLTF vehicles, and 3D die render cleanly without static route dots.
+4. Drag and throw the die.
+5. Confirm the result popup matches the top die face and the animated route path lays out from the active vehicle to the destination stop.
+6. Confirm the active vehicle smoothly accelerates, follows the animated route path, and brakes into the destination stop while consuming the path.
+7. Confirm the camera stays in overview during the path reveal, follows during vehicle movement, and returns to overview afterward.
+8. Confirm the appropriate challenge appears.
+9. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
+10. Use the HUD roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
+11. Restore `START_ON_DEV_GAME_SCREEN` to `false` after the focused board test.
 
 ### Smoke test: full multiplayer flow
-
-First change `START_ON_DEV_GAME_SCREEN` to `__DEV__ && false`.
 
 Use at least two separate installations or clear/device-specific storage carefully:
 
@@ -1099,12 +1099,10 @@ camera motion, GLTF appearance, and final 3D performance.
 ### Gameplay and synchronization
 
 1. **Board state is local.** Turns, rolls, progress, challenges, and completion are not written to Firebase.
-2. **Character selection has no completion barrier.** There is no shared “all teams ready” check.
-3. **Non-leaders can become stuck.** They wait on the character screen without a realtime transition.
-4. **Difficulty is unused.** Easy/medium/hard do not alter challenges or penalties.
-5. **Duration is unused.** Short/medium/long do not alter route length, target score, or timer.
-6. **No winner model.** The game waits for all teams instead of ranking the first finisher.
-7. **Challenges are honor-based.** Pass/fail and penalties are not recorded.
+2. **Difficulty is unused.** Easy/medium/hard do not alter challenges or penalties.
+3. **Duration is unused.** Short/medium/long do not alter route length, target score, or timer.
+4. **No winner model.** The game waits for all teams instead of ranking the first finisher.
+5. **Challenges are honor-based.** Pass/fail and penalties are not recorded.
 
 ### Firebase and identity
 
@@ -1118,7 +1116,7 @@ camera motion, GLTF appearance, and final 3D performance.
 
 ### UI and code quality
 
-1. The development bypass is permanently true in `__DEV__`.
+1. The direct-to-game development shortcut is manual and requires editing `START_ON_DEV_GAME_SCREEN`; there is no in-app or environment-based toggle.
 2. Profile/settings buttons and lobby rules are placeholders.
 3. Several imports, state values, and components are unused.
 4. `LoadingComponent` references an undefined `animation` ref and uses a non-relative asset path; it is currently unused.
@@ -1132,7 +1130,7 @@ camera motion, GLTF appearance, and final 3D performance.
 
 1. Three.js logs a multiple-instance warning because a transitive `stats-gl` dependency contains Three.js 0.170 while the app uses 0.184.
 2. Expo GL does not reliably render on the iOS Simulator; use Expo Go on a physical phone for the real 3D scene.
-3. All character models are preloaded on the selection screen, which can increase memory pressure.
+3. Vehicle previews are loaded on demand, but cycling through many textured vehicles in one session can still increase the loader cache and memory pressure.
 4. Replacing materials may discard advanced GLTF material properties.
 5. The challenge animation, marker animation, dice animation, camera movement, and cars all run concurrently.
 6. Several unused alternate map images increase repository and potentially bundle size.
@@ -1171,14 +1169,6 @@ Add a `gameplay` subtree under each room:
 
 Use Firebase transactions or a trusted backend for roll/turn transitions so two clients cannot submit a turn simultaneously. Treat the database record as authoritative and animate clients toward it.
 
-### Complete character selection
-
-- Subscribe to `games/{gameID}/teamModels`.
-- Derive the expected teams from the player setting.
-- Let every client observe readiness.
-- Have the host atomically change status from `characterSelection` to `game` after all required models exist.
-- Make every device navigate when it observes `status: "game"`.
-
 ### Activate difficulty
 
 Possible mapping:
@@ -1206,7 +1196,7 @@ Prioritized order:
 1. Remove unused map exports from the application bundle.
 2. Add a native loading overlay around the physical-device canvas.
 3. Convert repeated marker rings to instanced meshes.
-4. Load only nearby/selected models rather than preloading all vehicles.
+4. Add explicit preview-cache eviction after measuring model-switch memory on physical devices.
 5. Align Three.js dependency versions.
 6. Profile on representative physical iOS and Android devices.
 
@@ -1274,6 +1264,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/CountryMarkers.js` | Destination markers and active-marker animation |
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
+| `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
 | `components/BoardDice.js` | Interactive die, throw animation, and result display |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
