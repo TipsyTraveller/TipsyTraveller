@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 17 October 2026.
+> Last reviewed against the source code: 18 October 2026.
 
 ## Table of contents
 
@@ -62,8 +62,8 @@ Firebase Realtime Database provides room creation, joining, team rosters, lobby 
 
 | Area | Technology |
 |---|---|
-| Application framework | Expo SDK 54 |
-| UI framework | React Native 0.81 / React 19 |
+| Application framework | Expo SDK 57 |
+| UI framework | React Native 0.86 / React 19.2 |
 | JavaScript engine | Hermes |
 | Native architecture | React Native New Architecture enabled |
 | Navigation | React Navigation stack |
@@ -430,14 +430,18 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 
 `GameScene` creates a React Three Fiber native `Canvas` with:
 
-- Legacy mode enabled.
+- Three.js color management uses the current renderer defaults rather than legacy mode.
 - A 50-degree field of view.
-- Antialiasing requested.
+- Antialiasing enabled in development and production.
+- Device-pixel ratio capped at 1.5.
 - High-performance power preference requested.
 - Premultiplied alpha disabled.
 - One ambient light, one hemisphere light, and two directional lights.
 
-All asset-dependent content is inside a React `Suspense` boundary with a null fallback. Until the texture and GLTF assets finish loading, the canvas can appear empty.
+The vector map model, vehicle models, and country-marker model use separate React
+`Suspense` boundaries. Primitive loading geometry remains visible when one of
+those assets is still resolving, so one slow asset does not hide the entire
+physical-device board. The route and die do not load external models.
 
 ### Scene graph
 
@@ -445,14 +449,16 @@ All asset-dependent content is inside a React `Suspense` boundary with a null fa
 Canvas
 ├── Lights
 ├── CameraController
-└── Suspense
-    ├── MapPlane
-    ├── GamePieces
-    │   └── GamePiece × 2 or 3
-    ├── DottedRouteLine
-    ├── CountryMarkers
-    │   └── CountryMarker × 7
-    └── BoardDice
+├── Suspense(MapFallback)
+│   └── MapPlane
+├── Suspense(GamePiecesFallback)
+│   └── GamePieces
+│       └── GamePiece × 2 or 3
+├── DottedRouteLine (four instanced mesh layers)
+├── Suspense(CountryMarkersFallback)
+│   └── CountryMarkers
+│       └── CountryMarker × 7
+└── BoardDice
 ```
 
 ### Coordinate system
@@ -465,29 +471,46 @@ The map is treated as a 20-by-15 Three.js plane:
 - Base Z depth: `-1`
 - Default content clearance above the map: `0.08`
 
-Route coordinates are authored in normalized image UV space. The helper `uv(u, v)` converts them into world coordinates:
+Route coordinates are authored in the coordinate space of the original world
+map SVG. `svgPoint(x, y)` normalizes those source coordinates, `MAP_VIEWPORT`
+selects the Western Europe area used by the current route, and `uv(u, v)`
+converts normalized coordinates into board coordinates:
 
 ```text
-x = (u - 0.5) × map width
-y = (0.5 - v) × map height + map center Y
+x = ((u - viewport center U) ÷ viewport width) × map width
+y = ((viewport center V - v) ÷ viewport height) × map height + map center Y
 z = map Z + clearance
 ```
 
-This allows route control points to be aligned visually to the map texture using normalized image positions rather than hard-coded world positions.
+This enlarges the active Belgium–Portugal–Italy region without rewriting route
+data. A future wider route can change the viewport or restore the full-world
+framing while keeping the same source coordinates.
 
 ### Map plane
 
-`MapPlane` builds the physical board as layered meshes:
+`MapPlane` builds the map in 3D space from three visual layers:
 
-1. Dark outer frame.
-2. Cream inner frame.
-3. Offset dark shadow plane.
-4. Main map plane using `assets/europe-map4.png`.
-5. Two subtle color overlays.
-6. Four inner-edge strips.
-7. Four decorative corner studs.
+1. A large dark-blue ocean plane that matches the Canvas background, so no board boundary or horizon edge is visible.
+2. A shallow extruded land relief generated from the continuous land silhouette in `assets/map.svg`, plus an unlit cream cap over its top surface.
+3. A dark internal-border mesh derived from shared edges between neighboring
+   country paths and raised slightly above the land surface.
 
-The map texture is resolved through `expo-asset` and loaded with Drei’s `useTexture`.
+The board no longer renders a raster map underneath the vector geometry. The
+GLB is scaled to the current `MAP_VIEWPORT` without rectangular clipping,
+keeping the active Western Europe route large while allowing the surrounding
+ocean to continue naturally. The top land surface uses an unlit cream material
+(`#FAF3E0`), keeping its color stable instead of applying a scene-wide dark
+lighting tint. The exposed relief sides retain a darker lit material so
+coastlines still read as three-dimensional; the ocean is deep blue (`#20364B`).
+The generator compares neighboring country outlines and
+emits only one canonical copy of a matched land boundary. It closes short gaps
+caused by differing curve subdivisions so borders stay continuous through
+bends. Unmatched outlines are treated as coastlines and omitted, avoiding
+doubled or stray lines around peninsulas and islands. Border geometry is also
+limited to the active Western Europe
+viewport to keep the mobile asset smaller. The GLB is prebuilt so Expo Go does
+not need to parse, triangulate, extrude, or compare the large SVG at runtime.
+Route dots render above the raised land and border geometry.
 
 ### Route curve
 
@@ -829,7 +852,11 @@ The lobby ultimately reloads the canonical game record from Firebase.
 | `assets/fonts/` | Dogica fonts |
 | `assets/icons/` | App and splash icons |
 | `assets/images/` | Beer difficulty graphics and UI icons |
-| `assets/europe-map4.png` | Current 3D board texture |
+| `assets/europe-map-mobile.png` | Retained mobile raster export; not loaded by the current board |
+| `assets/europe-map4.png` | High-resolution source export for the board texture |
+| `assets/map.svg` | Editable vector source for the country geometry |
+| `assets/models/world-map-vector.glb` | Prebuilt extruded world silhouette and Western Europe country borders |
+| `scripts/build-vector-map.mjs` | Regenerates the runtime GLB from `assets/map.svg` |
 | `assets/models/location.glb` | Country pin geometry |
 | `assets/models/*.glb` | Selectable team vehicles |
 
@@ -839,21 +866,24 @@ The lobby ultimately reloads the canonical game record from Firebase.
 
 ### Oversized and duplicate assets
 
-Several alternate map exports remain in the repository. Only `europe-map4.png` is loaded by the current board.
+Several alternate map exports remain in the repository. None of the raster map
+exports are loaded by the current board; `map.svg` is the editable source and
+`world-map-vector.glb` is the runtime board asset.
 
 `assets/model.gltf` is approximately 153 MB, is not referenced by application code, is ignored by Git because it exceeds GitHub’s 100 MB file limit, and remains available only in local working copies that already have it.
 
-### Simulator-sensitive map texture
+### Mobile map budget
 
-The active map texture is `7016 × 4961` pixels. During iOS simulator testing, Three.js has reported that this DataTexture is too large. This can cause a blank or intermittent 3D scene.
+The current board loads the approximately 4.5 MB vector-derived GLB rather than a
+large raster map texture. The asset includes indexed extruded coastline geometry
+and deduplicated Western Europe shared-border lines. The renderer frames the
+Western Europe viewport at runtime, so zoomed views remain crisp without
+loading the `7016 × 4961` source export or duplicating route coordinates for a
+cropped asset. Antialiasing and a device-pixel ratio up to 1.5 are also enabled
+in Expo Go development sessions.
 
-Recommended production replacement:
-
-- Maximum compatibility: no larger than `4096 × 2897`.
-- Better mobile memory/performance: approximately `2048 × 1448`.
-- Prefer a power-of-two-friendly workflow when mipmaps or broad GPU compatibility matter.
-
-The original can be kept outside the application bundle as a design source.
+The device-pixel-ratio cap limits GPU load while preserving smoother vector
+edges on physical devices.
 
 ---
 
@@ -866,9 +896,9 @@ The original can be kept outside the application bundle as a design source.
 - Default orientation at the app level; `GameScreen` locks landscape at runtime.
 - Light UI style.
 - Tablet support on iOS.
-- Edge-to-edge layout on Android.
-- Expo Font, Screen Orientation, and Asset plugins.
-- React Native New Architecture enabled.
+- Edge-to-edge layout on Android, as required by the current React Native/Expo Android runtime.
+- Expo Font, Screen Orientation, Asset, Splash Screen, and Status Bar plugins.
+- Expo SDK 57 uses React Native's New Architecture; the checked-in native projects keep their corresponding native flags enabled.
 - App icons, splash image, bundle identifiers, and EAS project ID.
 
 ### iOS
@@ -878,12 +908,12 @@ The iOS project uses:
 - CocoaPods.
 - Hermes.
 - New Architecture.
-- Deployment target 15.1.
+- Deployment target 16.4.
 - Expo dev-client local-network access.
 
-The `Podfile` forces every pod target and resource bundle to deployment target 15.1 because Xcode 27 rejects older deployment targets.
+The `Podfile` forces every pod target and resource bundle to deployment target 16.4, the minimum supported by Expo SDK 57.
 
-`AppDelegate.swift` starts React Native through Expo’s factory. A custom `SceneDelegate` adopts that existing window and forwards URLs and universal links. This bridges Expo SDK 54’s AppDelegate startup model with the scene lifecycle required when building against the iOS 27 SDK.
+`AppDelegate.swift` starts React Native through Expo’s factory. A custom `SceneDelegate` adopts that existing window and forwards URLs and universal links. This preserves Expo’s AppDelegate startup model while supporting the scene lifecycle required when building against the iOS 27 SDK.
 
 `Info.plist` registers the SceneDelegate and the app URL schemes.
 
@@ -925,29 +955,50 @@ The current release build uses the debug keystore. A real production release mus
 npm install
 ```
 
-### Start Metro only
+### Run on a physical phone with Expo Go
 
 ```bash
 npm start
 ```
 
-### Run iOS
+This is the primary demo workflow. It starts Expo SDK 57 Metro explicitly in
+Expo Go mode, advertises it over the local network, and prints a QR code. Keep
+the terminal open, put the Mac and phone on the same Wi-Fi network, and scan the
+QR code with the iPhone camera or from Expo Go on Android.
+
+On a physical iPhone, Expo CLI and Expo Go must be signed in to the same Expo
+account. If the local network prevents the phone from reaching the Mac, use the
+slower tunnel fallback:
 
 ```bash
-npm run ios
+npm run start:tunnel
+```
+
+### Run the native iOS development client
+
+```bash
+npm run ios:native
 ```
 
 The custom `scripts/run-ios.sh` does the following:
 
 1. Checks whether Metro is already healthy on port 8081.
-2. Starts the project’s Expo SDK 54 Metro server when needed.
+2. Starts the project’s Expo SDK 57 Metro server when needed.
 3. Waits up to 60 seconds for Metro.
-4. Runs the native build using `expo@58.0.14` only as a Device-Hub-aware launcher.
-5. Targets an `iPhone 18 Pro` simulator.
-6. Passes `--no-bundler` so the build uses the already-running SDK 54 Metro server.
-7. Keeps Metro alive when the script started it.
+4. Runs the native build using the project-local Expo SDK 57 CLI.
+5. Uses a booted simulator or lets Expo choose an available default.
+6. Passes `--no-bundler` so the build uses the already-running SDK 57 Metro server.
+7. Forces the simulator development client and Metro to use the same localhost address.
+8. Keeps Metro alive when the script started it.
 
-The split is intentional: Expo SDK 54’s bundled CLI does not understand Xcode 27’s Device Hub, while using a newer Metro server with the SDK 54 runtime caused hot-reload incompatibility.
+This installs and launches the project’s native Expo development client; it
+does not use Expo Go. To target a particular simulator, pass its name after
+`--` or set `IOS_SIMULATOR_DEVICE`:
+
+```bash
+npm run ios:native -- "iPhone 18 Pro Max"
+IOS_SIMULATOR_DEVICE="iPhone 18 Pro Max" npm run ios:native
+```
 
 ### Run Android
 
@@ -963,14 +1014,14 @@ npm run web
 
 The game depends on native Expo GL behavior and is primarily designed for iOS/Android. Web should be treated as an additional compatibility target, not the reference platform.
 
-### Normal iOS development loop
+### Normal Expo Go development loop
 
-1. Open Xcode’s Device Hub if a simulator is not already visible.
-2. Select the intended iPhone 18 Pro simulator.
-3. Run `npm run ios`.
-4. Leave the terminal open so Metro remains available.
+1. Install Expo Go on the phone.
+2. Put the phone and Mac on the same Wi-Fi network.
+3. Run `npm start`.
+4. Scan the QR code and leave the terminal open.
 5. Save JavaScript changes for Fast Refresh.
-6. Press `Cmd + R` in Device Hub if a full reload is needed.
+6. Use `npm run start:tunnel` when LAN discovery or routing is blocked.
 
 ---
 
@@ -978,22 +1029,19 @@ The game depends on native Expo GL behavior and is primarily designed for iOS/An
 
 There is currently no automated test runner, lint script, or checked-in Jest configuration. Testing is manual.
 
-### Smoke test: direct development game
+### Smoke test: Expo Go on a physical phone
 
 Because the development shortcut is enabled:
 
-1. Run `npm run ios` or `npm run android`.
-2. Confirm the app opens directly to the landscape board.
-3. Confirm the map, dotted route, pins, two cars, and die render.
-4. Drag and throw the die.
-5. Confirm the result popup matches the top die face.
-6. Confirm the active vehicle follows the route.
-7. Confirm the camera follows during movement and returns to overview afterward.
-8. Confirm the appropriate challenge appears.
-9. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
-10. Use the HUD roll button and confirm it moves without a die animation.
-11. Continue until one team finishes; confirm it is skipped.
-12. Finish all teams, confirm “Tour complete,” and test Restart.
+1. Run `npm start`, scan the QR code, and open the project in Expo Go.
+2. Confirm the map, instanced dotted route, pins, GLTF vehicles, and 3D die render.
+3. Drag and throw the die.
+4. Confirm the result popup matches the top die face.
+5. Confirm the active vehicle follows the route.
+6. Confirm the camera follows during movement and returns to overview afterward.
+7. Confirm the appropriate challenge appears.
+8. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
+9. Use the HUD roll button and confirm it moves without a die animation.
 
 ### Smoke test: full multiplayer flow
 
@@ -1022,7 +1070,7 @@ Use at least two separate installations or clear/device-specific storage careful
 
 ### 3D performance checks
 
-Test on both simulator and physical hardware:
+Test on physical hardware:
 
 - First scene load time.
 - Blank-scene frequency after reload.
@@ -1032,7 +1080,8 @@ Test on both simulator and physical hardware:
 - Visual correctness of preserved model textures.
 - Landscape layout on small and large screens.
 
-Physical devices are the reference for final GPU and performance validation. The simulator remains useful for logic and layout after textures are made compatible.
+Physical devices are the reference for Expo GL, GPU behavior, die physics,
+camera motion, GLTF appearance, and final 3D performance.
 
 ---
 
@@ -1073,22 +1122,22 @@ Physical devices are the reference for final GPU and performance validation. The
 
 ### 3D and assets
 
-1. The active map texture exceeds common simulator texture limits.
-2. Three.js logs a multiple-instance warning because a transitive `stats-gl` dependency contains Three.js 0.170 while the app uses 0.184.
-3. Expo GL reports unsupported `EXT_color_buffer_float` on the simulator.
-4. All character models are preloaded on the selection screen, which can increase memory pressure.
-5. Replacing materials may discard advanced GLTF material properties.
-6. Many route dots are individual meshes and draw calls; instancing would scale better.
-7. The challenge animation, marker animation, dice animation, camera movement, and cars all run concurrently.
-8. Several unused alternate map images increase repository and potentially bundle size.
+1. Three.js logs a multiple-instance warning because a transitive `stats-gl` dependency contains Three.js 0.170 while the app uses 0.184.
+2. Expo GL does not reliably render on the iOS Simulator; use Expo Go on a physical phone for the real 3D scene.
+3. All character models are preloaded on the selection screen, which can increase memory pressure.
+4. Replacing materials may discard advanced GLTF material properties.
+5. The challenge animation, marker animation, dice animation, camera movement, and cars all run concurrently.
+6. Several unused alternate map images increase repository and potentially bundle size.
+7. `world-map-vector.glb` is generated from `map.svg`; run `npm run build:map` after changing the SVG or the generator settings.
 
 ### Native/release readiness
 
 1. Android release currently uses debug signing.
 2. No CI workflow is included.
 3. There is no environment-based Firebase project selection.
-4. The iOS launcher pins a specific simulator name and downloads a specific CLI version through `npx` when absent.
+4. The iOS launcher uses the project-local Expo CLI, so it does not download a second CLI version.
 5. Native directories are checked in, so Expo config changes must be kept consistent with native project files.
+6. `expo-doctor` reports its non-CNG sync warning because the native directories are intentionally checked in; 20 of its 21 checks otherwise pass after the SDK 57 upgrade.
 
 ---
 
@@ -1146,14 +1195,12 @@ The route constants should become a route definition selected from game settings
 
 Prioritized order:
 
-1. Resize/compress `europe-map4.png`.
-2. Remove unused map exports from the application bundle.
-3. Add a loading overlay instead of `Suspense fallback={null}`.
-4. Cap Canvas device pixel ratio where supported.
-5. Convert route dots and repeated marker rings to instanced meshes.
-6. Load only nearby/selected models rather than preloading all vehicles.
-7. Align Three.js dependency versions.
-8. Profile simulator and physical device separately.
+1. Remove unused map exports from the application bundle.
+2. Add a native loading overlay around the physical-device canvas.
+3. Convert repeated marker rings to instanced meshes.
+4. Load only nearby/selected models rather than preloading all vehicles.
+5. Align Three.js dependency versions.
+6. Profile on representative physical iOS and Android devices.
 
 ### Add automated tests
 
@@ -1214,8 +1261,8 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 |---|---|
 | `app/GameScreen/GameScreen.js` | Local game state machine and scene/overlay orchestration |
 | `components/GameScene.js` | Canvas and 3D scene composition |
-| `components/MapPlane.js` | Board layers and map texture |
-| `components/DottedRouteLine.js` | Decorative curved route |
+| `components/MapPlane.js` | Continuous ocean plane and raised vector-map viewport |
+| `components/DottedRouteLine.js` | Instanced decorative curved route |
 | `components/CountryMarkers.js` | Destination markers and active-marker animation |
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
@@ -1267,6 +1314,6 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 
 ## Closing summary
 
-TipsyTraveller currently has a strong playable local board-game prototype, a visually distinctive 3D presentation, and a functional Firebase-backed room/lobby foundation. The most important architectural boundary is that the lobby is realtime multiplayer while the board is still local. The next major product milestone should be to make Firebase gameplay state authoritative, coordinate vehicle selection, and optimize the map texture and draw calls for reliable mobile GPU performance.
+TipsyTraveller currently has a strong playable local board-game prototype, a visually distinctive 3D presentation, and a functional Firebase-backed room/lobby foundation. The most important architectural boundary is that the lobby is realtime multiplayer while the board is still local. The next major product milestone should be to make Firebase gameplay state authoritative, coordinate vehicle selection, and continue profiling map geometry and draw calls for reliable mobile GPU performance.
 
 Once those items are addressed, the existing separation between screen flow, game controller, static game definitions, 3D scene components, and React Native overlays provides a practical base for additional routes, challenge sets, game modes, and production multiplayer behavior.
