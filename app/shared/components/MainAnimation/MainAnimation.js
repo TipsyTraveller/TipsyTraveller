@@ -1,11 +1,22 @@
-import { StyleSheet, Text, View, Image } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import LottieView from "lottie-react-native";
 import React, {useRef, useEffect} from "react";
-import { useFonts } from "expo-font";
 
-export default function MainAnimation () {
+const LOTTIE_COMPOSITION_WIDTH = 2430;
+// The globe layers are positioned around x=1023 and the static foreground around x=1040.
+// Center their shared visual midpoint rather than the transparent composition bounds.
+const LOTTIE_ARTWORK_CENTER_X = 1032;
+
+export default function MainAnimation ({ compact = false }) {
 
     const animation = useRef(null);
+    const { width, height } = useWindowDimensions();
+    const containerSize = Math.min(width - 32, compact ? 270 : 400, height * (compact ? 0.34 : 0.44));
+    const animationWidth = containerSize * 1.18;
+    const animationHeight = animationWidth * (2092 / 2430);
+    const artworkOffsetX = animationWidth * (
+        (LOTTIE_COMPOSITION_WIDTH / 2 - LOTTIE_ARTWORK_CENTER_X) / LOTTIE_COMPOSITION_WIDTH
+    );
     useEffect(() => {
         if (animation.current) {
             animation.current.play(45, 88);
@@ -18,27 +29,32 @@ export default function MainAnimation () {
         }
     };
     return(
-        <View style={ style.animationContainer }>
-            <View style={ style.animationImage }>
+        <View style={[style.animationContainer, { width: containerSize, height: containerSize }]}>
+            <View
+                style={[
+                    style.animationImage,
+                    {
+                        width: animationWidth,
+                        height: animationHeight,
+                        top: -containerSize * 0.25,
+                        left: '50%',
+                        transform: [{ translateX: -animationWidth / 2 + artworkOffsetX }],
+                    },
+                ]}
+            >
                 <LottieView
                     autoPlay={false}
                     speed={0.4}
                     ref={animation}
                     onAnimationFinish={handleAnimationFinish}
-                    style={{
-                        width: 450,
-                        height: 450,
-                        marginHorizontal: -35,
-                        marginVertical: -95,
-
-                    }}
-                    // Find more Lottie files at https://lottiefiles.com/featured
+                    resizeMode="contain"
+                    style={style.lottie}
                     source={require('../../../../assets/animations/animatie-wereld.json')}
                 />
             </View>
-            <View style={{ alignItems: "center", position: "absolute", bottom: 30 }}>
-                <Text style={style.appName}>TIPSY</Text>
-                <Text style={style.appName}>TRAVELLER</Text>
+            <View style={[style.titleContainer, { bottom: compact ? 14 : 24 }]}>
+                <Text style={[style.appName, compact && style.compactAppName]}>TIPSY</Text>
+                <Text style={[style.appName, compact && style.compactAppName]}>TRAVELLER</Text>
             </View>
             {/*<Text style={ style.appName }>TIPSY {"\n"} TRAVELLER</Text>*/}
         </View>
@@ -47,18 +63,20 @@ export default function MainAnimation () {
 
 const style = StyleSheet.create({
     animationContainer: {
-        width:400,
-        height:400,
         overflow:"hidden",
         marginBottom: 0,
         alignItems: "center",
-
     },
     animationImage: {
-        width: "80%",
-        resizeMode: "contain",
-        paddingVertical: -50,
-
+        position: "absolute",
+    },
+    lottie: {
+        width: "100%",
+        height: "100%",
+    },
+    titleContainer: {
+        alignItems: "center",
+        position: "absolute",
     },
     appName: {
         color: "#393939",
@@ -67,6 +85,9 @@ const style = StyleSheet.create({
 
         lineHeight: 50,
         fontFamily: "dogicapixelbold",
-
+    },
+    compactAppName: {
+        fontSize: 28,
+        lineHeight: 34,
     }
 })

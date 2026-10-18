@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 //SCREENS
 import Home from '../home/home';
@@ -16,13 +17,16 @@ import { DEV_GAME_ROUTE_PARAMS, START_ON_DEV_GAME_SCREEN } from "./devGameRoute"
 const Stack = createStackNavigator();
 
 export default function App() {
-  const [fontsloaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     "dogicapixelbold": require("../../assets/fonts/dogicapixelbold.otf"),
     "dogicapixel": require("../../assets/fonts/dogicapixel.otf"),
   });
+  if (!fontsLoaded && !fontError) return null;
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator initialRouteName={START_ON_DEV_GAME_SCREEN ? "GameScreen" : "Home"}>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator initialRouteName={START_ON_DEV_GAME_SCREEN ? "GameScreen" : "Home"}>
         <Stack.Screen
           name="Home"
           component={ Home }
@@ -46,7 +50,7 @@ export default function App() {
         <Stack.Screen
           name='LobbyScreen'
           component={ Lobby }
-          options={{ headerShown: false }}
+          options={{ headerShown: false, gestureEnabled: false }}
         />
         <Stack.Screen
           name='GameScreen'
@@ -60,7 +64,8 @@ export default function App() {
           component={ CharacterSelection }
           options={{ headerShown: false }}
         />
-      </Stack.Navigator>
-    </NavigationContainer>
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

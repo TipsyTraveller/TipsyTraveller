@@ -1,29 +1,29 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import {Text, StyleSheet, View, TouchableOpacity, Alert} from "react-native";
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, StyleSheet, View, TouchableOpacity } from "react-native";
 import {useEffect, useState} from "react";
 //COMPONENTS
 import TeamContainer from "./components/TeamContainer";
 import LowerButtonContainer from "../shared/components/LowerButtonContainer/LowerButtonContainer";
 import InputField from "../shared/components/InputField/InputField";
 //FIREBASE
-import {set, ref,push,child, onValue, off, get, runTransaction, remove} from "firebase/database";
+import {set, ref,push,child, onValue, off, get, runTransaction, remove, update} from "firebase/database";
 import { db } from "../../firebaseConfig";
 //STYLES
-import { AndroidSafeView } from "../shared/styles/SafeAreaView/SafeAreaView";
 import BackButton from "../shared/components/BackButton/BackButton";
 
 export default function Lobby ({ navigation, route }) {
-    const { gameID,isHost,hostName,gameSettings} = route.params;
+    const { gameID, isHost, gameSettings } = route.params;
     const [host, setHost] = useState(isHost);
-    const [gameData, setGameData] = useState(gameSettings || {});
+    const [gameData, setGameData] = useState(gameSettings || route.params || {});
     const [userName, setUserName] = useState('');
     const [teamMembers, setTeamMembers] = useState();
-    const [inputVisibility, setInputVisibility] = useState(true);
     const [readyToAdd, setReadyToAdd] = useState(false);
+    const [isAddingPlayer, setIsAddingPlayer] = useState(false);
+    const [isStarting, setIsStarting] = useState(false);
     useEffect(() => {
 
         const players = ref(db, `players/${gameID}`);
-        const subscribe = onValue(players, (snapshot) => {
+        onValue(players, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 setTeamMembers(data);
@@ -50,7 +50,7 @@ export default function Lobby ({ navigation, route }) {
             setReadyToAdd(totalPlayers >= 3);
         }
 
-    }, [teamMembers]);
+    }, [gameData?.nrOfPlayers, teamMembers]);
     useEffect(() => {
         const game = ref(db, `games/${gameID}`);
         const unsubscribe = onValue(game, (snapshot) => {
@@ -77,6 +77,12 @@ export default function Lobby ({ navigation, route }) {
     }, [gameData?.status, teamMembers]);
 
     const handleAddPlayer  = async () => {
+        const trimmedUserName = userName.trim();
+        if (!trimmedUserName || isAddingPlayer) return;
+
+        Keyboard.dismiss();
+        setIsAddingPlayer(true);
+        try {
         const playersRef = ref(db, `players/${gameID}`);
         const snapshot = await get(playersRef);
         let currentCount = 0;
@@ -91,8 +97,14 @@ export default function Lobby ({ navigation, route }) {
         const newCount = currentCount + 1;
         await set(ref(db, `players/${gameID}/playerCounter`), newCount);
         const teamNr = giveTeamNr(newCount);
-        await push(ref(db, `players/${gameID}/team${teamNr}`),{name:userName, isLeader: false});
+        await push(ref(db, `players/${gameID}/team${teamNr}`),{name: trimmedUserName, isLeader: false});
         setUserName("");
+        } catch (error) {
+            console.log("Unable to add local player", error);
+            Alert.alert("Could not add player", "Check your connection and try again.");
+        } finally {
+            setIsAddingPlayer(false);
+        }
 
     }
     const handleRemovePlayer = async (teamNr, player) => {
@@ -141,8 +153,28 @@ export default function Lobby ({ navigation, route }) {
         }
     }
 
-    const handleBackButton = () => {
-        console.log("back");
+    const handleRules = () => {
+        Alert.alert(
+            "How to play",
+            "Teams take turns rolling the die and moving along the route. Complete the country challenge after each stop. The tour ends when every team reaches the finish."
+        );
+    }
+
+    const handleBack = () => {
+        if (!host) {
+            navigation.goBack();
+            return;
+        }
+
+        navigation.push("CreateGameScreen", {
+            editingGameID: gameID,
+            gameSettings: {
+                difficulty: gameData?.difficulty || "",
+                duration: gameData?.duration || "",
+                nrOfPlayers: gameData?.nrOfPlayers || "",
+                persons: gameData?.persons || {},
+            },
+        });
     }
 
     const handleNextButton = async () => {
@@ -171,15 +203,28 @@ export default function Lobby ({ navigation, route }) {
             Alert.alert("Action not allowed", "Only the host can start the game.");
             return;
         }
-        console.log("next");
-        await set(ref(db, `games/${gameID}/status`), "characterSelection");
+        setIsStarting(true);
+        try {
+            await update(ref(db, `games/${gameID}`), {
+                status: "characterSelection",
+                teamModels: null,
+            });
+        } catch (error) {
+            console.log("Unable to start game", error);
+            Alert.alert("Could not start game", "Check your connection and try again.");
+            setIsStarting(false);
+        }
         
     }
 
     return (
-        <SafeAreaView style={[ style.mainContainer, AndroidSafeView.AndroidSafeView]}>
+        <SafeAreaView style={style.mainContainer}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={style.keyboardView}
+          >
             <View style={ style.upperContainer }>
-                <BackButton navigation={ navigation }/>
+                <BackButton navigation={ navigation } onPress={handleBack}/>
                 <View style={ style.gamePinContainer}>
                     <Text style={ style.gamePinText }>
                        { `GAME ID` }
@@ -190,30 +235,39 @@ export default function Lobby ({ navigation, route }) {
                 </View>
             </View>
 
-            <View style={ style.teamContainerWrapper }>
+            <ScrollView
+                style={style.teamScroll}
+                contentContainerStyle={style.teamContainerWrapper}
+                keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
                 <TeamContainer
                     team={ teamMembers && teamMembers.team1 }
                     index={ 1 }
                     onRemovePlayer={handleRemovePlayer}
+                    canRemove={host}
                 />
                 <TeamContainer
                     team={ teamMembers && teamMembers.team2 }
                     index={ 2 }
                     onRemovePlayer={handleRemovePlayer}
+                    canRemove={host}
                 />
                 {gameData && gameData.nrOfPlayers === "9-12" && (
                     <TeamContainer
                         team={ teamMembers && teamMembers.team3 }
                         index={ 3 }
                         onRemovePlayer={handleRemovePlayer}
+                        canRemove={host}
 
                     />
                 ) }
 
                 
-            </View>
+            </ScrollView>
 
-            {host && inputVisibility === true && readyToAdd && (
+            {host && readyToAdd && (
                     <View style={ style.inputContainer}>
                         {/*<Text style={ style.inputLabel }>ENTER USERNAME</Text>*/}
                         <View style={ style.inputField }>
@@ -224,8 +278,14 @@ export default function Lobby ({ navigation, route }) {
                             />
                         </View>
                         <View style={ style.deleteButton }>
-                            <TouchableOpacity onPress={handleAddPlayer}>
-                                <Text style={ style.plusIcon }>+</Text>
+                            <TouchableOpacity
+                                accessibilityLabel="Add player"
+                                accessibilityRole="button"
+                                disabled={!userName.trim() || isAddingPlayer}
+                                onPress={handleAddPlayer}
+                                style={style.addButton}
+                            >
+                                <Text style={ style.plusIcon }>{isAddingPlayer ? '...' : '+'}</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -240,10 +300,12 @@ export default function Lobby ({ navigation, route }) {
             <LowerButtonContainer 
                 LeftButtonVisible={ true }
                 LeftButtonCopy={ "RULES" }
-                handleLeftButton={ handleBackButton }
-                RightButtonCopy={ "START" }
+                handleLeftButton={ handleRules }
+                RightButtonCopy={isStarting ? "STARTING" : host ? "START" : "WAITING"}
                 handleRightButton={ handleNextButton }
+                RightButtonDisabled={!host || isStarting}
             />
+          </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }
@@ -251,10 +313,13 @@ export default function Lobby ({ navigation, route }) {
 const style = StyleSheet.create({
     mainContainer: {
         backgroundColor: "#FAF3E0",
-        height: "100%",
+        flex: 1,
         alignItems: "center",
-        justifyContent: "space-between",
         paddingHorizontal: 20
+    },
+    keyboardView: {
+        flex: 1,
+        width: "100%",
     },
     upperContainer: {
         width: "100%",
@@ -263,7 +328,7 @@ const style = StyleSheet.create({
     },
     gamePinContainer: {
         justifyContent: "flex-end",
-        marginTop: 10
+        marginTop: 4
     },
     gamePinText: {
         textAlign: "right",
@@ -271,32 +336,41 @@ const style = StyleSheet.create({
         marginBottom: 10,
         fontSize: 18,
     },
-    teamContainerWrapper: {
+    teamScroll: {
         width: "100%",
-        flex:1,
+        flex: 1,
+    },
+    teamContainerWrapper: {
+        paddingTop: 12,
+        paddingBottom: 8,
     },
     inputContainer: {
         width: "100%",
-        paddingHorizontal: 20,
+        paddingHorizontal: 0,
         flexDirection: "row",
         marginBottom: 20,
         alignItems: "center",
-        height: "10%",
+        minHeight: 58,
     },
 
     inputField: {
         marginRight: 10,
-        width: "90%",
-        height: "100%",
+        flex: 1,
     },
 
     deleteButton: {
         backgroundColor: "#1BA39C",
-        width: "20%",
-        height: "70%",
+        width: 54,
+        height: 54,
         justifyContent: "center",
         alignItems: "center",
         borderRadius: 5,
+    },
+    addButton: {
+        width: "100%",
+        height: "100%",
+        alignItems: "center",
+        justifyContent: "center",
     },
 
     plusIcon: {

@@ -1,8 +1,8 @@
-import { useState } from "react"
-import { StyleSheet, View, Text, Pressable, Image } from "react-native";
+import { StyleSheet, View, Text, Pressable, Image, useWindowDimensions } from "react-native";
 
 
 export default function GameSettingButton({ title, setting, option, imgPath, gameSettings, setGameSettings }) {
+    const { height } = useWindowDimensions();
 
     const handleButton = () => {
         if( setting === "difficulty"){
@@ -21,7 +21,6 @@ export default function GameSettingButton({ title, setting, option, imgPath, gam
                 nrOfPlayers: option
             })
         }
-        console.log(setting);
     }
 
     const isActive = gameSettings[setting] === option;
@@ -29,9 +28,12 @@ export default function GameSettingButton({ title, setting, option, imgPath, gam
     return (
         <View style={ style.optionButtonWrapper} >
             <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
                 onPress={ () => handleButton() }
                 style={[
                     style.button,
+                    { height: Math.max(112, Math.min(150, height * 0.2)) },
                     isActive && style.buttonActive  
                 ]}
             >
@@ -54,7 +56,6 @@ const style = StyleSheet.create({
     button: {
         backgroundColor: "#FFFFFF",
         width: "100%",
-        height: 150,
         borderRadius: 12,
         color: "#000",
         justifyContent: "flex-end",

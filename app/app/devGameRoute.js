@@ -1,4 +1,4 @@
-export const START_ON_DEV_GAME_SCREEN = __DEV__ && true;
+export const START_ON_DEV_GAME_SCREEN = false;
 
 export const DEV_GAME_ROUTE_PARAMS = {
   gameID: 'DEV-0000',

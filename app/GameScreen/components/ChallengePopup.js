@@ -1,5 +1,6 @@
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useEffect, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PERFORATION_DOTS = Array.from({ length: 12 });
 const PIXEL_SPARKS = Array.from({ length: 9 });
@@ -39,6 +40,9 @@ const PixelSparks = ({ accent }) => (
 );
 
 const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const compact = height < 430;
   const entrance = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -247,13 +251,25 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
   const countryCode = getCountryCode(challenge.country);
 
   return (
-    <View style={styles.overlay} pointerEvents="auto">
+    <View
+      style={[
+        styles.overlay,
+        {
+          paddingTop: Math.max(12, insets.top + 8),
+          paddingBottom: Math.max(12, insets.bottom + 8),
+          paddingLeft: Math.max(14, insets.left + 8),
+          paddingRight: Math.max(14, insets.right + 8),
+        },
+      ]}
+      pointerEvents="auto"
+    >
       <View style={styles.backdropGrid} pointerEvents="none" />
       <Animated.View style={[styles.accentBeam, accentGlow, { backgroundColor: challenge.accent }]} />
 
       <Animated.View
         style={[
           styles.cardShadow,
+          compact && styles.cardShadowCompact,
           cardTransform,
           { borderColor: challenge.accent },
         ]}
@@ -273,7 +289,12 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
             <PixelSparks accent={challenge.accent} />
           </View>
 
-          <View style={styles.card}>
+          <ScrollView
+            style={[styles.cardScroll, { maxHeight: Math.max(210, height - insets.top - insets.bottom - 78) }]}
+            contentContainerStyle={[styles.card, compact && styles.cardCompact]}
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.headerRow}>
               <View style={styles.headerLeft}>
                 <View style={[styles.stamp, { borderColor: challenge.accent }]}>
@@ -297,8 +318,8 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
               <View style={[styles.routeDot, { backgroundColor: challenge.accent }]} />
             </View>
 
-            <View style={styles.mainContent}>
-              <Animated.View style={[styles.countryPanel, countryPanelStyle, { borderColor: challenge.accent }]}>
+            <View style={[styles.mainContent, compact && styles.mainContentCompact]}>
+              <Animated.View style={[styles.countryPanel, compact && styles.countryPanelCompact, countryPanelStyle, { borderColor: challenge.accent }]}>
                 <Text style={[styles.countryCode, { color: challenge.accent }]}>
                   {countryCode}
                 </Text>
@@ -310,12 +331,12 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
                   <Text style={styles.challengeBadgeText}>Country Challenge</Text>
                 </Animated.View>
 
-                <Text style={styles.title}>{challenge.title}</Text>
-                <Text style={styles.prompt}>{challenge.prompt}</Text>
+                <Text style={[styles.title, compact && styles.titleCompact]}>{challenge.title}</Text>
+                <Text style={[styles.prompt, compact && styles.promptCompact]}>{challenge.prompt}</Text>
               </View>
             </View>
 
-            <View style={styles.footerRow}>
+            <View style={[styles.footerRow, compact && styles.footerRowCompact]}>
               <View style={styles.penaltyBox}>
                 <Text style={styles.penaltyLabel}>If you fail</Text>
                 <Text style={styles.penaltyText}>{challenge.penalty}</Text>
@@ -323,6 +344,8 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
 
               <Animated.View style={buttonPulseStyle}>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Complete challenge and start next turn"
                   onPress={onComplete}
                   style={({ pressed }) => [
                     styles.completeButton,
@@ -335,7 +358,7 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
                 </Pressable>
               </Animated.View>
             </View>
-          </View>
+          </ScrollView>
           <View style={[styles.bottomStripe, { backgroundColor: challenge.accent }]} />
           <Perforation accent={challenge.accent} />
         </Animated.View>
@@ -378,6 +401,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.42,
     shadowRadius: 18,
     elevation: 12,
+  },
+  cardShadowCompact: {
+    width: '96%',
   },
   ticketLayer: {
     position: 'absolute',
@@ -424,6 +450,12 @@ const styles = StyleSheet.create({
   card: {
     padding: 16,
     backgroundColor: '#FAF3E0',
+  },
+  cardScroll: {
+    backgroundColor: '#FAF3E0',
+  },
+  cardCompact: {
+    padding: 10,
   },
   headerRow: {
     flexDirection: 'row',
@@ -494,6 +526,9 @@ const styles = StyleSheet.create({
     gap: 14,
     alignItems: 'stretch',
   },
+  mainContentCompact: {
+    gap: 10,
+  },
   countryPanel: {
     width: 134,
     minHeight: 122,
@@ -502,6 +537,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF1CD',
     borderRadius: 8,
     borderWidth: 4,
+  },
+  countryPanelCompact: {
+    width: 104,
+    minHeight: 96,
   },
   countryCode: {
     fontFamily: 'dogicapixelbold',
@@ -542,6 +581,11 @@ const styles = StyleSheet.create({
     lineHeight: 29,
     textTransform: 'uppercase',
   },
+  titleCompact: {
+    marginTop: 7,
+    fontSize: 17,
+    lineHeight: 22,
+  },
   prompt: {
     marginTop: 7,
     color: '#111111',
@@ -549,11 +593,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
+  promptCompact: {
+    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   footerRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
     gap: 12,
     marginTop: 14,
+  },
+  footerRowCompact: {
+    marginTop: 10,
   },
   penaltyBox: {
     flex: 1,

@@ -1,17 +1,20 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TourControl = ({ activeTeamLabel, canRoll, lastRoll, onRestart, onRoll, state }) => {
+  const insets = useSafeAreaInsets();
   const isDone = state === 'done';
   const buttonDisabled = !canRoll && !isDone;
 
   return (
-    <View style={styles.tourControl}>
+    <View style={[styles.tourControl, { right: insets.right + 10, top: insets.top + 8 }]}>
       <Text style={styles.teamText}>{isDone ? 'Game Over' : `${activeTeamLabel}'s Turn`}</Text>
       {lastRoll && !isDone && (
         <Text style={styles.rollText}>Last roll: {lastRoll}</Text>
       )}
 
       <TouchableOpacity
+        accessibilityRole="button"
         onPress={isDone ? onRestart : onRoll}
         style={[styles.moveButton, buttonDisabled && styles.buttonDisabled]}
         disabled={buttonDisabled}
@@ -31,11 +34,9 @@ const TourControl = ({ activeTeamLabel, canRoll, lastRoll, onRestart, onRoll, st
 const styles = StyleSheet.create({
   tourControl: {
     position: 'absolute',
-    top: 14,
-    right: 14,
     alignItems: 'stretch',
     gap: 6,
-    padding: 10,
+    padding: 8,
     backgroundColor: '#FAF3E0',
     borderRadius: 8,
     borderWidth: 3,
@@ -48,16 +49,16 @@ const styles = StyleSheet.create({
   moveButton: {
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 128,
-    height: 38,
-    paddingHorizontal: 14,
+    minWidth: 116,
+    minHeight: 38,
+    paddingHorizontal: 10,
     backgroundColor: '#1BA39C',
     borderRadius: 8,
     borderWidth: 3,
     borderColor: '#111111',
   },
   buttonDisabled: { opacity: 0.4 },
-  teamText: { color: '#2C3E50', fontSize: 10, fontFamily: 'dogicapixelbold', textTransform: 'uppercase' },
+  teamText: { color: '#2C3E50', fontSize: 9, fontFamily: 'dogicapixelbold', textTransform: 'uppercase' },
   rollText: { color: '#D71920', fontSize: 10, fontFamily: 'dogicapixel' },
   footerText: { fontSize: 12, fontWeight: 'bold', color: '#FFF', fontFamily: 'dogicapixel' },
 });

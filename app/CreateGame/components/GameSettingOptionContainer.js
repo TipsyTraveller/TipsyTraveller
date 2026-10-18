@@ -44,17 +44,16 @@ export default function GameSettingOptionContainer ({ GameSettingOption}) {
 
 const style = StyleSheet.create({
     optionContainer: {
-        marginTop: 40,
-        marginBottom: 40,
-        height: "27%",
-        width: "90%"
+        marginTop: 12,
+        marginBottom: 10,
+        width: "90%",
+        maxWidth: 620,
     },
     buttonContainer: {
         width: "100%",
-        flex: 1,
         flexDirection: "row",
         justifyContent: "space-between",
-        marginTop: 30
+        marginTop: 18
     },
     settingTitle: {
         paddingBottom: 5,
