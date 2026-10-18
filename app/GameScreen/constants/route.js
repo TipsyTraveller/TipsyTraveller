@@ -1,25 +1,25 @@
 import * as THREE from 'three';
-import { uv } from './mapCoordinates';
+import { svgPoint } from './mapCoordinates';
 
-export const BELGIUM = uv(0.429, 0.552);
-export const FRANCE = uv(0.416, 0.600);
-export const SPAIN_TOP = uv(0.352, 0.642);
-export const PORTUGAL = uv(0.348, 0.690);
-export const SPAIN_R = uv(0.412, 0.651);
-export const ITALY = uv(0.464, 0.619);
-export const GERMANY = uv(0.461, 0.548);
+export const BELGIUM = svgPoint(529, 301);
+export const FRANCE = svgPoint(523, 317);
+export const SPAIN_TOP = svgPoint(511, 331);
+export const PORTUGAL = svgPoint(493, 342);
+export const SPAIN_R = svgPoint(520, 341);
+export const ITALY = svgPoint(551, 333);
+export const GERMANY = svgPoint(546, 298);
 
 export const ROUTE = [BELGIUM, FRANCE, SPAIN_TOP, PORTUGAL, SPAIN_R, ITALY, GERMANY, BELGIUM];
 export const MARKERS = ROUTE.slice(0, -1);
 
 export const DRIVE_LEGS = [
-  [BELGIUM, uv(0.429, 0.569), uv(0.424, 0.588), FRANCE],
-  [FRANCE, uv(0.410, 0.620), uv(0.395, 0.650), uv(0.370, 0.645), SPAIN_TOP],
-  [SPAIN_TOP, uv(0.354, 0.664), uv(0.353, 0.680), PORTUGAL],
-  [PORTUGAL, uv(0.365, 0.710), uv(0.391, 0.700), uv(0.400, 0.670), SPAIN_R],
-  [SPAIN_R, uv(0.422, 0.638), uv(0.435, 0.638), uv(0.448, 0.627), ITALY],
-  [ITALY, uv(0.466, 0.596), uv(0.465, 0.575), GERMANY],
-  [GERMANY, uv(0.452, 0.546), uv(0.441, 0.548), BELGIUM],
+  [BELGIUM, svgPoint(528, 307), svgPoint(526, 312), FRANCE],
+  [FRANCE, svgPoint(521, 323), svgPoint(516, 329), SPAIN_TOP],
+  [SPAIN_TOP, svgPoint(507, 337), svgPoint(500, 341), PORTUGAL],
+  [PORTUGAL, svgPoint(499, 346), svgPoint(511, 346), svgPoint(516, 342), SPAIN_R],
+  [SPAIN_R, svgPoint(528, 334), svgPoint(537, 330), svgPoint(545, 332), ITALY],
+  [ITALY, svgPoint(552, 320), svgPoint(550, 308), GERMANY],
+  [GERMANY, svgPoint(541, 296), svgPoint(535, 298), BELGIUM],
 ];
 
 export const DRIVE_CURVES = DRIVE_LEGS.map(

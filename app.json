@@ -6,12 +6,6 @@
     "orientation": "default",
     "icon": "./assets/icons/ios-light.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/icons/splash-icon-light.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true,
       "icon": "./assets/icons/ios-light.png",
@@ -25,7 +19,6 @@
         "foregroundImage": "./assets/icons/ios-light.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.nielspet.TipsyTraveller"
     },
     "web": {
@@ -42,7 +35,16 @@
         }
       ],
       "expo-screen-orientation",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icons/splash-icon-light.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {
