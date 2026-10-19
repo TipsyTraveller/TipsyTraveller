@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import { RoundedBox } from '@react-three/drei/native';
 import * as THREE from 'three';
@@ -235,7 +235,7 @@ const ThrowMeLabel = ({ labelRef }) => (
   </group>
 );
 
-const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
+const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart }) => {
   const diceRef = useRef();
   const labelRef = useRef();
   const stateRef = useRef({
@@ -609,6 +609,6 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
       <ThrowMeLabel labelRef={labelRef} />
     </>
   );
-};
+});
 
 export default BoardDice;

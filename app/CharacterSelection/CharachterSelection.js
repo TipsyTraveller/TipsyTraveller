@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../firebaseConfig';
 import Header from '../shared/components/Header/Header';
 import VehicleModel from '../GameScreen/components/VehicleModel';
+import { preloadBoardAssets } from '../GameScreen/constants/boardAssets';
 import { GAME_PIECES } from '../GameScreen/constants/gamePieces';
 import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
 
@@ -35,6 +36,11 @@ export default function CharacterSelection({ navigation, route }) {
   const { height } = useWindowDimensions();
   const hasNavigatedRef = useRef(false);
   const selectedModel = MODEL_OPTIONS[selectedModelIndex];
+
+  useEffect(() => {
+    preloadBoardAssets();
+  }, []);
+
   const requiredTeamKeys = useMemo(
     () => getRequiredTeamKeys(liveGameData),
     [liveGameData?.nrOfPlayers]

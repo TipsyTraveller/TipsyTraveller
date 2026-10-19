@@ -470,6 +470,18 @@ The vector map model, vehicle models, and country-marker model use separate Reac
 those assets is still resolving, so one slow asset does not hide the entire
 physical-device board. The route and die do not load external models.
 
+`CharacterSelection` calls `preloadBoardAssets()` (`constants/boardAssets.js`) on
+mount, which warms the `useGLTF` cache for the map and marker GLBs so they are
+already decoded when `GameScreen` mounts. Vehicle GLBs are not preloaded as a
+set; the ones players browse in the selection screen are already cached. Preload
+was verified on web only; confirm it on iOS/Android before relying on it.
+
+The 3D components (`GameScene`, `GamePieces`, `GamePiece`, `CountryMarkers`,
+`MapPlane`, `DottedRouteLine`, `BoardDice`, `VehicleModel`) are wrapped in
+`React.memo`. `GameScreen` passes its handlers through `useLatestCallback`
+(stable identity, always calls the latest closure), so HUD-only state changes
+such as `lastRoll` or `remainingMoves` no longer re-render the Canvas tree.
+
 ### Scene graph
 
 ```text
@@ -662,6 +674,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - Replaces materials with team-colored paint, dark parts, glass, or lights for the classic-style model.
 - For `preserveMaterials` models, web keeps a cloned PBR material while native Expo GL uses a lightweight unlit material backed by the already-loaded shared texture. Both paths set sRGB color space and disable `flipY`.
 - Computes a bounding box to center the model, align its lowest point to the ground, and normalize its footprint before applying a common preview or board scale.
+- Disposes the materials it created when the prepared clone is replaced or unmounted (and, on web only, the cloned textures). Geometry and native textures belong to the cached GLTF and are never disposed here.
 
 ### Motion
 
@@ -1300,7 +1313,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GameScene.js` | Canvas and 3D scene composition |
 | `components/MapPlane.js` | Continuous ocean plane and raised vector-map viewport |
 | `components/DottedRouteLine.js` | Animated route path ribbon, flowing chevrons, and waypoint rings |
-| `components/CountryMarkers.js` | Destination markers and active-marker animation |
+| `components/CountryMarkers.js` | Destination markers (two shared materials, one clone per marker) and active-marker animation |
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
@@ -1321,6 +1334,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `constants/diceBounds.js` | Allowed die interaction region |
 | `constants/gamePieces.js` | Team IDs, colors, counts, and initial progress |
 | `constants/modelOptions.js` | Vehicle registry and transforms |
+| `constants/boardAssets.js` | Map and marker GLB sources plus `preloadBoardAssets()` |
 | `constants/challenges.js` | Country challenge content |
 
 ### Shared UI

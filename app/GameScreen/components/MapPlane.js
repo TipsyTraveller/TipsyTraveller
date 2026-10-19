@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei/native';
 import {
   MAP_CY,
@@ -11,6 +11,7 @@ import {
   MAP_Z,
 } from '../constants/mapCoordinates';
 import * as THREE from 'three';
+import { MAP_MODEL_SOURCE } from '../constants/boardAssets';
 
 const OCEAN_W = 240;
 const OCEAN_H = 180;
@@ -68,9 +69,14 @@ const prepareVectorMap = (scene) => {
   return clone;
 };
 
-const MapPlane = () => {
-  const { scene } = useGLTF(require('../../../assets/models/world-map-vector.glb'));
+const MapPlane = memo(() => {
+  const { scene } = useGLTF(MAP_MODEL_SOURCE);
   const vectorMap = useMemo(() => prepareVectorMap(scene), [scene]);
+
+  // The clone owns its materials (geometry is shared with the cached GLTF scene).
+  useEffect(() => () => {
+    vectorMap.traverse((child) => child.material?.dispose?.());
+  }, [vectorMap]);
 
   return (
     <group>
@@ -86,6 +92,6 @@ const MapPlane = () => {
       />
     </group>
   );
-};
+});
 
 export default MapPlane;

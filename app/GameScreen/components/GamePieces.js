@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import GamePiece from './GamePiece';
 
-const GamePieces = ({
+const GamePieces = memo(({
   activeCarProgressRef,
   driving,
   gamePieces,
@@ -40,6 +41,6 @@ const GamePieces = ({
       );
     })}
   </>
-);
+));
 
 export default GamePieces;
