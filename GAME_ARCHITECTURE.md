@@ -606,7 +606,8 @@ The die keeps its high-frequency animation state in refs rather than React state
 | `idle` | Floats, spins, and displays “THROW ME” |
 | `held` | Follows the pointer above the board |
 | `throwing` | Performs airborne and rolling animation |
-| `result` | Flies the die toward the camera with the rolled face forward, then returns it to idle |
+| `result` | Flies the die toward the camera with the rolled face forward, then fades it out |
+| `hidden` | Keeps the die off the board during movement and challenges until rolling is enabled again |
 
 ### Interaction sequence
 
@@ -620,9 +621,9 @@ The die keeps its high-frequency animation state in refs rather than React state
 8. It rolls and bounces toward the final position.
 9. Rotation is interpolated to an orientation that shows the result face.
 10. `onRollComplete(result)` tells `GameScreen` to lay out the animated path and move the vehicle.
-11. The physical die flies toward the screen at a restrained scale, rotates the rolled face toward the camera, holds briefly, and returns to its idle position over 1.2 seconds.
+11. The physical die flies toward the screen at a restrained scale, rotates the rolled face toward the camera, holds briefly, and fades out in place over 1.2 seconds.
 
-The throw lasts 1.75 seconds; the first 42% is airborne. Physical-die rolls delay vehicle motion until the 1.2-second result animation has exited. The HUD roll shortcut has no result animation and keeps the normal route-reveal timing.
+The throw lasts 1.75 seconds; the first 42% is airborne. During the fade, only the rolled face remains rendered so pips from the other transparent faces cannot bleed through as a false second result. Physical-die rolls delay vehicle motion until the 1.2-second result animation has faded out. The die remains hidden during movement and challenges, then reappears at its idle position when rolling is enabled for the next turn. The HUD roll shortcut has no result animation and keeps the normal route-reveal timing.
 
 ### HUD roll shortcut
 
@@ -1088,7 +1089,7 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 2. Run `npm start`, scan the QR code, and open the project in Expo Go.
 3. Confirm the map, pins, GLTF vehicles, and 3D die render cleanly without static route dots.
 4. Drag and throw the die.
-5. Confirm the landed die flies toward the screen, presents the rolled face toward the camera, returns to its idle position before the vehicle starts driving, and the animated route path lays out from the active vehicle to the destination stop.
+5. Confirm the landed die flies toward the screen, presents the rolled face toward the camera, fades out cleanly before the vehicle starts driving, and the animated route path lays out from the active vehicle to the destination stop.
 6. Confirm the active vehicle smoothly accelerates, follows the animated route path, and brakes into the destination stop while consuming the path.
 7. Confirm the camera stays in overview during the path reveal, follows during vehicle movement, and returns to overview afterward.
 8. Confirm the appropriate challenge appears.

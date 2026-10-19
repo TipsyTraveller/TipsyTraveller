@@ -29,7 +29,7 @@ const RESULT_FLY_IN_END = 0.32;
 const RESULT_HOLD_END = 0.68;
 const RESULT_SCREEN_DISTANCE = 2.1;
 const RESULT_SCREEN_Y_OFFSET = 0.08;
-const RESULT_SCALE = 1.35;
+const RESULT_SCALE = 1;
 const IDLE_POSITION = IDLE_CENTER.clone().setZ(IDLE_Z);
 const LABEL_TEXT = 'THROW ME';
 const LABEL_CELL_SIZE = 0.035;
@@ -134,14 +134,24 @@ const DicePips = ({ pipPositions = PIP_POSITIONS, pipRadius = PIP_RADIUS, value 
     {FACE_PIPS[value].map((pip) => (
       <mesh key={pip} position={pipPositions[pip]}>
         <circleGeometry args={[pipRadius, 16]} />
-        <meshBasicMaterial color="#111111" side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#111111" side={THREE.DoubleSide} transparent={true} />
       </mesh>
     ))}
   </>
 );
 
-const DiceFace = ({ position, rotation, value }) => (
-  <group position={position} rotation={rotation}>
+const DiceFace = ({ faceRefs, position, rotation, value }) => (
+  <group
+    ref={(node) => {
+      if (node) {
+        faceRefs.current[value] = node;
+      } else {
+        delete faceRefs.current[value];
+      }
+    }}
+    position={position}
+    rotation={rotation}
+  >
     <DicePips value={value} />
   </group>
 );
@@ -207,6 +217,7 @@ const ThrowMeLabel = ({ labelRef }) => (
 
 const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
   const diceRef = useRef();
+  const faceRefs = useRef({});
   const labelRef = useRef();
   const stateRef = useRef({
     mode: 'idle',
@@ -228,10 +239,9 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     startTime: 0,
     startPosition: LAND_POSITION.clone(),
     startQuaternion: new THREE.Quaternion(),
-    returnCaptured: false,
-    returnPosition: LAND_POSITION.clone(),
-    returnQuaternion: new THREE.Quaternion(),
+    facesIsolated: false,
   });
+  const diceMaterialsRef = useRef([]);
   const resultTargetPosition = useMemo(() => new THREE.Vector3(), []);
   const resultTargetQuaternion = useMemo(() => new THREE.Quaternion(), []);
   const idleQuaternion = useMemo(() => (
@@ -242,6 +252,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     color: 0xfff1cd,
     roughness: 0.5,
     metalness: 0.04,
+    transparent: true,
   }), []);
 
   const interactionMaterial = useMemo(() => new THREE.MeshBasicMaterial({
@@ -250,12 +261,47 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     depthWrite: false,
   }), []);
 
+  const setVisibleFaces = (visibleValue = null) => {
+    Object.entries(faceRefs.current).forEach(([value, face]) => {
+      face.visible = visibleValue === null || Number(value) === visibleValue;
+    });
+  };
+
   useEffect(() => {
     if (!diceRef.current) return;
 
     diceRef.current.position.copy(IDLE_POSITION);
     diceRef.current.rotation.set(...INITIAL_ROTATION);
+    diceRef.current.traverse((child) => {
+      if (!child.material) return;
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        material.transparent = true;
+        material.opacity = 1;
+        material.needsUpdate = true;
+
+        if (!diceMaterialsRef.current.includes(material)) {
+          diceMaterialsRef.current.push(material);
+        }
+      });
+    });
   }, []);
+
+  useEffect(() => {
+    if (!enabled || stateRef.current.mode !== 'hidden' || !diceRef.current) return;
+
+    diceRef.current.visible = true;
+    diceRef.current.position.copy(IDLE_POSITION);
+    diceRef.current.quaternion.copy(idleQuaternion);
+    diceRef.current.scale.setScalar(1);
+    diceMaterialsRef.current.forEach((material) => {
+      material.opacity = 1;
+    });
+    setVisibleFaces();
+    stateRef.current.idleBasePosition.copy(IDLE_POSITION);
+    stateRef.current.mode = 'idle';
+  }, [enabled, idleQuaternion]);
 
   const beginPickup = (event) => {
     event.stopPropagation();
@@ -263,7 +309,12 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     if (!enabled || !diceRef.current || stateRef.current.mode === 'throwing' || stateRef.current.mode === 'result') return;
 
     resultAnimationRef.current.active = false;
+    diceRef.current.visible = true;
     diceRef.current.scale.setScalar(1);
+    diceMaterialsRef.current.forEach((material) => {
+      material.opacity = 1;
+    });
+    setVisibleFaces();
 
     const holdTarget = getHoldPlanePoint(event, diceRef.current.position);
 
@@ -376,43 +427,48 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
         flyProgress
       );
       diceRef.current.scale.setScalar(THREE.MathUtils.lerp(1, RESULT_SCALE, flyProgress));
+      diceMaterialsRef.current.forEach((material) => {
+        material.opacity = 1;
+      });
     } else if (progress < RESULT_HOLD_END) {
       diceRef.current.position.copy(resultTargetPosition);
       diceRef.current.quaternion.copy(resultTargetQuaternion);
       diceRef.current.scale.setScalar(RESULT_SCALE);
+      diceMaterialsRef.current.forEach((material) => {
+        material.opacity = 1;
+      });
     } else {
-      if (!resultAnimationRef.current.returnCaptured) {
-        resultAnimationRef.current.returnCaptured = true;
-        resultAnimationRef.current.returnPosition.copy(diceRef.current.position);
-        resultAnimationRef.current.returnQuaternion.copy(diceRef.current.quaternion);
+      if (!resultAnimationRef.current.facesIsolated) {
+        resultAnimationRef.current.facesIsolated = true;
+        setVisibleFaces(stateRef.current.result);
       }
 
-      const returnProgress = easeInOutCubic(
+      const fadeProgress = easeInOutCubic(
         (progress - RESULT_HOLD_END) / (1 - RESULT_HOLD_END)
       );
 
-      diceRef.current.position.lerpVectors(
-        resultAnimationRef.current.returnPosition,
-        IDLE_POSITION,
-        returnProgress
-      );
-      diceRef.current.quaternion.slerpQuaternions(
-        resultAnimationRef.current.returnQuaternion,
-        idleQuaternion,
-        returnProgress
-      );
-      diceRef.current.scale.setScalar(THREE.MathUtils.lerp(RESULT_SCALE, 1, returnProgress));
+      diceRef.current.position.copy(resultTargetPosition);
+      diceRef.current.quaternion.copy(resultTargetQuaternion);
+      diceRef.current.scale.setScalar(RESULT_SCALE);
+      diceMaterialsRef.current.forEach((material) => {
+        material.opacity = 1 - fadeProgress;
+      });
     }
 
     if (progress >= 1) {
       resultAnimationRef.current.active = false;
+      diceRef.current.visible = false;
       diceRef.current.position.copy(IDLE_POSITION);
       diceRef.current.quaternion.copy(idleQuaternion);
       diceRef.current.scale.setScalar(1);
+      diceMaterialsRef.current.forEach((material) => {
+        material.opacity = 1;
+      });
+      setVisibleFaces();
 
       if (stateRef.current.mode === 'result') {
         stateRef.current.idleBasePosition.copy(IDLE_POSITION);
-        stateRef.current.mode = 'idle';
+        stateRef.current.mode = 'hidden';
       }
     }
   };
@@ -534,9 +590,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
         startTime: null,
         startPosition: stateRef.current.endPosition.clone(),
         startQuaternion: diceRef.current.quaternion.clone(),
-        returnCaptured: false,
-        returnPosition: stateRef.current.endPosition.clone(),
-        returnQuaternion: diceRef.current.quaternion.clone(),
+        facesIsolated: false,
       };
     }
   });
@@ -570,6 +624,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
         {FACE_TRANSFORMS.map((face) => (
           <DiceFace
             key={face.value}
+            faceRefs={faceRefs}
             position={face.position}
             rotation={face.rotation}
             value={face.value}
