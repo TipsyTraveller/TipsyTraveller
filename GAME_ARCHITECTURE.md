@@ -102,13 +102,15 @@ This document distinguishes between the visible product concept and what the cur
 - Configurable location challenge cards.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Active-game re-entry through the room PIN with canonical state restoration.
+- Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
+- Dedicated Game Settings screen (`SettingsScreen`) with audio/haptics toggles, party drinking modes (classic vs sips & dares), challenge timer pace, 3D board options, and interactive rules guide.
+- Interactive retro arcade Header buttons for Account and Settings with vector SVG iconography and tactile press states.
 - iOS 27/Xcode 27 development support through Device Hub.
 
 ### Partially implemented
 
 - Difficulty and duration are stored in Firebase but do not modify gameplay.
-- Profile and settings icons are visible but have no actions.
-- The lobby `RULES` button opens a concise rules summary. Profile and settings icons remain decorative.
+- The lobby `RULES` button opens a concise rules summary.
 - The game shows “Tour complete” when all teams finish, but it does not rank teams or announce a winner.
 
 ### Development-mode behavior
@@ -219,6 +221,8 @@ The root `Stack.Navigator` contains:
 5. `LobbyScreen`
 6. `GameScreen`
 7. `CharacterSelection`
+8. `AccountScreen`
+9. `SettingsScreen`
 
 Every stack header is hidden; each screen supplies its own header or controls.
 
@@ -355,8 +359,8 @@ Purpose: entry point for normal sessions.
 - Shows the tagline “Take a roadtrip and drink your way to victory!”
 - `CREATE GAME` navigates to `CreateGameScreen`.
 - `JOIN GAME` navigates to `JoinGameScreen`.
-- The content scrolls when necessary and the globe/wordmark scales to the available phone height instead of relying on a fixed-size layout.
-- Profile and settings icons are decorative at present.
+- The content scrolls when necessary and the globe/wordmark scales to the available viewport height instead of relying on a fixed-size layout. Web uses explicit, compact vertical spacing so wide desktop viewports do not stretch the controls apart.
+- Profile and settings header buttons navigate to `AccountScreen` and `SettingsScreen` with tactile press animations and vector SVG iconography.
 
 ### `CreateGameScreen`
 
@@ -451,6 +455,29 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
 - The native HUD and turn control respect landscape safe-area insets, while long challenge tickets become scrollable and use a compact layout on short landscape viewports.
+
+### `AccountScreen`
+
+Purpose: manage local player identity, party badges, preferred vehicle models, lifetime statistics, and anonymous device state.
+
+- Renders a retro-arcade styled profile card where players set their default username (persisted in AsyncStorage) and party title/badge (Party Legend, Road Captain, Shotgun King, Navigator, Mixologist, High Roller, Daredevil, Chill Tourist).
+- When a username is saved, `HostName` and `JoinGameScreen` auto-populate the field so players do not have to re-type their names every game session.
+- Allows browsing and selecting preferred vehicles from `MODEL_OPTIONS`.
+- Tracks and displays lifetime career statistics: tours completed, challenges won, sips logged, and total dice rolled.
+- Displays the active anonymous `deviceID` used by Firebase for room re-entry and turn management, with a quick action to regenerate device identity when testing fresh installations.
+- Supports resetting statistics and clearing local account data.
+
+### `SettingsScreen`
+
+Purpose: configure audio, haptic, drinking rules, and 3D board preferences, plus access the game guide.
+
+- Audio & Haptics: toggle Sound Effects (SFX), Ambient Music, and Haptic Feedback.
+- Party & Drinking Rules: switch between "Classic Tipsy" (alcoholic party mode with sips and drinks) and "Sips & Dares" (driver and non-drinker friendly mode with soft drinks or party dares).
+- Challenge Timer: switch between "Relaxed" (untimed) and "Speed Run" (45-second timer).
+- Gameplay & 3D Board: toggle Fast Dice Animations (quick settle without waiting for complete physics bounce), Camera Follow Vehicle (smooth cinematic 3D camera tracking of the active vehicle), and Auto-Advance Turn.
+- How To Play Quick Guide: interactive accordion covering dice & turns, destination challenges, the mid-air kickflip pass, and tour completion.
+- About TipsyTraveller: version info (1.0.0), platform stack (Expo SDK 57, React Three Fiber, Firebase), and credits.
+- Revert all settings back to default values with one tap.
 
 ---
 
@@ -966,6 +993,10 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 `teamMembers` maps the local AsyncStorage device ID to its team/leader role, and
 `gameData` supplies host identity, room settings, and vehicle models.
 
+### Header / DevPortal → AccountScreen & SettingsScreen
+
+Header buttons across setup screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`, `CharacterSelection`) and the DevPortal screen switcher navigate to `AccountScreen` and `SettingsScreen` without required parameters. Both screens mount a `<Header showBackButton title="..." />` control that returns players to their prior route.
+
 ---
 
 ## 14. Assets and visual design
@@ -985,12 +1016,14 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 | `assets/models/location.glb` | Country pin geometry |
 | `assets/models/*.glb` | Selectable team vehicles |
 
-The shared home/setup globe renderer sizes the Lottie artboard with its source
+The shared home/setup globe layout sizes the Lottie artboard with its source
 aspect ratio and compensates for the source artwork being authored left of the
 composition's center. It also crops the animation upward so the globe clears
-the separately rendered wordmark. This keeps the visible globe, rather than
-only its transparent Lottie canvas, aligned consistently on iOS, Android, and
-web.
+the separately rendered wordmark. Native uses `lottie-react-native`; web uses
+the installed `DotLottieReact` renderer directly so the configured frame segment
+autoplays and loops reliably. Both renderers share the same sizing and cropping
+layout, keeping the visible globe, rather than only its transparent Lottie
+canvas, aligned consistently on iOS, Android, and web.
 
 ### Metro asset support
 
@@ -1246,7 +1279,7 @@ camera motion, GLTF appearance, and final 3D performance.
 ### UI and code quality
 
 1. The direct-to-game development shortcut is manual and requires editing `START_ON_DEV_GAME_SCREEN`; there is no in-app or environment-based toggle.
-2. Profile/settings buttons and lobby rules are placeholders.
+2. Lobby rules remain a concise modal summary; full interactive guides and preference management are available in `SettingsScreen`.
 3. Several imports, state values, and components are unused.
 4. `LoadingComponent` references an undefined `animation` ref and uses a non-relative asset path; it is currently unused.
 5. `ModelTestPanel` exists but is not mounted.
@@ -1353,7 +1386,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `app/app/app.js` | Font loading and stack navigator |
 | `app/app/devGameRoute.js` | Direct-to-game development flag and mock route parameters |
 
-### Setup and lobby screens
+### Setup, account, and lobby screens
 
 | File | Responsibility |
 |---|---|
@@ -1367,6 +1400,8 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `app/Lobby/components/TeamContainer.js` | Team roster panel |
 | `app/Lobby/components/PlayerBox.js` | Player chip/removal UI |
 | `app/CharacterSelection/CharachterSelection.js` | Leader detection, vehicle preview, and selection |
+| `app/Account/Account.js` | Local player profile, badges, stats, and device ID management |
+| `app/Settings/Settings.js` | Audio/haptic switches, drinking modes, timer pace, 3D options, and guide |
 
 ### Game controller and 3D components
 
@@ -1403,11 +1438,12 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `constants/boardAssets.js` | Map and marker GLB sources plus `preloadBoardAssets()` |
 | `constants/challenges.js` | Country challenge content |
 
-### Shared UI
+### Shared UI and local storage
 
 | File/group | Responsibility |
 |---|---|
-| `shared/components/Header` | Back/profile/settings header |
+| `shared/components/Header` | Back/profile/settings header with vector icons and tactile press states |
+| `shared/components/Header/HeaderIcons` | Vector SVG Account and Settings icon components |
 | `shared/components/BackButton` | Navigation back action |
 | `shared/components/Button` | Standard pill-shaped action button |
 | `shared/components/InputField` | General text input |
@@ -1415,6 +1451,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `shared/components/LowerButtonContainer` | Paired lower navigation buttons |
 | `shared/components/MainAnimation` | Globe Lottie and app title |
 | `shared/components/LoadingComponent` | Currently unused loading animation |
+| `shared/storage/userSettings.js` | AsyncStorage persistence for player profile, badges, stats, and settings |
 | `shared/styles/SafeAreaView` | Android safe-area adjustment |
 
 ### Developer tools

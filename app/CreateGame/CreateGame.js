@@ -1,4 +1,4 @@
-import { Alert, View, StyleSheet, ScrollView } from "react-native";
+import { Alert, Platform, View, StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
 import { get, ref, runTransaction } from "firebase/database";
@@ -194,7 +194,7 @@ export default function SelectionPages ({ navigation, route }) {
             />
             <ScrollView
                 bounces={false}
-                contentContainerStyle={style.content}
+                contentContainerStyle={[style.content, Platform.OS === "web" && style.webContent]}
                 style={style.scroll}
                 showsVerticalScrollIndicator={false}
             >
@@ -234,6 +234,10 @@ const style = StyleSheet.create({
         width: "100%",
         alignItems: "center",
         justifyContent: "space-between",
+    },
+    webContent: {
+        justifyContent: "flex-start",
+        paddingTop: 4,
     },
     scroll: {
         flex: 1,

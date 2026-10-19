@@ -1,9 +1,10 @@
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {ref, set, get, onDisconnect, child, push, serverTimestamp} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getProfile } from "../shared/storage/userSettings";
 //COMPONENTS
 import Button from "../shared/components/Button/Button"
 import Header from "../shared/components/Header/Header";
@@ -15,6 +16,14 @@ export default function HostName ({ navigation, route }) {
     const [isCreating, setIsCreating] = useState(false);
     const gameSettings = route.params;
     const isHost = true;
+
+    useEffect(() => {
+        getProfile().then((profile) => {
+            if (profile?.name) {
+                setUserName(profile.name);
+            }
+        });
+    }, []);
     const handleCreate = async () => {
         const trimmedUserName = userName.trim();
         if (!trimmedUserName || isCreating){
