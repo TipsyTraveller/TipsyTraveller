@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import * as THREE from 'three';
 
 const BOARD_ROTATION = [Math.PI / 2, 0, 0];
-const BOARD_SCALE = 0.72;
+const BOARD_SCALE = 0.56;
 const PREVIEW_SCALE = 1.45;
 
 const buildTeamMaterials = (color) => ({

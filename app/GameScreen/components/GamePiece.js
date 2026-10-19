@@ -16,7 +16,12 @@ const CAR_ROTATION_OFFSET = Math.PI / 2;
 const CAR_BASE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.022;
 const CAR_BOUNCE_HEIGHT = 0.01;
 const CAR_BOUNCE_SPEED = 9.5;
+const PASS_JUMP_HEIGHT = 0.72;
+const PASS_JUMP_RADIUS = 0.72;
+const PASS_FLIP_START = 0.22;
+const PASS_FLIP_END = 0.84;
 const ROTATION_DAMPING = 20;
+const EMPTY_PASSED_VEHICLE_DISTANCES = [];
 
 const lerpAngle = (from, to, amount) => {
   const diff = Math.atan2(Math.sin(to - from), Math.cos(to - from));
@@ -27,12 +32,46 @@ const getCarHeading = (progress) => (
   getSmoothRouteTangentAngle(progress, 0.005) + CAR_ROTATION_OFFSET
 );
 
+const updatePassJumpTransform = (distance, passedVehicleDistances, jumpTransform) => {
+  jumpTransform.arc = 0;
+  jumpTransform.height = 0;
+  jumpTransform.rotation = 0;
+
+  for (let index = 0; index < passedVehicleDistances.length; index += 1) {
+    const obstacleDistance = passedVehicleDistances[index];
+    const distanceFromVehicle = Math.abs(distance - obstacleDistance);
+    if (distanceFromVehicle >= PASS_JUMP_RADIUS) continue;
+
+    const jumpProgress = distanceFromVehicle / PASS_JUMP_RADIUS;
+    const smoothArc = (1 + Math.cos(jumpProgress * Math.PI)) / 2;
+    if (smoothArc <= jumpTransform.arc) continue;
+
+    const airborneProgress = THREE.MathUtils.clamp(
+      (distance - obstacleDistance + PASS_JUMP_RADIUS) / (PASS_JUMP_RADIUS * 2),
+      0,
+      1
+    );
+    const flipProgress = THREE.MathUtils.smoothstep(
+      airborneProgress,
+      PASS_FLIP_START,
+      PASS_FLIP_END
+    );
+
+    jumpTransform.arc = smoothArc;
+    jumpTransform.height = smoothArc * PASS_JUMP_HEIGHT;
+    jumpTransform.rotation = flipProgress * Math.PI * 2;
+  }
+};
+
 const applyCarTransform = ({
   pieceRef,
   bodyRef,
   progress,
   targetPoint,
   moving,
+  distance,
+  passedVehicleDistances,
+  passJumpTransform,
   clockTime,
   delta,
   rotationRef,
@@ -62,8 +101,14 @@ const applyCarTransform = ({
     const bounce = moving
       ? Math.abs(Math.sin(clockTime * CAR_BOUNCE_SPEED)) * CAR_BOUNCE_HEIGHT
       : 0;
+    updatePassJumpTransform(
+      distance,
+      moving ? passedVehicleDistances : EMPTY_PASSED_VEHICLE_DISTANCES,
+      passJumpTransform
+    );
 
-    bodyRef.current.position.set(0, 0, bounce);
+    bodyRef.current.position.set(0, 0, bounce + passJumpTransform.height);
+    bodyRef.current.rotation.set(0, passJumpTransform.rotation, 0);
   }
 };
 
@@ -74,6 +119,7 @@ const GamePiece = ({
   onDriveStart,
   onLegPass,
   onMoveComplete,
+  passedVehicleLegs = [],
   moveStartDelay = 0,
   pathRevealDuration = 0.75,
   piece,
@@ -92,6 +138,10 @@ const GamePiece = ({
   const delayElapsedRef = useRef(0);
   const lastReportedLegRef = useRef(currentLeg);
   const hasStartedDrivingRef = useRef(false);
+  const passJumpTransformRef = useRef({ arc: 0, height: 0, rotation: 0 });
+  const passedVehicleDistances = passedVehicleLegs
+    .map((leg) => STOP_DISTANCES[leg])
+    .filter((distance) => distance !== undefined);
 
   useEffect(() => {
     drivingRef.current = driving;
@@ -134,6 +184,9 @@ const GamePiece = ({
         progress: legProgress,
         targetPoint: carPosRef.current,
         moving: false,
+        distance: legDistance,
+        passedVehicleDistances,
+        passJumpTransform: passJumpTransformRef.current,
         clockTime: 0,
         delta: 0.016,
         rotationRef,
@@ -153,6 +206,9 @@ const GamePiece = ({
         progress: parkedProgress,
         targetPoint: carPosRef.current,
         moving: false,
+        distance: distanceRef.current,
+        passedVehicleDistances,
+        passJumpTransform: passJumpTransformRef.current,
         clockTime: clock.elapsedTime,
         delta,
         rotationRef,
@@ -200,6 +256,9 @@ const GamePiece = ({
       progress: curveProgress,
       targetPoint: carPosRef.current,
       moving: true,
+      distance: distanceRef.current,
+      passedVehicleDistances,
+      passJumpTransform: passJumpTransformRef.current,
       clockTime: clock.elapsedTime,
       delta,
       rotationRef,

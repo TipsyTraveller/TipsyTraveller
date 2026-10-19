@@ -19,6 +19,16 @@ const GamePieces = ({
       const progress = teamProgress[piece.id] || { currentLeg: 0, isDone: false };
       const targetLeg = moveTargets[piece.id] ?? progress.currentLeg;
       const isPieceDriving = driving && movingPieceId === piece.id && !progress.isDone;
+      const passedVehicleLegs = isPieceDriving
+        ? gamePieces.reduce((distances, otherPiece) => {
+          if (otherPiece.id === piece.id) return distances;
+
+          const otherLeg = teamProgress[otherPiece.id]?.currentLeg ?? 0;
+          if (otherLeg <= progress.currentLeg || otherLeg >= targetLeg) return distances;
+
+          return [...distances, otherLeg];
+        }, [])
+        : [];
 
       return (
         <GamePiece
@@ -30,6 +40,7 @@ const GamePieces = ({
           onDriveStart={isPieceDriving ? onDriveStart : null}
           onLegPass={isPieceDriving ? onLegPass : null}
           onMoveComplete={onMoveComplete}
+          passedVehicleLegs={passedVehicleLegs}
           pathRevealDuration={pathRevealDuration}
           piece={piece}
           pieceRef={pieceRefs[piece.id]}
