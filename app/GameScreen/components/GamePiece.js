@@ -74,6 +74,7 @@ const GamePiece = ({
   onDriveStart,
   onLegPass,
   onMoveComplete,
+  moveStartDelay = 0,
   pathRevealDuration = 0.75,
   piece,
   pieceRef,
@@ -161,7 +162,10 @@ const GamePiece = ({
 
     if (waitingForNextLegRef.current) return;
 
-    const totalStartDelay = (piece.startDelay || 0) + pathRevealDuration + 0.08;
+    const totalStartDelay = (piece.startDelay || 0) + Math.max(
+      pathRevealDuration + 0.08,
+      moveStartDelay
+    );
     if (!hasStartedDrivingRef.current) {
       delayElapsedRef.current += delta;
 

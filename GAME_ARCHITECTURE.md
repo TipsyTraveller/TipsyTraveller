@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 18 October 2026.
+> Last reviewed against the source code: 19 October 2026.
 
 ## Table of contents
 
@@ -256,6 +256,7 @@ stateDiagram-v2
 | `lastRoll` | Most recent die result |
 | `remainingMoves` | Remaining route legs in the current move, decremented as intermediate stops are crossed |
 | `movingPieceId` | Team ID whose model should animate |
+| `moveStartDelay` | Minimum delay before driving begins, used to let a physical die result leave the screen first |
 | `moveStartLeg` | Starting leg of the active move used to lay out the animated route path |
 | `passedLeg` | Latest stop crossed during the current move |
 | `isCarDriving` | Whether the path reveal has finished and the active vehicle is currently driving |
@@ -599,7 +600,7 @@ The die keeps its high-frequency animation state in refs rather than React state
 | `idle` | Floats, spins, and displays “THROW ME” |
 | `held` | Follows the pointer above the board |
 | `throwing` | Performs airborne and rolling animation |
-| `result` | Shows the enlarged face result, then returns to idle |
+| `result` | Flies the die toward the camera with the rolled face forward, then returns it to idle |
 
 ### Interaction sequence
 
@@ -613,9 +614,9 @@ The die keeps its high-frequency animation state in refs rather than React state
 8. It rolls and bounces toward the final position.
 9. Rotation is interpolated to an orientation that shows the result face.
 10. `onRollComplete(result)` tells `GameScreen` to lay out the animated path and move the vehicle.
-11. A camera-facing result card rises above the landing position for 2.4 seconds.
+11. The physical die flies toward the screen at a restrained scale, rotates the rolled face toward the camera, holds briefly, and returns to its idle position over 1.2 seconds.
 
-The throw lasts 1.75 seconds; the first 42% is airborne.
+The throw lasts 1.75 seconds; the first 42% is airborne. Physical-die rolls delay vehicle motion until the 1.2-second result animation has exited. The HUD roll shortcut has no result animation and keeps the normal route-reveal timing.
 
 ### HUD roll shortcut
 
@@ -1081,7 +1082,7 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 2. Run `npm start`, scan the QR code, and open the project in Expo Go.
 3. Confirm the map, pins, GLTF vehicles, and 3D die render cleanly without static route dots.
 4. Drag and throw the die.
-5. Confirm the result popup matches the top die face and the animated route path lays out from the active vehicle to the destination stop.
+5. Confirm the landed die flies toward the screen, presents the rolled face toward the camera, returns to its idle position before the vehicle starts driving, and the animated route path lays out from the active vehicle to the destination stop.
 6. Confirm the active vehicle smoothly accelerates, follows the animated route path, and brakes into the destination stop while consuming the path.
 7. Confirm the camera stays in overview during the path reveal, follows during vehicle movement, and returns to overview afterward.
 8. Confirm the appropriate challenge appears.
@@ -1299,7 +1300,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
-| `components/BoardDice.js` | Interactive die, throw animation, and result display |
+| `components/BoardDice.js` | Interactive die, throw animation, and camera-facing die result animation |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/TourControl.js` | Roll/restart control panel |

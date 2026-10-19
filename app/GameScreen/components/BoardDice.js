@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import { RoundedBox } from '@react-three/drei/native';
 import * as THREE from 'three';
-import { DICE_BOUNDS } from '../constants/diceBounds';
+import { DICE_BOUNDS, DICE_RESULT_DURATION } from '../constants/diceBounds';
 import { MAP_CY, MAP_H, MAP_RELIEF_DEPTH, MAP_W, MAP_Z } from '../constants/mapCoordinates';
 
 const DICE_SIZE = 0.48;
@@ -25,10 +25,11 @@ const AIRBORNE_END = 0.42;
 const PIP_OFFSET = DICE_SIZE * 0.25;
 const PIP_RADIUS = DICE_SIZE * 0.085;
 const INITIAL_ROTATION = [0.45, 0.3, -0.25];
-const RESULT_SIZE = 0.9;
-const RESULT_PIP_OFFSET = RESULT_SIZE * 0.25;
-const RESULT_PIP_RADIUS = RESULT_SIZE * 0.07;
-const RESULT_DURATION = 2.4;
+const RESULT_FLY_IN_END = 0.32;
+const RESULT_HOLD_END = 0.68;
+const RESULT_SCREEN_DISTANCE = 2.1;
+const RESULT_SCREEN_Y_OFFSET = 0.08;
+const RESULT_SCALE = 1.35;
 const IDLE_POSITION = IDLE_CENTER.clone().setZ(IDLE_Z);
 const LABEL_TEXT = 'THROW ME';
 const LABEL_CELL_SIZE = 0.035;
@@ -64,16 +65,6 @@ const PIP_POSITIONS = {
   bottomRight: [PIP_OFFSET, -PIP_OFFSET, 0],
 };
 
-const RESULT_PIP_POSITIONS = {
-  topLeft: [-RESULT_PIP_OFFSET, RESULT_PIP_OFFSET, 0.012],
-  topRight: [RESULT_PIP_OFFSET, RESULT_PIP_OFFSET, 0.012],
-  middleLeft: [-RESULT_PIP_OFFSET, 0, 0.012],
-  middleRight: [RESULT_PIP_OFFSET, 0, 0.012],
-  center: [0, 0, 0.012],
-  bottomLeft: [-RESULT_PIP_OFFSET, -RESULT_PIP_OFFSET, 0.012],
-  bottomRight: [RESULT_PIP_OFFSET, -RESULT_PIP_OFFSET, 0.012],
-};
-
 const FACE_TRANSFORMS = [
   { value: 1, position: [0, 0, HALF_SIZE + 0.003], rotation: [0, 0, 0] },
   { value: 6, position: [0, 0, -HALF_SIZE - 0.003], rotation: [Math.PI, 0, 0] },
@@ -91,8 +82,19 @@ const FACE_ROTATIONS = {
   5: [-Math.PI / 2, 0, 0],
   6: [Math.PI, 0, 0],
 };
+const FACE_QUATERNIONS = Object.fromEntries(
+  Object.entries(FACE_ROTATIONS).map(([value, rotation]) => [
+    value,
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)),
+  ])
+);
 
 const easeOutCubic = (value) => 1 - Math.pow(1 - value, 3);
+const easeInOutCubic = (value) => (
+  value < 0.5
+    ? 4 * value * value * value
+    : 1 - Math.pow(-2 * value + 2, 3) / 2
+);
 const randomFace = () => Math.floor(Math.random() * 6) + 1;
 const nearestEquivalentAngle = (target, reference) => {
   const fullTurn = Math.PI * 2;
@@ -141,26 +143,6 @@ const DicePips = ({ pipPositions = PIP_POSITIONS, pipRadius = PIP_RADIUS, value 
 const DiceFace = ({ position, rotation, value }) => (
   <group position={position} rotation={rotation}>
     <DicePips value={value} />
-  </group>
-);
-
-const DiceResultPopup = ({ resultRef, value }) => (
-  <group ref={resultRef} visible={Boolean(value)}>
-    <mesh position={[0, 0, -0.012]}>
-      <planeGeometry args={[RESULT_SIZE + 0.08, RESULT_SIZE + 0.08]} />
-      <meshBasicMaterial color="#111111" side={THREE.DoubleSide} />
-    </mesh>
-    <mesh>
-      <planeGeometry args={[RESULT_SIZE, RESULT_SIZE]} />
-      <meshBasicMaterial color="#fff1cd" side={THREE.DoubleSide} />
-    </mesh>
-    {value && (
-      <DicePips
-        pipPositions={RESULT_PIP_POSITIONS}
-        pipRadius={RESULT_PIP_RADIUS}
-        value={value}
-      />
-    )}
   </group>
 );
 
@@ -224,10 +206,8 @@ const ThrowMeLabel = ({ labelRef }) => (
 );
 
 const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
-  const [resultPreview, setResultPreview] = useState(null);
   const diceRef = useRef();
   const labelRef = useRef();
-  const resultRef = useRef();
   const stateRef = useRef({
     mode: 'idle',
     startTime: 0,
@@ -247,7 +227,16 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     active: false,
     startTime: 0,
     startPosition: LAND_POSITION.clone(),
+    startQuaternion: new THREE.Quaternion(),
+    returnCaptured: false,
+    returnPosition: LAND_POSITION.clone(),
+    returnQuaternion: new THREE.Quaternion(),
   });
+  const resultTargetPosition = useMemo(() => new THREE.Vector3(), []);
+  const resultTargetQuaternion = useMemo(() => new THREE.Quaternion(), []);
+  const idleQuaternion = useMemo(() => (
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(...INITIAL_ROTATION))
+  ), []);
 
   const diceMaterial = useMemo(() => new THREE.MeshStandardMaterial({
     color: 0xfff1cd,
@@ -274,7 +263,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     if (!enabled || !diceRef.current || stateRef.current.mode === 'throwing' || stateRef.current.mode === 'result') return;
 
     resultAnimationRef.current.active = false;
-    setResultPreview(null);
+    diceRef.current.scale.setScalar(1);
 
     const holdTarget = getHoldPlanePoint(event, diceRef.current.position);
 
@@ -357,30 +346,69 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     onRollStart?.();
   };
 
-  const animateResultPopup = (clock, camera) => {
-    if (!resultRef.current || !resultAnimationRef.current.active) return;
+  const animateResultDice = (clock, camera) => {
+    if (!diceRef.current || !resultAnimationRef.current.active) return;
 
     if (resultAnimationRef.current.startTime === null) {
       resultAnimationRef.current.startTime = clock.elapsedTime;
     }
 
     const elapsed = clock.elapsedTime - resultAnimationRef.current.startTime;
-    const progress = Math.min(elapsed / RESULT_DURATION, 1);
-    const liftProgress = easeOutCubic(Math.min(progress / 0.45, 1));
-    const scaleProgress = easeOutCubic(Math.min(progress / 0.35, 1));
-    const hover = Math.sin(progress * Math.PI * 3) * 0.035;
+    const progress = Math.min(elapsed / DICE_RESULT_DURATION, 1);
 
-    resultRef.current.position.set(
-      resultAnimationRef.current.startPosition.x,
-      resultAnimationRef.current.startPosition.y,
-      resultAnimationRef.current.startPosition.z + 0.95 * liftProgress + hover
-    );
-    resultRef.current.scale.setScalar(0.25 + 0.75 * scaleProgress);
-    resultRef.current.quaternion.copy(camera.quaternion);
+    resultTargetPosition
+      .set(0, RESULT_SCREEN_Y_OFFSET, -RESULT_SCREEN_DISTANCE)
+      .applyQuaternion(camera.quaternion)
+      .add(camera.position);
+    resultTargetQuaternion.copy(camera.quaternion).multiply(FACE_QUATERNIONS[stateRef.current.result]);
+
+    if (progress < RESULT_FLY_IN_END) {
+      const flyProgress = easeOutCubic(progress / RESULT_FLY_IN_END);
+
+      diceRef.current.position.lerpVectors(
+        resultAnimationRef.current.startPosition,
+        resultTargetPosition,
+        flyProgress
+      );
+      diceRef.current.quaternion.slerpQuaternions(
+        resultAnimationRef.current.startQuaternion,
+        resultTargetQuaternion,
+        flyProgress
+      );
+      diceRef.current.scale.setScalar(THREE.MathUtils.lerp(1, RESULT_SCALE, flyProgress));
+    } else if (progress < RESULT_HOLD_END) {
+      diceRef.current.position.copy(resultTargetPosition);
+      diceRef.current.quaternion.copy(resultTargetQuaternion);
+      diceRef.current.scale.setScalar(RESULT_SCALE);
+    } else {
+      if (!resultAnimationRef.current.returnCaptured) {
+        resultAnimationRef.current.returnCaptured = true;
+        resultAnimationRef.current.returnPosition.copy(diceRef.current.position);
+        resultAnimationRef.current.returnQuaternion.copy(diceRef.current.quaternion);
+      }
+
+      const returnProgress = easeInOutCubic(
+        (progress - RESULT_HOLD_END) / (1 - RESULT_HOLD_END)
+      );
+
+      diceRef.current.position.lerpVectors(
+        resultAnimationRef.current.returnPosition,
+        IDLE_POSITION,
+        returnProgress
+      );
+      diceRef.current.quaternion.slerpQuaternions(
+        resultAnimationRef.current.returnQuaternion,
+        idleQuaternion,
+        returnProgress
+      );
+      diceRef.current.scale.setScalar(THREE.MathUtils.lerp(RESULT_SCALE, 1, returnProgress));
+    }
 
     if (progress >= 1) {
       resultAnimationRef.current.active = false;
-      setResultPreview(null);
+      diceRef.current.position.copy(IDLE_POSITION);
+      diceRef.current.quaternion.copy(idleQuaternion);
+      diceRef.current.scale.setScalar(1);
 
       if (stateRef.current.mode === 'result') {
         stateRef.current.idleBasePosition.copy(IDLE_POSITION);
@@ -390,9 +418,12 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
   };
 
   useFrame(({ camera, clock }, delta) => {
-    animateResultPopup(clock, camera);
-
     if (!diceRef.current) return;
+
+    if (stateRef.current.mode === 'result') {
+      animateResultDice(clock, camera);
+      return;
+    }
 
     if (stateRef.current.mode === 'idle') {
       const bob = Math.sin(clock.elapsedTime * 2.2) * IDLE_BOB_HEIGHT;
@@ -502,8 +533,11 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
         active: true,
         startTime: null,
         startPosition: stateRef.current.endPosition.clone(),
+        startQuaternion: diceRef.current.quaternion.clone(),
+        returnCaptured: false,
+        returnPosition: stateRef.current.endPosition.clone(),
+        returnQuaternion: diceRef.current.quaternion.clone(),
       };
-      setResultPreview(stateRef.current.result);
     }
   });
 
@@ -542,7 +576,6 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
           />
         ))}
       </group>
-      <DiceResultPopup resultRef={resultRef} value={resultPreview} />
       <ThrowMeLabel labelRef={labelRef} />
     </>
   );

@@ -4,6 +4,7 @@ const GamePieces = ({
   activeCarProgressRef,
   driving,
   gamePieces,
+  moveStartDelay,
   movingPieceId,
   moveTargets,
   onDriveStart,
@@ -25,6 +26,7 @@ const GamePieces = ({
           activeCarProgressRef={isPieceDriving ? activeCarProgressRef : null}
           currentLeg={progress.currentLeg}
           driving={isPieceDriving}
+          moveStartDelay={moveStartDelay}
           onDriveStart={isPieceDriving ? onDriveStart : null}
           onLegPass={isPieceDriving ? onLegPass : null}
           onMoveComplete={onMoveComplete}
