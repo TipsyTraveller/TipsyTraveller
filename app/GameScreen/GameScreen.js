@@ -206,23 +206,27 @@ const GameScreen = ({ route }) => {
     setState('challenge');
   };
 
+  // Handlers close over fresh state each render; the subscription itself is stable.
+  const devHandlersRef = useRef({});
+  devHandlersRef.current = { handleRoll, handleRestart };
+
   useEffect(() => {
     const unsubRoll = devEventBus.on('dev:forceRoll', ({ value }) => {
-      handleRoll(value, 0);
+      devHandlersRef.current.handleRoll(value, 0);
     });
     const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex }) => {
       setCurrentChallenge(getChallengeForStop(stopIndex));
       setState('challenge');
     });
     const unsubRestart = devEventBus.on('dev:restart', () => {
-      handleRestart();
+      devHandlersRef.current.handleRestart();
     });
     return () => {
       unsubRoll();
       unsubChallenge();
       unsubRestart();
     };
-  });
+  }, []);
 
   const focusedPiece = activePiece || getFocusedPiece(gamePieces, teamProgress);
   const focusedProgress = teamProgress[focusedPiece?.id] || { currentLeg: 0, isDone: false };

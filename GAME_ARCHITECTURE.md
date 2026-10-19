@@ -898,9 +898,7 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 | `assets/fonts/` | Dogica fonts |
 | `assets/icons/` | App and splash icons |
 | `assets/images/` | Beer difficulty graphics and UI icons |
-| `assets/europe-map-mobile.png` | Retained mobile raster export; not loaded by the current board |
-| `assets/europe-map4.png` | High-resolution source export for the board texture |
-| `assets/map.svg` | Editable vector source for the country geometry |
+| `assets/map.svg` | Editable vector source for the country geometry (unused raster map exports were removed; see git history) |
 | `assets/models/world-map-vector.glb` | Prebuilt extruded world silhouette and Western Europe country borders |
 | `scripts/build-vector-map.mjs` | Regenerates the runtime GLB from `assets/map.svg` |
 | `assets/models/location.glb` | Country pin geometry |

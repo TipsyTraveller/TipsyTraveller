@@ -44,3 +44,5 @@ assets/model.gltf
 
 
 .env
+# editor swap files
+*.swp
