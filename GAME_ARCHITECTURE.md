@@ -473,7 +473,16 @@ physical-device board. The route and die do not load external models.
 `CharacterSelection` calls `preloadBoardAssets()` (`constants/boardAssets.js`) on
 mount, which warms the `useGLTF` cache for the map and marker GLBs so they are
 already decoded when `GameScreen` mounts. Vehicle GLBs are not preloaded as a
-set; the ones players browse in the selection screen are already cached. Preload
+set; the ones players browse in the selection screen are already cached.
+
+In development (`__DEV__`) the map load is timed with `[perf]` console logs
+(`constants/boardAssets.js` helpers `perfLog`/`perfNow`, used by `MapPlane`):
+preload start, time until the GLB is ready after the first render attempt (and
+whether a preload ran), material preparation time, and time to the first frame
+after mount. On web against a local dev server a cold load measured about 33 ms
+until the GLB was ready and about 326 ms until the first frame; with a preload
+the GLB was ready immediately and the first frame came after about 46 ms. These
+are web numbers on localhost; device numbers have not been measured. Preload
 was verified on web only; confirm it on iOS/Android before relying on it.
 
 The 3D components (`GameScene`, `GamePieces`, `GamePiece`, `CountryMarkers`,
@@ -941,6 +950,8 @@ web.
 
 `metro.config.js` adds `glb`, `gltf`, `mtl`, and `obj` to Metro’s asset extensions. It also adds Android platform detection middleware for requests that lack an explicit Expo platform.
 
+It also resolves every bare `three` import to `node_modules/three/build/three.module.js`. three ships separate `import` (`three.module.js`) and `require` (`three.cjs`) builds, and Metro was bundling both, which printed "Multiple instances of Three.js being imported" and added about 2.2 MB to the Android bundle (17.5 MB to 15.2 MB unminified, measured with `expo export`). `@react-navigation/stack` is kept at 7.12+ because earlier versions called the deprecated React Native `InteractionManager` on React Native 0.82+.
+
 ### Oversized and duplicate assets
 
 The unused raster map exports were removed from the repository (they remain in
@@ -1292,7 +1303,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `app.json` | Expo app metadata and plugins |
 | `eas.json` | EAS build/submit profiles |
 | `firebaseConfig.js` | Firebase initialization and database export |
-| `metro.config.js` | Metro asset extensions and Android request middleware |
+| `metro.config.js` | Metro asset extensions, single-copy `three` resolution, and Android request middleware |
 | `scripts/run-ios.sh` | Xcode 27/Device Hub-compatible iOS development launcher |
 
 ### Navigation and development
