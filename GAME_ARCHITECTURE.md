@@ -447,7 +447,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Creates a ref and progress record for each team.
 - Handles rolling, movement targets, landings, challenges, turn switching, finish state, and restart.
 - Unlocks orientation on unmount.
-- The native HUD and turn control respect landscape safe-area insets, while long challenge tickets become scrollable and use a compact layout on short landscape viewports.
+- The native HUD and turn control respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
 
 ---
 
@@ -723,18 +723,19 @@ Challenges are static records in `constants/challenges.js`. Each has:
 - Failure penalty
 - Accent color
 
-The popup is a React Native overlay styled as a travel ticket. It contains a country stamp, mission code, team badge, route rail, three-letter country code, challenge text, penalty, and completion button.
+`constants/challenges.js` also exports `COUNTRY_FLAGS` and `getCountryFlag(country)` with per-country flag stripe layouts and colors, and `getChallengeForStop(stopIndex)` attaches `stopIndex` to the returned challenge record.
+
+The popup (`ChallengePopup.js`) is a two-sided React Native card overlay styled consistently with the Home and CharacterSelection screens:
+
+- **Back side (`CardBack`)**: `#FAF3E0` outer frame and `#FFF1CD` inner panel with `#2C3E50` borders, `#1BA39C` corner accents, the app logo (`assets/icons/splash-icon-light.png`) inside a circular `#FAF3E0` halo, `TIPSY TRAVELLER` wordmark, and a `COUNTRY CHALLENGE` badge.
+- **Front side**: `#FAF3E0` cream container with a top flag-color banner, mini country flag next to the country header, active team pill, `#FFFFFF` challenge card with a colored left accent border, `#FFF1CD` penalty box with a `#D71920` badge, and a `#1BA39C` teal `NEXT TURN` button.
 
 ### Animation system
 
-Four `Animated.Value` objects drive:
+Two `Animated.Value` objects (`fly` and `flip`) run sequentially using the native driver and an Easy Ease bezier curve (`Easing.bezier(0.42, 0, 0.58, 1)`), with no continuous background loops:
 
-- Spring entrance with translation, scaling, and rotation.
-- Continuous pulse on badges, route dots, and button.
-- Horizontal shimmer across the ticket.
-- Slow floating of layered ticket cards.
-
-All animations use the native driver. Loops are stopped during cleanup.
+1. **Marker arc fly-out (`fly`)**: Projects the landed `ROUTE[stopIndex]` 3D marker coordinate to 2D screen space (`getMarkerScreenOffset`) and flies the card along a parabolic arc (`860ms`, `scale: 0.06 → 1`, with 3D `rotateX`/`rotateZ` banking) to the center of the screen with the logo back side facing the viewer while fading in the backdrop dim.
+2. **Card flip (`flip`)**: Once centered, rotates the card 180 degrees (`780ms`, `perspective: 1300`) around the Y axis, swapping from the back face to the challenge front face at the 90-degree edge-on midpoint.
 
 ### Completion semantics
 
@@ -1348,7 +1349,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/TourControl.js` | Roll/restart control panel |
-| `components/ChallengePopup.js` | Animated ticket-style challenge overlay |
+| `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/ModelTestPanel.js` | Unused development model switcher |
 
 ### Game constants

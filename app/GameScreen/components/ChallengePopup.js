@@ -1,254 +1,285 @@
-import { Animated, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as THREE from 'three';
+import { DONE_LOOK, DONE_POS } from '../constants/camera';
+import { getCountryFlag } from '../constants/challenges';
+import { ROUTE } from '../constants/route';
 
-const PERFORATION_DOTS = Array.from({ length: 12 });
-const PIXEL_SPARKS = Array.from({ length: 9 });
+const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
+const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
 
-const getCountryCode = (country) => country.slice(0, 3).toUpperCase();
+const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+const projectedPoint = new THREE.Vector3();
 
-const Perforation = ({ accent }) => (
-  <View style={styles.perforation} pointerEvents="none">
-    {PERFORATION_DOTS.map((_, index) => (
-      <View
-        key={`dot-${index}`}
-        style={[
-          styles.perforationDot,
-          index % 2 === 0 && { backgroundColor: accent },
-        ]}
-      />
-    ))}
-  </View>
+const getMarkerScreenOffset = (stopIndex, width, height) => {
+  const stopPosition = ROUTE[stopIndex] || ROUTE[1] || ROUTE[0];
+  if (!stopPosition || !width || !height) {
+    return { x: 0, y: 0 };
+  }
+
+  projectionCamera.aspect = width / height;
+  projectionCamera.position.copy(DONE_POS);
+  projectionCamera.lookAt(DONE_LOOK);
+  projectionCamera.updateProjectionMatrix();
+  projectionCamera.updateMatrixWorld(true);
+
+  projectedPoint.copy(stopPosition).project(projectionCamera);
+
+  return {
+    x: projectedPoint.x * (width * 0.5),
+    y: -projectedPoint.y * (height * 0.5),
+  };
+};
+
+const FlagSurface = ({ country, emblemSize = 10, style }) => {
+  const flag = getCountryFlag(country);
+  const isHorizontal = flag.layout === 'horizontal';
+  const halfEmblem = emblemSize / 2;
+
+  return (
+    <View
+      style={[
+        style,
+        isHorizontal ? styles.flagHorizontal : styles.flagVertical,
+      ]}
+    >
+      {flag.stripes.map((color, index) => (
+        <View
+          key={`${country}-stripe-${index}`}
+          style={{
+            flex: flag.stripeWeights?.[index] ?? 1,
+            backgroundColor: color,
+          }}
+        />
+      ))}
+      {flag.layout === 'portugal' && (
+        <View
+          style={[
+            styles.portugalEmblem,
+            {
+              width: emblemSize,
+              height: emblemSize,
+              borderRadius: halfEmblem,
+              backgroundColor: flag.emblemColor,
+              transform: [
+                { translateX: -halfEmblem },
+                { translateY: -halfEmblem },
+              ],
+            },
+          ]}
+        />
+      )}
+    </View>
+  );
+};
+
+const CountryFlag = ({ country, compact }) => (
+  <FlagSurface
+    country={country}
+    emblemSize={compact ? 9 : 11}
+    style={[styles.flagBadge, compact && styles.flagBadgeCompact]}
+  />
 );
 
-const PixelSparks = ({ accent }) => (
-  <View style={styles.pixelSparks} pointerEvents="none">
-    {PIXEL_SPARKS.map((_, index) => (
-      <View
-        key={`spark-${index}`}
-        style={[
-          styles.pixelSpark,
-          {
-            backgroundColor: index % 3 === 0 ? accent : '#FFF1CD',
-            left: `${8 + index * 10}%`,
-            top: index % 2 === 0 ? 0 : 16,
-          },
-        ]}
-      />
-    ))}
-  </View>
+const FlagBanner = ({ country }) => {
+  const flag = getCountryFlag(country);
+
+  return (
+    <View style={styles.flagBanner} pointerEvents="none">
+      {flag.banner.map((color, index) => (
+        <View
+          key={`${country}-banner-${index}`}
+          style={[styles.flagBannerSegment, { backgroundColor: color }]}
+        />
+      ))}
+    </View>
+  );
+};
+
+const CardBack = ({ compact, style }) => (
+  <Animated.View
+    pointerEvents="none"
+    style={[
+      styles.cardContainer,
+      styles.cardBackOverlay,
+      compact && styles.cardContainerCompact,
+      style,
+    ]}
+  >
+    <View style={[styles.cardBackFrame, compact && styles.cardBackFrameCompact]}>
+      <View style={styles.cardBackInner}>
+        <View style={[styles.cornerDot, styles.cornerTopLeft]} />
+        <View style={[styles.cornerDot, styles.cornerTopRight]} />
+        <View style={[styles.cornerDot, styles.cornerBottomLeft]} />
+        <View style={[styles.cornerDot, styles.cornerBottomRight]} />
+
+        <View style={[styles.logoHalo, compact && styles.logoHaloCompact]}>
+          <Image
+            source={CARD_BACK_LOGO}
+            style={[styles.cardBackLogo, compact && styles.cardBackLogoCompact]}
+            resizeMode="contain"
+          />
+        </View>
+
+        <Text style={[styles.cardBackBrand, compact && styles.cardBackBrandCompact]}>
+          TIPSY TRAVELLER
+        </Text>
+        <View style={styles.cardBackTag}>
+          <Text style={styles.cardBackTagText}>COUNTRY CHALLENGE</Text>
+        </View>
+      </View>
+    </View>
+  </Animated.View>
 );
 
 const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const compact = height < 430;
-  const entrance = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
-  const shimmer = useRef(new Animated.Value(0)).current;
-  const float = useRef(new Animated.Value(0)).current;
+  const fly = useRef(new Animated.Value(0)).current;
+  const flip = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!visible) {
-      entrance.setValue(0);
-      pulse.setValue(0);
-      shimmer.setValue(0);
-      float.setValue(0);
+    if (!visible || !challenge) {
+      fly.setValue(0);
+      flip.setValue(0);
       return;
     }
 
-    Animated.spring(entrance, {
-      toValue: 1,
-      friction: 7,
-      tension: 72,
-      useNativeDriver: true,
-    }).start();
+    fly.setValue(0);
+    flip.setValue(0);
 
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    const sequence = Animated.sequence([
+      Animated.timing(fly, {
+        toValue: 1,
+        duration: 860,
+        easing: EASY_EASE,
+        useNativeDriver: true,
+      }),
+      Animated.delay(120),
+      Animated.timing(flip, {
+        toValue: 1,
+        duration: 780,
+        easing: EASY_EASE,
+        useNativeDriver: true,
+      }),
+    ]);
 
-    pulseLoop.start();
-    const shimmerLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 1350,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0,
-          duration: 320,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    const floatLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(float, {
-          toValue: 1,
-          duration: 1450,
-          useNativeDriver: true,
-        }),
-        Animated.timing(float, {
-          toValue: 0,
-          duration: 1450,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    shimmerLoop.start();
-    floatLoop.start();
+    sequence.start();
 
     return () => {
-      pulseLoop.stop();
-      shimmerLoop.stop();
-      floatLoop.stop();
+      sequence.stop();
     };
-  }, [entrance, float, pulse, shimmer, visible]);
+  }, [challenge, flip, fly, visible]);
 
   if (!visible || !challenge) return null;
 
-  const cardTransform = {
-    opacity: entrance,
-    transform: [
-      {
-        translateY: entrance.interpolate({
-          inputRange: [0, 1],
-          outputRange: [42, 0],
-        }),
-      },
-      {
-        scale: entrance.interpolate({
-          inputRange: [0, 0.72, 1],
-          outputRange: [0.72, 1.05, 1],
-        }),
-      },
-      {
-        rotate: entrance.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-4deg', '0deg'],
-        }),
-      },
-    ],
+  const accentColor = challenge.accent || '#1BA39C';
+  const markerOffset = getMarkerScreenOffset(challenge.stopIndex, width, height);
+  const launchTiltDeg = markerOffset.x >= 0 ? '16deg' : '-16deg';
+  const midArcY = markerOffset.y * 0.35 - 48;
+
+  const backdropAnimatedStyle = {
+    opacity: fly.interpolate({
+      inputRange: [0, 0.7, 1],
+      outputRange: [0, 0.85, 1],
+    }),
   };
-  const pulseStyle = {
-    opacity: pulse.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.55, 1],
+
+  const flyWrapperStyle = {
+    opacity: fly.interpolate({
+      inputRange: [0, 0.15, 1],
+      outputRange: [0, 1, 1],
     }),
     transform: [
+      { perspective: 1200 },
       {
-        scale: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.04],
+        translateX: fly.interpolate({
+          inputRange: [0, 0.75, 1],
+          outputRange: [markerOffset.x, markerOffset.x * 0.06, 0],
+        }),
+      },
+      {
+        translateY: fly.interpolate({
+          inputRange: [0, 0.55, 1],
+          outputRange: [markerOffset.y, midArcY, 0],
+        }),
+      },
+      {
+        scale: fly.interpolate({
+          inputRange: [0, 0.65, 1],
+          outputRange: [0.06, 0.82, 1],
+        }),
+      },
+      {
+        rotateX: fly.interpolate({
+          inputRange: [0, 0.6, 1],
+          outputRange: ['26deg', '-4deg', '0deg'],
+        }),
+      },
+      {
+        rotateZ: fly.interpolate({
+          inputRange: [0, 0.65, 1],
+          outputRange: [launchTiltDeg, '0deg', '0deg'],
         }),
       },
     ],
   };
-  const accentGlow = {
-    opacity: pulse.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.28, 0.72],
+
+  const backFaceAnimatedStyle = {
+    opacity: flip.interpolate({
+      inputRange: [0, 0.499, 0.5, 1],
+      outputRange: [1, 1, 0, 0],
     }),
     transform: [
+      { perspective: 1300 },
       {
-        rotate: '-6deg',
+        scale: flip.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [1, 1.07, 1],
+        }),
       },
       {
-        scaleX: pulse.interpolate({
+        rotateY: flip.interpolate({
           inputRange: [0, 1],
-          outputRange: [0.72, 1],
+          outputRange: ['0deg', '180deg'],
         }),
       },
     ],
   };
-  const shimmerStyle = {
-    opacity: shimmer.interpolate({
-      inputRange: [0, 0.18, 0.62, 1],
-      outputRange: [0, 0.48, 0.48, 0],
+
+  const frontFaceAnimatedStyle = {
+    opacity: flip.interpolate({
+      inputRange: [0, 0.499, 0.5, 1],
+      outputRange: [0, 0, 1, 1],
     }),
     transform: [
+      { perspective: 1300 },
       {
-        translateX: shimmer.interpolate({
-          inputRange: [0, 1],
-          outputRange: [-260, 360],
+        scale: flip.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [1, 1.07, 1],
         }),
       },
       {
-        rotate: '-18deg',
-      },
-    ],
-  };
-  const floatingLayerStyle = {
-    transform: [
-      {
-        translateY: float.interpolate({
+        rotateY: flip.interpolate({
           inputRange: [0, 1],
-          outputRange: [0, -4],
-        }),
-      },
-      {
-        rotate: float.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-2.4deg', '-1.2deg'],
+          outputRange: ['-180deg', '0deg'],
         }),
       },
     ],
   };
-  const floatingTicketStyle = {
-    transform: [
-      {
-        translateY: float.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -3],
-        }),
-      },
-    ],
-  };
-  const routeDotStyle = {
-    transform: [
-      {
-        scale: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.34],
-        }),
-      },
-    ],
-  };
-  const buttonPulseStyle = {
-    transform: [
-      {
-        scale: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.03],
-        }),
-      },
-    ],
-  };
-  const countryPanelStyle = {
-    transform: [
-      {
-        rotate: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-1deg', '1deg'],
-        }),
-      },
-    ],
-  };
-  const countryCode = getCountryCode(challenge.country);
 
   return (
     <View
@@ -257,111 +288,101 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
         {
           paddingTop: Math.max(12, insets.top + 8),
           paddingBottom: Math.max(12, insets.bottom + 8),
-          paddingLeft: Math.max(14, insets.left + 8),
-          paddingRight: Math.max(14, insets.right + 8),
+          paddingLeft: Math.max(16, insets.left + 12),
+          paddingRight: Math.max(16, insets.right + 12),
         },
       ]}
       pointerEvents="auto"
     >
-      <View style={styles.backdropGrid} pointerEvents="none" />
-      <Animated.View style={[styles.accentBeam, accentGlow, { backgroundColor: challenge.accent }]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.backdropDim, backdropAnimatedStyle]}
+      />
 
       <Animated.View
         style={[
-          styles.cardShadow,
-          compact && styles.cardShadowCompact,
-          cardTransform,
-          { borderColor: challenge.accent },
+          styles.flipStage,
+          compact && styles.flipStageCompact,
+          flyWrapperStyle,
         ]}
       >
         <Animated.View
           style={[
-            styles.ticketLayer,
-            styles.ticketLayerLeft,
-            floatingLayerStyle,
-            { backgroundColor: challenge.accent },
+            styles.cardContainer,
+            compact && styles.cardContainerCompact,
+            frontFaceAnimatedStyle,
           ]}
-        />
-        <View style={[styles.ticketLayer, styles.ticketLayerRight]} />
-        <Animated.View style={[styles.ticket, floatingTicketStyle]}>
-          <Animated.View pointerEvents="none" style={[styles.ticketShimmer, shimmerStyle]} />
-          <View style={[styles.topStripe, { backgroundColor: challenge.accent }]}>
-            <PixelSparks accent={challenge.accent} />
-          </View>
+        >
+          <FlagBanner country={challenge.country} />
 
           <ScrollView
-            style={[styles.cardScroll, { maxHeight: Math.max(210, height - insets.top - insets.bottom - 78) }]}
-            contentContainerStyle={[styles.card, compact && styles.cardCompact]}
+            style={{ maxHeight: Math.max(220, height - insets.top - insets.bottom - 44) }}
+            contentContainerStyle={[styles.cardContent, compact && styles.cardContentCompact]}
             bounces={false}
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.headerRow}>
               <View style={styles.headerLeft}>
-                <View style={[styles.stamp, { borderColor: challenge.accent }]}>
-                  <Text style={[styles.stampText, { color: challenge.accent }]}>
+                <CountryFlag country={challenge.country} compact={compact} />
+                <View style={styles.countryTextGroup}>
+                  <Text style={styles.subtitle}>COUNTRY CHALLENGE</Text>
+                  <Text style={[styles.countryTitle, compact && styles.countryTitleCompact]}>
                     {challenge.country}
                   </Text>
                 </View>
-                <Text style={styles.ticketCode}>MISSION / {countryCode}-01</Text>
               </View>
 
-              <View style={styles.teamBadge}>
-                <Text style={styles.teamBadgeText}>{teamLabel}</Text>
-              </View>
+              {Boolean(teamLabel) && (
+                <View style={styles.teamPill}>
+                  <Text style={styles.teamPillText}>{teamLabel}</Text>
+                </View>
+              )}
             </View>
 
-            <View style={styles.routeRail}>
-              <View style={[styles.routeDot, { backgroundColor: challenge.accent }]} />
-              <View style={styles.routeDash} />
-              <Animated.View style={[styles.routeDot, routeDotStyle, { backgroundColor: challenge.accent }]} />
-              <View style={styles.routeDash} />
-              <View style={[styles.routeDot, { backgroundColor: challenge.accent }]} />
-            </View>
-
-            <View style={[styles.mainContent, compact && styles.mainContentCompact]}>
-              <Animated.View style={[styles.countryPanel, compact && styles.countryPanelCompact, countryPanelStyle, { borderColor: challenge.accent }]}>
-                <Text style={[styles.countryCode, { color: challenge.accent }]}>
-                  {countryCode}
-                </Text>
-                <Text style={styles.countryPanelText}>LANDED</Text>
-              </Animated.View>
-
-              <View style={styles.challengeContent}>
-                <Animated.View style={[styles.challengeBadge, pulseStyle, { backgroundColor: challenge.accent }]}>
-                  <Text style={styles.challengeBadgeText}>Country Challenge</Text>
-                </Animated.View>
-
-                <Text style={[styles.title, compact && styles.titleCompact]}>{challenge.title}</Text>
-                <Text style={[styles.prompt, compact && styles.promptCompact]}>{challenge.prompt}</Text>
-              </View>
+            <View
+              style={[
+                styles.challengeBox,
+                compact && styles.challengeBoxCompact,
+                { borderLeftColor: accentColor },
+              ]}
+            >
+              <Text style={[styles.challengeTitle, compact && styles.challengeTitleCompact]}>
+                {challenge.title}
+              </Text>
+              <Text style={[styles.prompt, compact && styles.promptCompact]}>
+                {challenge.prompt}
+              </Text>
             </View>
 
             <View style={[styles.footerRow, compact && styles.footerRowCompact]}>
               <View style={styles.penaltyBox}>
-                <Text style={styles.penaltyLabel}>If you fail</Text>
+                <View style={styles.penaltyHeader}>
+                  <View style={styles.penaltyBadge}>
+                    <Text style={styles.penaltyBadgeText}>IF YOU FAIL</Text>
+                  </View>
+                </View>
                 <Text style={styles.penaltyText}>{challenge.penalty}</Text>
               </View>
 
-              <Animated.View style={buttonPulseStyle}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Complete challenge and start next turn"
-                  onPress={onComplete}
-                  style={({ pressed }) => [
-                    styles.completeButton,
-                    { shadowColor: challenge.accent },
-                    pressed && styles.completeButtonPressed,
-                  ]}
-                >
-                  <Text style={styles.completeButtonText}>Done</Text>
-                  <Text style={styles.completeButtonSubText}>Next Turn</Text>
-                </Pressable>
-              </Animated.View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Complete challenge and start next turn"
+                onPress={onComplete}
+                style={({ pressed }) => [
+                  styles.completeButton,
+                  pressed && styles.completeButtonPressed,
+                ]}
+              >
+                <Text style={styles.completeButtonText}>NEXT TURN</Text>
+              </Pressable>
             </View>
           </ScrollView>
-          <View style={[styles.bottomStripe, { backgroundColor: challenge.accent }]} />
-          <Perforation accent={challenge.accent} />
         </Animated.View>
+
+        <CardBack
+          compact={compact}
+          style={backFaceAnimatedStyle}
+        />
       </Animated.View>
     </View>
   );
@@ -372,229 +393,268 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(8, 12, 18, 0.68)',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
   },
-  backdropGrid: {
+  backdropDim: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.18,
-    backgroundColor: '#223144',
-    borderWidth: 12,
-    borderColor: 'rgba(255, 241, 205, 0.2)',
+    backgroundColor: 'rgba(34, 49, 68, 0.52)',
   },
-  accentBeam: {
-    position: 'absolute',
-    width: '84%',
-    height: 14,
-    top: '20%',
-    borderRadius: 2,
+  flipStage: {
+    width: '86%',
+    maxWidth: 560,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  cardShadow: {
-    width: '90%',
-    maxWidth: 680,
-    borderRadius: 8,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.42,
-    shadowRadius: 18,
-    elevation: 12,
+  flipStageCompact: {
+    width: '92%',
   },
-  cardShadowCompact: {
-    width: '96%',
-  },
-  ticketLayer: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    top: 10,
-    bottom: -10,
-    borderRadius: 8,
+  cardContainer: {
+    width: '100%',
+    borderRadius: 18,
+    backgroundColor: '#FAF3E0',
     borderWidth: 3,
-    borderColor: '#111111',
+    borderColor: '#2C3E50',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
+    elevation: 10,
+    overflow: 'hidden',
+    backfaceVisibility: 'hidden',
   },
-  ticketLayerLeft: {
-    transform: [{ rotate: '-2.4deg' }],
+  cardContainerCompact: {
+    borderRadius: 16,
   },
-  ticketLayerRight: {
+  cardBackOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  cardBackFrame: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: '#FAF3E0',
+  },
+  cardBackFrameCompact: {
+    padding: 9,
+  },
+  cardBackInner: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#2C3E50',
     backgroundColor: '#FFF1CD',
-    transform: [{ rotate: '1.6deg' }],
-  },
-  ticket: {
-    borderRadius: 8,
-    borderWidth: 4,
-    borderColor: '#111111',
-    backgroundColor: '#2C3E50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     overflow: 'hidden',
   },
-  ticketShimmer: {
+  cornerDot: {
     position: 'absolute',
-    zIndex: 2,
-    top: -90,
-    bottom: -90,
-    width: 58,
-    backgroundColor: 'rgba(255, 255, 255, 0.42)',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#1BA39C',
+    borderWidth: 1.5,
+    borderColor: '#2C3E50',
   },
-  topStripe: {
-    height: 20,
-    borderBottomWidth: 3,
-    borderBottomColor: '#111111',
+  cornerTopLeft: {
+    top: 10,
+    left: 10,
   },
-  bottomStripe: {
-    height: 10,
-    borderTopWidth: 3,
-    borderTopColor: '#111111',
+  cornerTopRight: {
+    top: 10,
+    right: 10,
   },
-  card: {
-    padding: 16,
+  cornerBottomLeft: {
+    bottom: 10,
+    left: 10,
+  },
+  cornerBottomRight: {
+    bottom: 10,
+    right: 10,
+  },
+  logoHalo: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     backgroundColor: '#FAF3E0',
+    borderWidth: 2,
+    borderColor: '#2C3E50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  cardScroll: {
-    backgroundColor: '#FAF3E0',
+  logoHaloCompact: {
+    width: 98,
+    height: 98,
+    borderRadius: 49,
   },
-  cardCompact: {
-    padding: 10,
+  cardBackLogo: {
+    width: 112,
+    height: 112,
+  },
+  cardBackLogoCompact: {
+    width: 86,
+    height: 86,
+  },
+  cardBackBrand: {
+    marginTop: 10,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  cardBackBrandCompact: {
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  cardBackTag: {
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1BA39C',
+    borderWidth: 1.5,
+    borderColor: '#2C3E50',
+  },
+  cardBackTagText: {
+    color: '#FFFFFF',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  flagBanner: {
+    height: 8,
+    flexDirection: 'row',
+    borderBottomWidth: 2,
+    borderBottomColor: '#2C3E50',
+  },
+  flagBannerSegment: {
+    flex: 1,
+  },
+  cardContent: {
+    padding: 20,
+  },
+  cardContentCompact: {
+    padding: 14,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C3E50',
     gap: 12,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     flexShrink: 1,
   },
-  stamp: {
-    minWidth: 128,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderWidth: 3,
+  flagBadge: {
+    width: 44,
+    height: 30,
     borderRadius: 6,
-    backgroundColor: '#FFF1CD',
-    transform: [{ rotate: '-2deg' }],
+    borderWidth: 2,
+    borderColor: '#2C3E50',
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
   },
-  stampText: {
-    fontFamily: 'dogicapixelbold',
-    fontSize: 14,
-    textAlign: 'center',
-    textTransform: 'uppercase',
+  flagBadgeCompact: {
+    width: 38,
+    height: 26,
   },
-  ticketCode: {
-    color: '#2C3E50',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 9,
-    textTransform: 'uppercase',
+  flagVertical: {
+    flexDirection: 'row',
   },
-  teamBadge: {
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    backgroundColor: '#2C3E50',
-    borderRadius: 6,
+  flagHorizontal: {
+    flexDirection: 'column',
   },
-  teamBadgeText: {
-    color: '#FFF1CD',
+  portugalEmblem: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    borderColor: '#2C3E50',
+    left: '39.3%',
+    top: '50%',
+  },
+  countryTextGroup: {
+    flexShrink: 1,
+  },
+  subtitle: {
+    color: '#7A7468',
     fontFamily: 'dogicapixel',
-    fontSize: 10,
+    fontSize: 9,
     textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  routeRail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 10,
-  },
-  routeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-    borderWidth: 2,
-    borderColor: '#111111',
-  },
-  routeDash: {
-    flex: 1,
-    height: 3,
-    marginHorizontal: 5,
-    backgroundColor: '#2C3E50',
-  },
-  mainContent: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'stretch',
-  },
-  mainContentCompact: {
-    gap: 10,
-  },
-  countryPanel: {
-    width: 134,
-    minHeight: 122,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF1CD',
-    borderRadius: 8,
-    borderWidth: 4,
-  },
-  countryPanelCompact: {
-    width: 104,
-    minHeight: 96,
-  },
-  countryCode: {
-    fontFamily: 'dogicapixelbold',
-    fontSize: 28,
-    lineHeight: 34,
-    textTransform: 'uppercase',
-  },
-  countryPanelText: {
-    marginTop: 8,
+  countryTitle: {
     color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
-    fontSize: 9,
-    letterSpacing: 0,
+    fontSize: 20,
+    lineHeight: 26,
+    textTransform: 'uppercase',
   },
-  challengeContent: {
-    flex: 1,
-    justifyContent: 'center',
+  countryTitleCompact: {
+    fontSize: 16,
+    lineHeight: 22,
   },
-  challengeBadge: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+  teamPill: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#FFF1CD',
     borderWidth: 2,
-    borderColor: '#111111',
+    borderColor: '#2C3E50',
   },
-  challengeBadgeText: {
-    color: '#111111',
+  teamPillText: {
+    color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
     fontSize: 10,
     textTransform: 'uppercase',
   },
-  title: {
+  challengeBox: {
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 14,
+    borderLeftWidth: 6,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  challengeBoxCompact: {
     marginTop: 10,
-    color: '#111111',
+    padding: 12,
+  },
+  challengeTitle: {
+    color: '#1BA39C',
     fontFamily: 'dogicapixelbold',
-    fontSize: 22,
-    lineHeight: 29,
+    fontSize: 16,
+    lineHeight: 22,
     textTransform: 'uppercase',
   },
-  titleCompact: {
-    marginTop: 7,
-    fontSize: 17,
-    lineHeight: 22,
+  challengeTitleCompact: {
+    fontSize: 14,
+    lineHeight: 19,
   },
   prompt: {
-    marginTop: 7,
-    color: '#111111',
+    marginTop: 8,
+    color: '#393939',
     fontFamily: 'dogicapixel',
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 21,
   },
   promptCompact: {
-    marginTop: 5,
+    marginTop: 6,
     fontSize: 12,
     lineHeight: 18,
   },
@@ -609,78 +669,59 @@ const styles = StyleSheet.create({
   },
   penaltyBox: {
     flex: 1,
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     backgroundColor: '#FFF1CD',
-    borderRadius: 6,
+    borderRadius: 14,
     borderWidth: 2,
-    borderColor: '#111111',
+    borderColor: '#E6DDC8',
+    justifyContent: 'center',
   },
-  penaltyLabel: {
-    color: '#2C3E50',
+  penaltyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  penaltyBadge: {
+    paddingVertical: 3,
+    paddingHorizontal: 7,
+    borderRadius: 6,
+    backgroundColor: '#D71920',
+  },
+  penaltyBadgeText: {
+    color: '#FFF1CD',
     fontFamily: 'dogicapixelbold',
-    fontSize: 10,
+    fontSize: 8,
     textTransform: 'uppercase',
   },
   penaltyText: {
     marginTop: 6,
-    color: '#111111',
+    color: '#393939',
     fontFamily: 'dogicapixel',
-    fontSize: 12,
-    lineHeight: 20,
+    fontSize: 11,
+    lineHeight: 18,
   },
   completeButton: {
-    width: 152,
+    minWidth: 148,
+    minHeight: 54,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#1BA39C',
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#111111',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.35,
-    shadowRadius: 0,
+    borderRadius: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 6,
   },
   completeButtonPressed: {
-    transform: [{ translateY: 2 }],
-    opacity: 0.88,
+    transform: [{ scale: 0.96 }],
   },
   completeButtonText: {
-    color: '#FFFFFF',
+    color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
-    fontSize: 16,
+    fontSize: 12,
     textTransform: 'uppercase',
-  },
-  completeButtonSubText: {
-    marginTop: 4,
-    color: '#FFF1CD',
-    fontFamily: 'dogicapixel',
-    fontSize: 9,
-    textTransform: 'uppercase',
-  },
-  perforation: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 12,
-    justifyContent: 'space-around',
-  },
-  perforationDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 2,
-    backgroundColor: '#2C3E50',
-    borderWidth: 1,
-    borderColor: '#111111',
-  },
-  pixelSparks: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  pixelSpark: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderWidth: 1,
-    borderColor: '#111111',
   },
 });
 

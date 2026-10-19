@@ -1,3 +1,48 @@
+export const COUNTRY_FLAGS = {
+  France: {
+    layout: 'vertical',
+    stripes: ['#0055A4', '#FFFFFF', '#EF4135'],
+    banner: ['#0055A4', '#FFFFFF', '#EF4135'],
+  },
+  Spain: {
+    layout: 'horizontal',
+    stripes: ['#C60B1E', '#FFC400', '#C60B1E'],
+    stripeWeights: [1, 1.8, 1],
+    banner: ['#C60B1E', '#FFC400', '#C60B1E'],
+  },
+  Portugal: {
+    layout: 'portugal',
+    stripes: ['#006600', '#DA291C'],
+    stripeWeights: [1.1, 1.7],
+    emblemColor: '#FFD700',
+    banner: ['#006600', '#FFD700', '#DA291C'],
+  },
+  Italy: {
+    layout: 'vertical',
+    stripes: ['#009246', '#FFFFFF', '#CE2B37'],
+    banner: ['#009246', '#FFFFFF', '#CE2B37'],
+  },
+  Germany: {
+    layout: 'horizontal',
+    stripes: ['#222222', '#DD0000', '#FFCE00'],
+    banner: ['#222222', '#DD0000', '#FFCE00'],
+  },
+  Belgium: {
+    layout: 'vertical',
+    stripes: ['#222222', '#FDDA24', '#EF3340'],
+    banner: ['#222222', '#FDDA24', '#EF3340'],
+  },
+  Europe: {
+    layout: 'horizontal',
+    stripes: ['#003399', '#FFCC00', '#003399'],
+    banner: ['#003399', '#FFCC00', '#003399'],
+  },
+};
+
+export const getCountryFlag = (country) => (
+  COUNTRY_FLAGS[country] || COUNTRY_FLAGS.Europe
+);
+
 const CHALLENGES_BY_STOP = {
   1: {
     country: 'France',
@@ -50,12 +95,15 @@ const CHALLENGES_BY_STOP = {
   },
 };
 
-export const getChallengeForStop = (stopIndex) => (
-  CHALLENGES_BY_STOP[stopIndex] || {
-    country: 'Europe',
-    title: 'Border Check',
-    prompt: 'Tell the table where your team is travelling next and why.',
-    penalty: 'If the story is boring, take 1 sip.',
-    accent: '#1ba39c',
-  }
-);
+const DEFAULT_CHALLENGE = {
+  country: 'Europe',
+  title: 'Border Check',
+  prompt: 'Tell the table where your team is travelling next and why.',
+  penalty: 'If the story is boring, take 1 sip.',
+  accent: '#1ba39c',
+};
+
+export const getChallengeForStop = (stopIndex) => ({
+  stopIndex,
+  ...(CHALLENGES_BY_STOP[stopIndex] || DEFAULT_CHALLENGE),
+});
