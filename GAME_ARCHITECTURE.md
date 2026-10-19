@@ -470,6 +470,27 @@ The vector map model, vehicle models, and country-marker model use separate Reac
 those assets is still resolving, so one slow asset does not hide the entire
 physical-device board. The route and die do not load external models.
 
+`CharacterSelection` calls `preloadBoardAssets()` (`constants/boardAssets.js`) on
+mount, which warms the `useGLTF` cache for the map and marker GLBs so they are
+already decoded when `GameScreen` mounts. Vehicle GLBs are not preloaded as a
+set; the ones players browse in the selection screen are already cached.
+
+In development (`__DEV__`) the map load is timed with `[perf]` console logs
+(`constants/boardAssets.js` helpers `perfLog`/`perfNow`, used by `MapPlane`):
+preload start, time until the GLB is ready after the first render attempt (and
+whether a preload ran), material preparation time, and time to the first frame
+after mount. On web against a local dev server a cold load measured about 33 ms
+until the GLB was ready and about 326 ms until the first frame; with a preload
+the GLB was ready immediately and the first frame came after about 46 ms. These
+are web numbers on localhost; device numbers have not been measured. Preload
+was verified on web only; confirm it on iOS/Android before relying on it.
+
+The 3D components (`GameScene`, `GamePieces`, `GamePiece`, `CountryMarkers`,
+`MapPlane`, `DottedRouteLine`, `BoardDice`, `VehicleModel`) are wrapped in
+`React.memo`. `GameScreen` passes its handlers through `useLatestCallback`
+(stable identity, always calls the latest closure), so HUD-only state changes
+such as `lastRoll` or `remainingMoves` no longer re-render the Canvas tree.
+
 ### Scene graph
 
 ```text
@@ -545,6 +566,19 @@ viewport to keep the mobile asset smaller. The GLB is prebuilt so Expo Go does
 not need to parse, triangulate, extrude, or weld the large SVG at runtime.
 The animated route path renders above the raised land and border geometry.
 
+`RaisedLand` contains only the extruded side walls (about 61k shared vertices
+with smooth normals). Its top cap is fully covered by `LandTop` and its bottom
+cap lies on the ocean plane, so neither is exported. `LandTop` carries positions
+only (it is unlit), and no mesh has UVs because the map uses no textures. The
+generated file is then run through `gltf-transform quantize`
+(`KHR_mesh_quantization`: int16 positions, int8 normals), which needs no runtime
+decoder; Draco and Meshopt were deliberately not used because they depend on
+WASM or a CDN download that is unverified on Hermes/Expo GL. The command is
+documented at the top of `scripts/build-vector-map.mjs`. Result: the GLB went
+from 10.3 MB to 1.8 MB and the board from about 224k to about 146k triangles per
+frame, measured on web only. The look was compared on web; verify on iOS and
+Android that quantized attributes render correctly.
+
 ### Route curve
 
 Each travel leg is an array of country endpoints plus intermediate control points. Each leg becomes a centripetal Catmull-Rom curve. The legs are also flattened into a single `DRIVE_CURVE` with `1,400` arc-length divisions.
@@ -595,7 +629,7 @@ Position and look-at target are interpolated every frame using exponential dampi
 - Each of six faces has a manually defined transform.
 - Pips are small circle meshes placed from lookup tables.
 - Opposite faces use the standard 1/6, 2/5, and 3/4 pairing.
-- A pixel-art “THROW ME” label is assembled from tiny plane cells.
+- A pixel-art “THROW ME” label is built once as a single merged geometry (one draw call plus a background plane); dice pips share one geometry and material.
 
 ### Internal modes
 
@@ -664,6 +698,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - For `preserveMaterials` models, web keeps a cloned PBR material while native Expo GL uses a lightweight unlit material backed by the already-loaded shared texture. Both paths set sRGB color space and disable `flipY`.
 - Computes a bounding box to center the model, align its lowest point to the ground, and normalize its footprint before applying a common preview or board scale.
 - Uses a smaller board-only scale than the selection preview so vehicles stay proportional to the route while driving.
+- Disposes the materials it created when the prepared clone is replaced or unmounted (and, on web only, the cloned textures). Geometry and native textures belong to the cached GLTF and are never disposed here.
 
 ### Motion
 
@@ -902,9 +937,7 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 | `assets/fonts/` | Dogica fonts |
 | `assets/icons/` | App and splash icons |
 | `assets/images/` | Beer difficulty graphics and UI icons |
-| `assets/europe-map-mobile.png` | Retained mobile raster export; not loaded by the current board |
-| `assets/europe-map4.png` | High-resolution source export for the board texture |
-| `assets/map.svg` | Editable vector source for the country geometry |
+| `assets/map.svg` | Editable vector source for the country geometry (unused raster map exports were removed; see git history) |
 | `assets/models/world-map-vector.glb` | Prebuilt extruded world silhouette and Western Europe country borders |
 | `scripts/build-vector-map.mjs` | Regenerates the runtime GLB from `assets/map.svg` |
 | `assets/models/location.glb` | Country pin geometry |
@@ -921,11 +954,13 @@ web.
 
 `metro.config.js` adds `glb`, `gltf`, `mtl`, and `obj` to Metro’s asset extensions. It also adds Android platform detection middleware for requests that lack an explicit Expo platform.
 
+It also resolves every bare `three` import to `node_modules/three/build/three.module.js`. three ships separate `import` (`three.module.js`) and `require` (`three.cjs`) builds, and Metro was bundling both, which printed "Multiple instances of Three.js being imported" and added about 2.2 MB to the Android bundle (17.5 MB to 15.2 MB unminified, measured with `expo export`). `@react-navigation/stack` is kept at 7.12+ because earlier versions called the deprecated React Native `InteractionManager` on React Native 0.82+.
+
 ### Oversized and duplicate assets
 
-Several alternate map exports remain in the repository. None of the raster map
-exports are loaded by the current board; `map.svg` is the editable source and
-`world-map-vector.glb` is the runtime board asset.
+The unused raster map exports were removed from the repository (they remain in
+git history). `map.svg` is the editable source and `world-map-vector.glb` is the
+runtime board asset.
 
 `assets/model.gltf` is approximately 153 MB, is not referenced by application code, is ignored by Git because it exceeds GitHub’s 100 MB file limit, and remains available only in local working copies that already have it.
 
@@ -1178,8 +1213,7 @@ camera motion, GLTF appearance, and final 3D performance.
 3. Vehicle previews are loaded on demand, but cycling through many textured vehicles in one session can still increase the loader cache and memory pressure.
 4. Replacing materials may discard advanced GLTF material properties.
 5. The challenge animation, marker animation, dice animation, camera movement, and cars all run concurrently.
-6. Several unused alternate map images increase repository and potentially bundle size.
-7. `world-map-vector.glb` is generated from `map.svg`; run `npm run build:map` after changing the SVG or the generator settings.
+6. `world-map-vector.glb` is generated from `map.svg`; run `npm run build:map` after changing the SVG or the generator settings, then quantize it (see the header of `scripts/build-vector-map.mjs`).
 
 ### Native/release readiness
 
@@ -1273,7 +1307,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `app.json` | Expo app metadata and plugins |
 | `eas.json` | EAS build/submit profiles |
 | `firebaseConfig.js` | Firebase initialization and database export |
-| `metro.config.js` | Metro asset extensions and Android request middleware |
+| `metro.config.js` | Metro asset extensions, single-copy `three` resolution, and Android request middleware |
 | `scripts/run-ios.sh` | Xcode 27/Device Hub-compatible iOS development launcher |
 
 ### Navigation and development
@@ -1306,7 +1340,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GameScene.js` | Canvas and 3D scene composition |
 | `components/MapPlane.js` | Continuous ocean plane and raised vector-map viewport |
 | `components/DottedRouteLine.js` | Animated route path ribbon, flowing chevrons, and waypoint rings |
-| `components/CountryMarkers.js` | Destination markers and active-marker animation |
+| `components/CountryMarkers.js` | Destination markers (two shared materials, one clone per marker) and active-marker animation |
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
@@ -1327,6 +1361,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `constants/diceBounds.js` | Allowed die interaction region |
 | `constants/gamePieces.js` | Team IDs, colors, counts, and initial progress |
 | `constants/modelOptions.js` | Vehicle registry and transforms |
+| `constants/boardAssets.js` | Map and marker GLB sources plus `preloadBoardAssets()` |
 | `constants/challenges.js` | Country challenge content |
 
 ### Shared UI

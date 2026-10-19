@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei/native';
 import {
   MAP_CY,
@@ -11,6 +11,7 @@ import {
   MAP_Z,
 } from '../constants/mapCoordinates';
 import * as THREE from 'three';
+import { MAP_MODEL_SOURCE, boardLoadTimings, perfLog, perfNow } from '../constants/boardAssets';
 
 const OCEAN_W = 240;
 const OCEAN_H = 180;
@@ -68,9 +69,49 @@ const prepareVectorMap = (scene) => {
   return clone;
 };
 
-const MapPlane = () => {
-  const { scene } = useGLTF(require('../../../assets/models/world-map-vector.glb'));
-  const vectorMap = useMemo(() => prepareVectorMap(scene), [scene]);
+// Module-level so the numbers survive the suspend/re-render cycle of useGLTF.
+let firstRenderAt = null;
+let hasLoggedReady = false;
+
+const MapPlane = memo(() => {
+  if (firstRenderAt === null) {
+    firstRenderAt = perfNow();
+    perfLog('map: first render attempt (GLB requested)');
+  }
+
+  const { scene } = useGLTF(MAP_MODEL_SOURCE);
+
+  if (!hasLoggedReady) {
+    hasLoggedReady = true;
+    const now = perfNow();
+    const sincePreload = boardLoadTimings.preloadStartedAt === null
+      ? 'no preload'
+      : `${(now - boardLoadTimings.preloadStartedAt).toFixed(0)} ms after preload start`;
+    perfLog(`map: GLB ready ${(now - firstRenderAt).toFixed(0)} ms after first render attempt (${sincePreload})`);
+  }
+
+  const vectorMap = useMemo(() => {
+    const startedAt = perfNow();
+    const prepared = prepareVectorMap(scene);
+    perfLog(`map: materials prepared in ${(perfNow() - startedAt).toFixed(0)} ms`);
+    return prepared;
+  }, [scene]);
+
+  // Time from mount to the first painted frame, plus the total since the first render attempt.
+  useEffect(() => {
+    const mountedAt = perfNow();
+    const frame = requestAnimationFrame(() => {
+      const now = perfNow();
+      perfLog(`map: first frame ${(now - mountedAt).toFixed(0)} ms after mount, ${(now - firstRenderAt).toFixed(0)} ms total`);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // The clone owns its materials (geometry is shared with the cached GLTF scene).
+  useEffect(() => () => {
+    vectorMap.traverse((child) => child.material?.dispose?.());
+  }, [vectorMap]);
 
   return (
     <group>
@@ -86,6 +127,6 @@ const MapPlane = () => {
       />
     </group>
   );
-};
+});
 
 export default MapPlane;

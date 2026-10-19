@@ -124,3 +124,7 @@ date only after reconciling the relevant sections with the implementation.
 - Keep each task scoped to the requested outcome and summarize changed files,
   behavioral impact, verification evidence, and remaining risks.
 - For every feature that you are asked to implement or change make a new working branch.
+
+
+## COMMITS
+commit withouth any co author, use git naming conventions and use a small commit message max 1 scentence that summerizes the feature

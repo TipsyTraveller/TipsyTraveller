@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei/native';
 import { Platform } from 'react-native';
 import * as THREE from 'three';
@@ -131,13 +131,27 @@ const prepareVehicleScene = (scene, color, preserveMaterials) => {
   return clone;
 };
 
-const VehicleModel = ({ color = '#d71920', mode = 'board', model }) => {
+const VehicleModel = memo(({ color = '#d71920', mode = 'board', model }) => {
   const { scene } = useGLTF(model.source);
   const preparedScene = useMemo(
     () => prepareVehicleScene(scene, color, model.preserveMaterials),
     [color, model.preserveMaterials, scene]
   );
   const isPreview = mode === 'preview';
+
+  // Materials are created per prepared clone. Native textures are shared with the cached GLTF,
+  // so only the web path (which clones its maps) disposes textures.
+  useEffect(() => () => {
+    preparedScene.traverse((child) => {
+      if (!child.isMesh) return;
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        if (Platform.OS === 'web') material?.map?.dispose?.();
+        material?.dispose?.();
+      });
+    });
+  }, [preparedScene]);
 
   return (
     <group
@@ -150,6 +164,6 @@ const VehicleModel = ({ color = '#d71920', mode = 'board', model }) => {
       />
     </group>
   );
-};
+});
 
 export default VehicleModel;

@@ -1,4 +1,16 @@
+// Regenerates assets/models/world-map-vector.glb from assets/map.svg.
+//
+//   npm run build:map                       (writes the shipped GLB)
+//   MAP_OUTPUT=/tmp/map.glb npm run build:map   (writes elsewhere, e.g. to compare sizes)
+//
+// After building, shrink the file with mesh quantization (no runtime decoder needed, unlike
+// Draco/Meshopt which need WASM or a CDN download):
+//
+//   npx @gltf-transform/cli@4.5.1 quantize <built>.glb assets/models/world-map-vector.glb --quantize-normal 8
+//
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { DOMParser } from '@xmldom/xmldom';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -6,7 +18,10 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const SOURCE_PATH = new URL('../assets/map.svg', import.meta.url);
-const OUTPUT_PATH = new URL('../assets/models/world-map-vector.glb', import.meta.url);
+// MAP_OUTPUT lets a build target another file (e.g. a scratch dir) without touching the shipped GLB.
+const OUTPUT_PATH = process.env.MAP_OUTPUT
+  ? pathToFileURL(path.resolve(process.env.MAP_OUTPUT))
+  : new URL('../assets/models/world-map-vector.glb', import.meta.url);
 const SOURCE_WIDTH = 1096;
 const SOURCE_HEIGHT = 780;
 const MAP_WIDTH = 20;
@@ -333,19 +348,44 @@ for (const path of countryPaths) {
   landShapes.push(...SVGLoader.createShapes(path));
 }
 
+// RaisedLand only needs the side walls: the top cap is fully covered by LandTop, the bottom cap
+// lies on the ocean plane and is never seen from above. ExtrudeGeometry puts the caps in
+// group 0 and the side walls in group 1, so keep only group 1. UVs are unused (no textures).
+const buildSideWalls = (extruded) => {
+  const sideGroup = extruded.groups.find((group) => group.materialIndex === 1);
+  if (!sideGroup) {
+    throw new Error('ExtrudeGeometry did not produce a side-wall group.');
+  }
+
+  const sliceAttribute = (name) => {
+    const attribute = extruded.getAttribute(name);
+    return new THREE.BufferAttribute(
+      attribute.array.slice(sideGroup.start * 3, (sideGroup.start + sideGroup.count) * 3),
+      3
+    );
+  };
+
+  const walls = new THREE.BufferGeometry();
+  walls.setAttribute('position', sliceAttribute('position'));
+  extruded.dispose();
+  return walls;
+};
+
 const landGeometries = landShapes.map((shape) => {
-  const geometry = new THREE.ExtrudeGeometry(shape, {
+  const geometry = buildSideWalls(new THREE.ExtrudeGeometry(shape, {
     bevelEnabled: false,
     curveSegments: CURVE_DIVISIONS,
     depth: RELIEF_DEPTH,
     steps: 1,
-  });
+  }));
 
   geometry.applyMatrix4(sourceToMap);
   return geometry;
 });
 
+// Position-only merge lets the wall vertices be shared; smooth normals are rebuilt afterwards.
 const landGeometry = mergeVertices(mergeOrThrow(landGeometries, 'land'), 0.0001);
+landGeometry.computeVertexNormals();
 const topMaterial = new THREE.MeshStandardMaterial({
   color: '#B8AD92',
   metalness: 0.01,
@@ -357,6 +397,9 @@ land.name = 'RaisedLand';
 
 const topGeometries = landShapes.map((shape) => {
   const geometry = new THREE.ShapeGeometry(shape, CURVE_DIVISIONS);
+  // LandTop is unlit and untextured: positions are all it needs.
+  geometry.deleteAttribute('normal');
+  geometry.deleteAttribute('uv');
   geometry.applyMatrix4(sourceToMap);
   geometry.translate(0, 0, RELIEF_DEPTH + 0.001);
   return geometry;

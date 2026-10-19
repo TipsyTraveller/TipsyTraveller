@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
@@ -165,7 +165,7 @@ const applyCarTransform = ({
   }
 };
 
-const GamePiece = ({
+const GamePiece = memo(({
   activeCarProgressRef,
   currentLeg,
   driving,
@@ -353,6 +353,6 @@ const GamePiece = ({
       </group>
     </group>
   );
-};
+});
 
 export default GamePiece;

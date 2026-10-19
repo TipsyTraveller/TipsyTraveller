@@ -1,9 +1,24 @@
 // Learn more https://docs.expo.io/guides/customizing-metro
+const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 config.resolver.assetExts.push('glb', 'gltf', 'mtl', 'obj');
+
+// three ships two builds (`import` -> three.module.js, `require` -> three.cjs). Metro resolves
+// each consumer with its own condition, so both builds end up in the bundle and three warns
+// "Multiple instances of Three.js being imported". Resolve every bare `three` import to the
+// same file so only one copy is bundled.
+const THREE_ENTRY = path.join(__dirname, 'node_modules/three/build/three.module.js');
+const upstreamResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === 'three') {
+    return { type: 'sourceFile', filePath: THREE_ENTRY };
+  }
+
+  return (upstreamResolveRequest || context.resolveRequest)(context, moduleName, platform);
+};
 
 // Fix for Android platform redirect issue
 config.server.enhanceMiddleware = (middleware) => {

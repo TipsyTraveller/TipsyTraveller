@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "port": 8081,
+      "url": "http://localhost:8081"
+    }
+  ]
+}

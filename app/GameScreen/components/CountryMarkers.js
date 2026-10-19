@@ -1,26 +1,32 @@
-import { useMemo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import { useGLTF } from '@react-three/drei/native';
 import * as THREE from 'three';
 import { MAP_Z } from '../constants/mapCoordinates';
+import { MARKER_MODEL_SOURCE } from '../constants/boardAssets';
 import { MARKERS } from '../constants/route';
+
+// Two shared materials for all markers; per-marker materials only multiplied shader state.
+const markerMaterial = (color) => new THREE.MeshStandardMaterial({
+  color,
+  roughness: 0.38,
+  metalness: 0.12,
+  side: THREE.DoubleSide,
+});
+const ACTIVE_MARKER_MATERIAL = markerMaterial(0xffd700);
+const INACTIVE_MARKER_MATERIAL = markerMaterial(0xe53935);
 
 const CountryMarker = ({ position, active }) => {
   const markerRef = useRef();
   const activeRingRef = useRef();
-  const { scene } = useGLTF(require('../../../assets/models/location.glb'));
+  const { scene } = useGLTF(MARKER_MODEL_SOURCE);
   const marker = useMemo(() => {
     const clone = scene.clone(true);
 
     clone.traverse((child) => {
       if (!child.isMesh) return;
 
-      child.material = new THREE.MeshStandardMaterial({
-        color: active ? 0xffd700 : 0xe53935,
-        roughness: 0.38,
-        metalness: 0.12,
-        side: THREE.DoubleSide,
-      });
+      child.material = active ? ACTIVE_MARKER_MATERIAL : INACTIVE_MARKER_MATERIAL;
     });
 
     clone.updateMatrixWorld(true);
@@ -73,7 +79,7 @@ const CountryMarker = ({ position, active }) => {
   );
 };
 
-const CountryMarkers = ({ currentLeg, targetLeg }) => {
+const CountryMarkers = memo(({ currentLeg, targetLeg }) => {
   const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
     ? targetLeg
     : currentLeg + 1;
@@ -90,6 +96,6 @@ const CountryMarkers = ({ currentLeg, targetLeg }) => {
       ))}
     </>
   );
-};
+});
 
 export default CountryMarkers;

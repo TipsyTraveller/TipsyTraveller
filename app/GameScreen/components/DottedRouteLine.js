@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
@@ -67,7 +67,7 @@ const buildRibbonGeometry = (halfWidth, zHeight) => {
   return geometry;
 };
 
-const DottedRouteLine = ({
+const DottedRouteLine = memo(({
   activeCarProgressRef,
   driving = false,
   fromLeg = 0,
@@ -155,6 +155,6 @@ const DottedRouteLine = ({
       </mesh>
     </group>
   );
-};
+});
 
 export default DottedRouteLine;

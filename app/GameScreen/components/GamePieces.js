@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { memo, useRef } from 'react';
 import GamePiece from './GamePiece';
 
 const getParkingOffsetFactor = (parkingAssignments, pieceId) => {
@@ -22,7 +22,10 @@ const assignToOpenParkingSlot = (parkingAssignments, pieceId) => {
   return nextAssignments;
 };
 
-const GamePieces = ({
+// Shared empty list so non-driving pieces keep a stable prop and GamePiece's memo can skip re-renders.
+const NO_PASSED_LEGS = [];
+
+const GamePieces = memo(({
   activeCarProgressRef,
   driving,
   gamePieces,
@@ -86,7 +89,7 @@ const GamePieces = ({
 
             return [...distances, otherLeg];
           }, [])
-          : [];
+          : NO_PASSED_LEGS;
         const currentAssignments = progress.currentLeg === movingTargetLeg && destinationAssignments
           ? destinationAssignments
           : (parkingAssignmentsByLegRef.current[progress.currentLeg] || [null, null, null]);
@@ -124,6 +127,6 @@ const GamePieces = ({
       })}
     </>
   );
-};
+});
 
 export default GamePieces;

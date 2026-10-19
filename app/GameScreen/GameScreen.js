@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import ChallengePopup from './components/ChallengePopup';
@@ -38,6 +38,14 @@ const getNextActiveTeamIndex = (gamePieces, teamProgress, currentIndex) => {
 };
 
 const rollDice = () => Math.floor(Math.random() * 6) + 1;
+
+// Stable identity, always calls the latest closure. Keeps memoized 3D children from
+// re-rendering on every GameScreen state change without introducing stale state.
+const useLatestCallback = (callback) => {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  return useCallback((...args) => callbackRef.current(...args), []);
+};
 
 const GameScreen = ({ route }) => {
   const gameData = route?.params?.gameData;
@@ -229,6 +237,12 @@ const GameScreen = ({ route }) => {
     };
   }, []);
 
+  const stableDiceRollStart = useLatestCallback(handleDiceRollStart);
+  const stableBoardDiceRoll = useLatestCallback(handleBoardDiceRoll);
+  const stableDriveStart = useLatestCallback(handleDriveStart);
+  const stableLegPass = useLatestCallback(handleLegPass);
+  const stableMoveComplete = useLatestCallback(handleMoveComplete);
+
   const focusedPiece = activePiece || getFocusedPiece(gamePieces, teamProgress);
   const focusedProgress = teamProgress[focusedPiece?.id] || { currentLeg: 0, isDone: false };
   const currentLeg = focusedProgress.currentLeg;
@@ -265,11 +279,11 @@ const GameScreen = ({ route }) => {
         moveTargetLeg={moveTargetLeg ?? currentLeg}
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
-        onDiceRollStart={handleDiceRollStart}
-        onDiceRoll={handleBoardDiceRoll}
-        onDriveStart={handleDriveStart}
-        onLegPass={handleLegPass}
-        onMoveComplete={handleMoveComplete}
+        onDiceRollStart={stableDiceRollStart}
+        onDiceRoll={stableBoardDiceRoll}
+        onDriveStart={stableDriveStart}
+        onLegPass={stableLegPass}
+        onMoveComplete={stableMoveComplete}
         pathRevealDuration={pathRevealDuration}
         pieceRefs={pieceRefs.current}
         targetRef={targetRef}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import { RoundedBox } from '@react-three/drei/native';
 import * as THREE from 'three';
@@ -110,32 +110,45 @@ const clampToMap = (point) => new THREE.Vector3(
   THREE.MathUtils.clamp(point.y, DICE_BOUNDS.minY + HALF_SIZE, DICE_BOUNDS.maxY - HALF_SIZE),
   point.z
 );
-const clampToHoldPlane = (point) => new THREE.Vector3(
+
+// Scratch objects for pointer handling, which runs on every pointer-move event.
+const PLANE_POINT = new THREE.Vector3();
+const HOLD_POINT = new THREE.Vector3();
+const DRAG_DELTA = new THREE.Vector3();
+const IDLE_TARGET = new THREE.Vector3();
+
+const clampToHoldPlane = (point, target) => target.set(
   THREE.MathUtils.clamp(point.x, HOLD_BOUNDS.minX, HOLD_BOUNDS.maxX),
   THREE.MathUtils.clamp(point.y, HOLD_BOUNDS.minY, HOLD_BOUNDS.maxY),
   HOLD_Z
 );
-const getHoldPlanePoint = (event, fallback) => {
-  const planePoint = new THREE.Vector3();
 
-  if (event?.ray?.intersectPlane(HOLD_PLANE, planePoint)) {
-    return clampToHoldPlane(planePoint);
+// Returns a shared scratch vector; clone or copy it before storing it.
+const getHoldPlanePoint = (event, fallback) => {
+  if (event?.ray?.intersectPlane(HOLD_PLANE, PLANE_POINT)) {
+    return clampToHoldPlane(PLANE_POINT, HOLD_POINT);
   }
 
   if (event?.point) {
-    return clampToHoldPlane(event.point);
+    return clampToHoldPlane(event.point, HOLD_POINT);
   }
 
-  return fallback.clone().setZ(HOLD_Z);
+  return HOLD_POINT.copy(fallback).setZ(HOLD_Z);
 };
 
-const DicePips = ({ pipPositions = PIP_POSITIONS, pipRadius = PIP_RADIUS, value }) => (
+// Dice pips share one geometry and material across all faces.
+const PIP_GEOMETRY = new THREE.CircleGeometry(PIP_RADIUS, 16);
+// transparent: the result fade animates opacity on every dice material, including this shared one.
+const PIP_MATERIAL = new THREE.MeshBasicMaterial({
+  color: '#111111',
+  side: THREE.DoubleSide,
+  transparent: true,
+});
+
+const DicePips = ({ value }) => (
   <>
     {FACE_PIPS[value].map((pip) => (
-      <mesh key={pip} position={pipPositions[pip]}>
-        <circleGeometry args={[pipRadius, 16]} />
-        <meshBasicMaterial color="#111111" side={THREE.DoubleSide} transparent={true} />
-      </mesh>
+      <mesh key={pip} position={PIP_POSITIONS[pip]} geometry={PIP_GEOMETRY} material={PIP_MATERIAL} />
     ))}
   </>
 );
@@ -156,7 +169,8 @@ const DiceFace = ({ faceRefs, position, rotation, value }) => (
   </group>
 );
 
-const BlockText = ({ text }) => {
+// Builds the pixel-font label as one merged geometry (one draw call instead of one mesh per cell).
+const buildLabelGeometry = (text) => {
   const cells = [];
   let cursor = 0;
 
@@ -176,7 +190,6 @@ const BlockText = ({ text }) => {
         if (cell !== '1') return;
 
         cells.push({
-          key: `${letter}-${cursor}-${rowIndex}-${columnIndex}`,
           x: cursor + columnIndex * LABEL_CELL_SIZE,
           y: -rowIndex * LABEL_CELL_SIZE,
         });
@@ -186,36 +199,58 @@ const BlockText = ({ text }) => {
     cursor += letterWidth + LABEL_LETTER_GAP;
   });
 
-  const centerOffset = cursor / 2;
+  const offsetX = -cursor / 2;
+  const offsetY = 0.06;
+  const offsetZ = 0.01;
+  const half = (LABEL_CELL_SIZE * 0.82) / 2;
+  const positions = new Float32Array(cells.length * 4 * 3);
+  const indices = new Uint16Array(cells.length * 6);
 
-  return (
-    <group position={[-centerOffset, 0.06, 0.01]}>
-      {cells.map((cell) => (
-        <mesh key={cell.key} position={[cell.x, cell.y, 0]}>
-          <planeGeometry args={[LABEL_CELL_SIZE * 0.82, LABEL_CELL_SIZE * 0.82]} />
-          <meshBasicMaterial color="#fff1cd" side={THREE.DoubleSide} />
-        </mesh>
-      ))}
-    </group>
-  );
+  cells.forEach((cell, index) => {
+    const cx = cell.x + offsetX;
+    const cy = cell.y + offsetY;
+    const p = index * 12;
+    const v = index * 4;
+
+    positions.set([
+      cx - half, cy - half, offsetZ,
+      cx + half, cy - half, offsetZ,
+      cx + half, cy + half, offsetZ,
+      cx - half, cy + half, offsetZ,
+    ], p);
+    indices.set([v, v + 1, v + 2, v, v + 2, v + 3], index * 6);
+  });
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeBoundingSphere();
+
+  return geometry;
 };
+
+const LABEL_GEOMETRY = buildLabelGeometry(LABEL_TEXT);
+const LABEL_BACKGROUND_GEOMETRY = new THREE.PlaneGeometry(1.25, 0.34);
+const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#fff1cd', side: THREE.DoubleSide });
+const LABEL_BACKGROUND_MATERIAL = new THREE.MeshBasicMaterial({
+  color: '#111111',
+  opacity: 0.72,
+  side: THREE.DoubleSide,
+  transparent: true,
+});
 
 const ThrowMeLabel = ({ labelRef }) => (
   <group ref={labelRef}>
-    <mesh position={[0, 0, -0.01]}>
-      <planeGeometry args={[1.25, 0.34]} />
-      <meshBasicMaterial
-        color="#111111"
-        opacity={0.72}
-        side={THREE.DoubleSide}
-        transparent={true}
-      />
-    </mesh>
-    <BlockText text={LABEL_TEXT} />
+    <mesh
+      position={[0, 0, -0.01]}
+      geometry={LABEL_BACKGROUND_GEOMETRY}
+      material={LABEL_BACKGROUND_MATERIAL}
+    />
+    <mesh geometry={LABEL_GEOMETRY} material={LABEL_TEXT_MATERIAL} />
   </group>
 );
 
-const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
+const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart }) => {
   const diceRef = useRef();
   const faceRefs = useRef({});
   const labelRef = useRef();
@@ -316,7 +351,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     });
     setVisibleFaces();
 
-    const holdTarget = getHoldPlanePoint(event, diceRef.current.position);
+    const holdTarget = getHoldPlanePoint(event, diceRef.current.position).clone();
 
     stateRef.current = {
       ...stateRef.current,
@@ -332,7 +367,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
     if (stateRef.current.mode !== 'held') return;
 
     const nextDragPoint = getHoldPlanePoint(event, stateRef.current.holdTarget);
-    const dragDelta = nextDragPoint.clone().sub(stateRef.current.lastDragPoint);
+    const dragDelta = DRAG_DELTA.copy(nextDragPoint).sub(stateRef.current.lastDragPoint);
 
     if (dragDelta.lengthSq() > 0.0001) {
       stateRef.current.dragVelocity.lerp(dragDelta, 0.45);
@@ -483,7 +518,7 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
 
     if (stateRef.current.mode === 'idle') {
       const bob = Math.sin(clock.elapsedTime * 2.2) * IDLE_BOB_HEIGHT;
-      const targetPosition = stateRef.current.idleBasePosition.clone();
+      const targetPosition = IDLE_TARGET.copy(stateRef.current.idleBasePosition);
 
       targetPosition.z += bob;
       diceRef.current.position.lerp(targetPosition, Math.min(delta * 5, 1));
@@ -634,6 +669,6 @@ const BoardDice = ({ enabled = true, onRollComplete, onRollStart }) => {
       <ThrowMeLabel labelRef={labelRef} />
     </>
   );
-};
+});
 
 export default BoardDice;

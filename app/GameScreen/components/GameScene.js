@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { memo, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber/native';
 import { DONE_POS } from '../constants/camera';
 import CameraController from './CameraController';
@@ -60,7 +60,7 @@ const CountryMarkersFallback = ({ currentLeg, targetLeg }) => {
   );
 };
 
-const GameScene = ({
+const GameScene = memo(({
   activeCarProgressRef,
   activeTeamColor,
   cameraMode,
@@ -135,6 +135,6 @@ const GameScene = ({
     <CameraController mode={cameraMode} targetRef={targetRef} />
     <BoardDice enabled={diceEnabled} onRollComplete={onDiceRoll} onRollStart={onDiceRollStart} />
   </Canvas>
-);
+));
 
 export default GameScene;
