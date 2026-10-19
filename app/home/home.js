@@ -1,4 +1,4 @@
-import { ScrollView, Text, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, Text, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MainAnimation from "../shared/components/MainAnimation/MainAnimation";
 import OptionButton from "./components/OptionButton/OptionButton";
@@ -16,7 +16,7 @@ export default function Home ({ navigation }) {
             <Header  navigation={navigation} showBackButton={false}/>
             <ScrollView
                 bounces={false}
-                contentContainerStyle={style.content}
+                contentContainerStyle={[style.content, Platform.OS === "web" && style.webContent]}
                 style={style.scroll}
                 showsVerticalScrollIndicator={false}
             >
@@ -49,6 +49,12 @@ const style = StyleSheet.create({
         alignItems: "center",
         justifyContent: "space-between",
         paddingBottom: 12,
+    },
+    webContent: {
+        justifyContent: "flex-start",
+        gap: 32,
+        paddingHorizontal: 16,
+        paddingTop: 4,
     },
     scroll: {
         width: "100%",

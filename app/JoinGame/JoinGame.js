@@ -8,11 +8,12 @@ import {
     Text,
     View
 } from "react-native";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {ref, set, get, onDisconnect, child, push, serverTimestamp} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getProfile } from "../shared/storage/userSettings";
 //COMPONENTS
 import Button from "../shared/components/Button/Button"
 import Header from "../shared/components/Header/Header";
@@ -25,6 +26,14 @@ export default function JoinGame ({ navigation }) {
     const [userName, setUserName] = useState('');
     const [isJoining, setIsJoining] = useState(false);
     const userNameInputRef = useRef(null);
+
+    useEffect(() => {
+        getProfile().then((profile) => {
+            if (profile?.name) {
+                setUserName(profile.name);
+            }
+        });
+    }, []);
 
     const handleJoin = async () => {
         if (!userName.trim() || gamePin.length !== 4 || isJoining){

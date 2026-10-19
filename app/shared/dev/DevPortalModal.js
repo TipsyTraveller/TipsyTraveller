@@ -391,6 +391,24 @@ export default function DevPortalModal({ visible, onClose }) {
                   >
                     <Text style={styles.smallButtonText}>🔑 Join</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.smallButton}
+                    onPress={() => {
+                      navigate('AccountScreen');
+                      onClose();
+                    }}
+                  >
+                    <Text style={styles.smallButtonText}>👤 Account</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.smallButton}
+                    onPress={() => {
+                      navigate('SettingsScreen');
+                      onClose();
+                    }}
+                  >
+                    <Text style={styles.smallButtonText}>⚙️ Settings</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
