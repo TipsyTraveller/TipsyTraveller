@@ -178,7 +178,7 @@ The current implementation stores route geometry and display names in `constants
 - Movement cannot overshoot the finish.
 - Landing at the finish immediately marks that team done.
 - Landing before the finish opens a challenge.
-- There is no collision rule; multiple teams may occupy the same stop.
+- There is no collision rule; multiple teams may occupy the same stop. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
 - There are no shortcuts, reverse movement, bonus rolls, or stored penalties in the current code.
 - Drinking penalties are instructions only; the app does not record whether a challenge was passed or failed.
 
@@ -579,7 +579,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 The camera has two modes:
 
 - `done`: smoothly returns to a fixed board overview (and stays in overview during the initial route-path reveal after a roll).
-- `follow`: follows the active vehicle using a fixed offset once the vehicle begins driving along the revealed path.
+- `follow`: follows the active vehicle from a wider fixed offset once the vehicle begins driving along the revealed path, keeping the car and nearby route context visible without filling the frame.
 
 Position and look-at target are interpolated every frame using exponential damping (`1 - Math.exp(-damping * delta)`), preventing frame-rate-dependent jumps.
 
@@ -663,14 +663,16 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - Replaces materials with team-colored paint, dark parts, glass, or lights for the classic-style model.
 - For `preserveMaterials` models, web keeps a cloned PBR material while native Expo GL uses a lightweight unlit material backed by the already-loaded shared texture. Both paths set sRGB color space and disable `flipY`.
 - Computes a bounding box to center the model, align its lowest point to the ground, and normalize its footprint before applying a common preview or board scale.
+- Uses a smaller board-only scale than the selection preview so vehicles stay proportional to the route while driving.
 
 ### Motion
 
 - After a roll, the vehicle waits for the animated route path to lay out (`getPathRevealDuration`) before driving.
-- Progress is stored as distance along the global route curve, advancing by `delta × 0.88` world units per frame while driving.
+- Progress is stored as distance along the global route curve, advancing by `delta × 2` world units per frame while driving.
 - Position comes directly from `DRIVE_CURVE.getPointAt(normalizedDistance)`.
 - Heading comes from a tight look-ahead chord tangent (`getSmoothRouteTangentAngle`) plus a 90-degree model correction, interpolated with shortest-angle exponential damping.
 - An inner body group applies the driving sine bounce so the root group tracked by the camera remains free of vertical bounce jitter.
+- Before movement begins, `GamePieces` identifies other teams parked at route stops strictly between the mover's start and destination. The inner body group first lifts the active vehicle on a high smooth arc, then performs one full longitudinal rotation while airborne and returns the vehicle upright before landing. This visual kickflip does not change route distance, stop occupancy, or camera tracking.
 - Crossed intermediate stops decrement `remainingMoves` in `GameScreen`, and when the target stop is reached, `onMoveComplete(teamId, targetLeg)` fires exactly once.
 
 ---
