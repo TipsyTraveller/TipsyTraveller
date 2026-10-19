@@ -29,10 +29,11 @@ owns screens and overlays; React Three Fiber/Three.js/Expo GL own the 3D board;
 Firebase Realtime Database owns room, lobby, and vehicle-selection data;
 AsyncStorage owns the anonymous local device identity.
 
-The most important current boundary is that the room and lobby are realtime,
-but live board gameplay is local React state. Do not describe turns, rolls,
-route progress, challenges, or game completion as multiplayer-synchronized
-unless the implementation has actually been changed and verified.
+The room, lobby, vehicle selection, and turn-level board state are realtime.
+Firebase owns the canonical turn, roll, route progress, challenge, and game
+completion state; React and Three.js keep per-frame animation local. Do not
+describe animation frames as server-driven or dice generation as trusted
+backend logic unless that implementation has actually been changed and verified.
 
 Primary reference areas:
 

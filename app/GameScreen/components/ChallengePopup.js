@@ -39,7 +39,7 @@ const PixelSparks = ({ accent }) => (
   </View>
 );
 
-const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
+const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete }) => {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const compact = height < 430;
@@ -345,16 +345,22 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
               <Animated.View style={buttonPulseStyle}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Complete challenge and start next turn"
+                  accessibilityLabel={canComplete
+                    ? 'Complete challenge and start next turn'
+                    : `Waiting for ${teamLabel} to complete the challenge`}
+                  disabled={!canComplete}
                   onPress={onComplete}
                   style={({ pressed }) => [
                     styles.completeButton,
                     { shadowColor: challenge.accent },
+                    !canComplete && styles.completeButtonDisabled,
                     pressed && styles.completeButtonPressed,
                   ]}
                 >
-                  <Text style={styles.completeButtonText}>Done</Text>
-                  <Text style={styles.completeButtonSubText}>Next Turn</Text>
+                  <Text style={styles.completeButtonText}>{canComplete ? 'Done' : 'Watching'}</Text>
+                  <Text style={styles.completeButtonSubText}>
+                    {canComplete ? 'Next Turn' : `Waiting for ${teamLabel}`}
+                  </Text>
                 </Pressable>
               </Animated.View>
             </View>
@@ -643,6 +649,9 @@ const styles = StyleSheet.create({
   completeButtonPressed: {
     transform: [{ translateY: 2 }],
     opacity: 0.88,
+  },
+  completeButtonDisabled: {
+    opacity: 0.55,
   },
   completeButtonText: {
     color: '#FFFFFF',
