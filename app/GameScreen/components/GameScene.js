@@ -81,6 +81,7 @@ const GameScene = memo(({
   onMoveComplete,
   pathRevealDuration,
   pieceRefs,
+  rollAction,
   targetRef,
   teamProgress,
   vehicleInMotion,
@@ -133,7 +134,12 @@ const GameScene = memo(({
       <CountryMarkers currentLeg={currentLeg} targetLeg={moveTargetLeg} />
     </Suspense>
     <CameraController mode={cameraMode} targetRef={targetRef} />
-    <BoardDice enabled={diceEnabled} onRollComplete={onDiceRoll} onRollStart={onDiceRollStart} />
+    <BoardDice
+      enabled={diceEnabled}
+      onRollComplete={onDiceRoll}
+      onRollStart={onDiceRollStart}
+      rollAction={rollAction}
+    />
   </Canvas>
 ));
 

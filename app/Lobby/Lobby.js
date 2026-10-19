@@ -67,6 +67,8 @@ export default function Lobby ({ navigation, route }) {
     }, [gameID]);
 
     useEffect(() => {
+        if (!teamMembers || !navigation.isFocused()) return;
+
         if (gameData?.status === "characterSelection") {
             navigation.navigate("CharacterSelection", {
             gameID: gameID,
@@ -74,7 +76,14 @@ export default function Lobby ({ navigation, route }) {
             teamMembers: teamMembers,
             });
         }
-    }, [gameData?.status, teamMembers]);
+        if (gameData?.status === "game" && gameData?.gameplay) {
+            navigation.replace("GameScreen", {
+                gameID: gameID,
+                gameData: gameData,
+                teamMembers: teamMembers,
+            });
+        }
+    }, [gameData, gameID, navigation, teamMembers]);
 
     const handleAddPlayer  = async () => {
         const trimmedUserName = userName.trim();

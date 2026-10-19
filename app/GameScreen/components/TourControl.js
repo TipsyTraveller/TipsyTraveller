@@ -1,10 +1,29 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const TourControl = ({ activeTeamLabel, canRoll, lastRoll, onRestart, onRoll, state }) => {
+const TourControl = ({
+  activeTeamLabel,
+  canRestart,
+  canRoll,
+  isConnected = true,
+  lastRoll,
+  onRestart,
+  onRoll,
+  state,
+}) => {
   const insets = useSafeAreaInsets();
   const isDone = state === 'done';
-  const buttonDisabled = !canRoll && !isDone;
+  const buttonDisabled = isDone ? !canRestart : !canRoll;
+  const buttonLabel = (() => {
+    if (!isConnected) return 'Reconnecting...';
+    if (state === 'loading') return 'Loading...';
+    if (state === 'waiting') return canRoll ? 'Roll Dice' : 'Waiting...';
+    if (state === 'rolling') return 'Rolling...';
+    if (state === 'moving') return 'Moving...';
+    if (state === 'challenge') return 'Challenge...';
+    if (isDone) return canRestart ? 'Restart' : 'Host Restarts';
+    return 'Waiting...';
+  })();
 
   return (
     <View style={[styles.tourControl, { right: insets.right + 10, top: insets.top + 8 }]}>
@@ -19,13 +38,7 @@ const TourControl = ({ activeTeamLabel, canRoll, lastRoll, onRestart, onRoll, st
         style={[styles.moveButton, buttonDisabled && styles.buttonDisabled]}
         disabled={buttonDisabled}
       >
-        <Text style={styles.footerText}>
-          {state === 'waiting' && 'Roll Dice'}
-          {state === 'rolling' && 'Rolling...'}
-          {state === 'moving' && 'Moving...'}
-          {state === 'challenge' && 'Challenge...'}
-          {isDone && 'Restart'}
-        </Text>
+        <Text style={styles.footerText}>{buttonLabel}</Text>
       </TouchableOpacity>
     </View>
   );

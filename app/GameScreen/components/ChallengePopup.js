@@ -143,7 +143,7 @@ const CardBack = ({ compact, style }) => (
   </Animated.View>
 );
 
-const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
+const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete }) => {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const compact = height < 430;
@@ -366,14 +366,25 @@ const ChallengePopup = ({ challenge, teamLabel, visible, onComplete }) => {
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Complete challenge and start next turn"
+                accessibilityLabel={canComplete
+                  ? 'Complete challenge and start next turn'
+                  : `Waiting for ${teamLabel} to complete the challenge`}
+                disabled={!canComplete}
                 onPress={onComplete}
                 style={({ pressed }) => [
                   styles.completeButton,
-                  pressed && styles.completeButtonPressed,
+                  !canComplete && styles.completeButtonDisabled,
+                  pressed && canComplete && styles.completeButtonPressed,
                 ]}
               >
-                <Text style={styles.completeButtonText}>NEXT TURN</Text>
+                <Text style={styles.completeButtonText}>
+                  {canComplete ? 'NEXT TURN' : 'WATCHING'}
+                </Text>
+                {!canComplete && Boolean(teamLabel) && (
+                  <Text style={styles.completeButtonSubText}>
+                    {`Waiting for ${teamLabel}`}
+                  </Text>
+                )}
               </Pressable>
             </View>
           </ScrollView>
@@ -717,11 +728,22 @@ const styles = StyleSheet.create({
   completeButtonPressed: {
     transform: [{ scale: 0.96 }],
   },
+  completeButtonDisabled: {
+    opacity: 0.55,
+  },
   completeButtonText: {
     color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
     fontSize: 12,
     textTransform: 'uppercase',
+  },
+  completeButtonSubText: {
+    marginTop: 4,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixel',
+    fontSize: 8,
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
 });
 

@@ -12,6 +12,8 @@ import Lobby from '../Lobby/Lobby';
 import HostName from "../HostName/HostName";
 import GameScreen from "../GameScreen/GameScreen";
 import CharacterSelection from "../CharacterSelection/CharachterSelection";
+import Account from '../Account/Account';
+import Settings from '../Settings/Settings';
 import { DEV_GAME_ROUTE_PARAMS, START_ON_DEV_GAME_SCREEN } from "./devGameRoute";
 import DevPortal from '../shared/dev/DevPortal';
 import { navigationRef } from '../shared/dev/devNavigation';
@@ -64,6 +66,16 @@ export default function App() {
         <Stack.Screen
           name='CharacterSelection'
           component={ CharacterSelection }
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name='AccountScreen'
+          component={ Account }
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name='SettingsScreen'
+          component={ Settings }
           options={{ headerShown: false }}
         />
         </Stack.Navigator>

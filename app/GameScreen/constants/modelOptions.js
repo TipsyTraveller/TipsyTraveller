@@ -6,9 +6,9 @@ export const MODEL_OPTIONS = [
     yaw: Math.PI / 2,
   },
   {
-    id: 'vehicle001',
+    id: 'bierfiets',
     label: 'Neon Nomad',
-    source: require('../../../assets/models/vehicle001.glb'),
+    source: require('../../../assets/models/bierfiets.glb'),
     preserveMaterials: true,
   },
   {

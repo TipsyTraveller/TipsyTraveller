@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
+  BackHandler,
   Platform,
   ScrollView,
   StyleSheet,
@@ -52,7 +52,15 @@ export default function DevPortalModal({ visible, onClose }) {
       loadDeviceId();
       detectActiveGamePin();
     }
-  }, [visible]);
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (visible) {
+        onClose?.();
+        return true;
+      }
+      return false;
+    });
+    return () => backSub.remove();
+  }, [visible, onClose]);
 
   const loadDeviceId = async () => {
     try {
@@ -224,14 +232,13 @@ export default function DevPortalModal({ visible, onClose }) {
   const currentRouteName = getCurrentRouteInfo()?.name || 'Unknown';
 
   return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        <View style={[styles.modalCard, isLandscape && styles.modalCardLandscape]}>
+    <View style={styles.fullscreenOverlay}>
+      <TouchableOpacity
+        style={styles.backdropTouch}
+        activeOpacity={1}
+        onPress={onClose}
+      />
+      <View style={[styles.modalCard, isLandscape && styles.modalCardLandscape]}>
           {/* Header */}
           <View style={styles.header}>
             <View>
@@ -383,6 +390,24 @@ export default function DevPortalModal({ visible, onClose }) {
                     }}
                   >
                     <Text style={styles.smallButtonText}>🔑 Join</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.smallButton}
+                    onPress={() => {
+                      navigate('AccountScreen');
+                      onClose();
+                    }}
+                  >
+                    <Text style={styles.smallButtonText}>👤 Account</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.smallButton}
+                    onPress={() => {
+                      navigate('SettingsScreen');
+                      onClose();
+                    }}
+                  >
+                    <Text style={styles.smallButtonText}>⚙️ Settings</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -571,18 +596,22 @@ export default function DevPortalModal({ visible, onClose }) {
             )}
           </ScrollView>
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  fullscreenOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 12,
+    zIndex: 999999,
+    elevation: 999999,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalCard: {
     width: '100%',
@@ -593,6 +622,8 @@ const styles = StyleSheet.create({
     borderColor: '#ffd700',
     borderRadius: 12,
     overflow: 'hidden',
+    zIndex: 2,
+    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.5,
@@ -600,7 +631,7 @@ const styles = StyleSheet.create({
   },
   modalCardLandscape: {
     maxWidth: 680,
-    maxHeight: '96%',
+    maxHeight: '95%',
   },
   header: {
     flexDirection: 'row',
