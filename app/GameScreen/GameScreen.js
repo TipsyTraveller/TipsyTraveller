@@ -6,6 +6,7 @@ import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import TourControl from './components/TourControl';
 import { getChallengeForStop } from './constants/challenges';
+import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
 import { getDefaultModelOption, getModelOption } from './constants/modelOptions';
 import {
@@ -44,6 +45,7 @@ const GameScreen = ({ route }) => {
   const [lastRoll, setLastRoll] = useState(null);
   const [remainingMoves, setRemainingMoves] = useState(0);
   const [movingPieceId, setMovingPieceId] = useState(null);
+  const [moveStartDelay, setMoveStartDelay] = useState(0);
   const [moveStartLeg, setMoveStartLeg] = useState(0);
   const [passedLeg, setPassedLeg] = useState(0);
   const [isCarDriving, setIsCarDriving] = useState(false);
@@ -83,6 +85,7 @@ const GameScreen = ({ route }) => {
     setLastRoll(null);
     setRemainingMoves(0);
     setMovingPieceId(null);
+    setMoveStartDelay(0);
     setMoveStartLeg(0);
     setPassedLeg(0);
     setIsCarDriving(false);
@@ -101,6 +104,7 @@ const GameScreen = ({ route }) => {
     setLastRoll(null);
     setRemainingMoves(0);
     setMovingPieceId(null);
+    setMoveStartDelay(0);
     setMoveStartLeg(0);
     setPassedLeg(0);
     setIsCarDriving(false);
@@ -130,7 +134,7 @@ const GameScreen = ({ route }) => {
     }
   };
 
-  const handleRoll = (value = rollDice()) => {
+  const handleRoll = (value = rollDice(), resultDisplayDelay = 0) => {
     if (!['waiting', 'rolling'].includes(state) || !activePiece || activeProgress.isDone) return;
 
     const startLeg = activeProgress.currentLeg;
@@ -143,11 +147,16 @@ const GameScreen = ({ route }) => {
     setIsCarDriving(false);
     setRemainingMoves(targetLeg - startLeg);
     setMovingPieceId(activePiece.id);
+    setMoveStartDelay(resultDisplayDelay);
     setMoveTargets((previousTargets) => ({
       ...previousTargets,
       [activePiece.id]: targetLeg,
     }));
     setState('moving');
+  };
+
+  const handleBoardDiceRoll = (value) => {
+    handleRoll(value, DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER);
   };
 
   const handleDriveStart = () => {
@@ -228,11 +237,12 @@ const GameScreen = ({ route }) => {
         driving={state === 'moving'}
         gamePieces={gamePieces}
         moveFromLeg={moveStartLeg}
+        moveStartDelay={moveStartDelay}
         moveTargetLeg={moveTargetLeg ?? currentLeg}
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
         onDiceRollStart={handleDiceRollStart}
-        onDiceRoll={handleRoll}
+        onDiceRoll={handleBoardDiceRoll}
         onDriveStart={handleDriveStart}
         onLegPass={handleLegPass}
         onMoveComplete={handleMoveComplete}

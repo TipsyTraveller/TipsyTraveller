@@ -70,6 +70,7 @@ const GameScene = ({
   driving,
   gamePieces,
   moveFromLeg,
+  moveStartDelay,
   moveTargetLeg,
   movingPieceId,
   moveTargets,
@@ -115,6 +116,7 @@ const GameScene = ({
         activeCarProgressRef={activeCarProgressRef}
         driving={driving}
         gamePieces={gamePieces}
+        moveStartDelay={moveStartDelay}
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
         onDriveStart={onDriveStart}
