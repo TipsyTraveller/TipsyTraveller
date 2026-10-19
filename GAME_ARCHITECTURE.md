@@ -557,6 +557,19 @@ viewport to keep the mobile asset smaller. The GLB is prebuilt so Expo Go does
 not need to parse, triangulate, extrude, or weld the large SVG at runtime.
 The animated route path renders above the raised land and border geometry.
 
+`RaisedLand` contains only the extruded side walls (about 61k shared vertices
+with smooth normals). Its top cap is fully covered by `LandTop` and its bottom
+cap lies on the ocean plane, so neither is exported. `LandTop` carries positions
+only (it is unlit), and no mesh has UVs because the map uses no textures. The
+generated file is then run through `gltf-transform quantize`
+(`KHR_mesh_quantization`: int16 positions, int8 normals), which needs no runtime
+decoder; Draco and Meshopt were deliberately not used because they depend on
+WASM or a CDN download that is unverified on Hermes/Expo GL. The command is
+documented at the top of `scripts/build-vector-map.mjs`. Result: the GLB went
+from 10.3 MB to 1.8 MB and the board from about 224k to about 146k triangles per
+frame, measured on web only. The look was compared on web; verify on iOS and
+Android that quantized attributes render correctly.
+
 ### Route curve
 
 Each travel leg is an array of country endpoints plus intermediate control points. Each leg becomes a centripetal Catmull-Rom curve. The legs are also flattened into a single `DRIVE_CURVE` with `1,400` arc-length divisions.
@@ -930,9 +943,9 @@ web.
 
 ### Oversized and duplicate assets
 
-Several alternate map exports remain in the repository. None of the raster map
-exports are loaded by the current board; `map.svg` is the editable source and
-`world-map-vector.glb` is the runtime board asset.
+The unused raster map exports were removed from the repository (they remain in
+git history). `map.svg` is the editable source and `world-map-vector.glb` is the
+runtime board asset.
 
 `assets/model.gltf` is approximately 153 MB, is not referenced by application code, is ignored by Git because it exceeds GitHub’s 100 MB file limit, and remains available only in local working copies that already have it.
 
@@ -1185,8 +1198,7 @@ camera motion, GLTF appearance, and final 3D performance.
 3. Vehicle previews are loaded on demand, but cycling through many textured vehicles in one session can still increase the loader cache and memory pressure.
 4. Replacing materials may discard advanced GLTF material properties.
 5. The challenge animation, marker animation, dice animation, camera movement, and cars all run concurrently.
-6. Several unused alternate map images increase repository and potentially bundle size.
-7. `world-map-vector.glb` is generated from `map.svg`; run `npm run build:map` after changing the SVG or the generator settings.
+6. `world-map-vector.glb` is generated from `map.svg`; run `npm run build:map` after changing the SVG or the generator settings, then quantize it (see the header of `scripts/build-vector-map.mjs`).
 
 ### Native/release readiness
 
