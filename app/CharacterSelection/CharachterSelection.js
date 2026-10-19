@@ -10,6 +10,7 @@ import VehicleModel from '../GameScreen/components/VehicleModel';
 import { preloadBoardAssets } from '../GameScreen/constants/boardAssets';
 import { GAME_PIECES } from '../GameScreen/constants/gamePieces';
 import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
+import { createInitialGameplay } from '../GameScreen/gameplayState';
 
 const getRequiredTeamKeys = (gameData) => (
   gameData?.nrOfPlayers === '9-12'
@@ -35,6 +36,7 @@ export default function CharacterSelection({ navigation, route }) {
   const [isSaving, setIsSaving] = useState(false);
   const { height } = useWindowDimensions();
   const hasNavigatedRef = useRef(false);
+  const initialGameplayRef = useRef(null);
   const selectedModel = MODEL_OPTIONS[selectedModelIndex];
 
   useEffect(() => {
@@ -118,9 +120,25 @@ export default function CharacterSelection({ navigation, route }) {
       return;
     }
 
-    runTransaction(ref(db, `games/${gameID}/status`), (currentStatus) => (
-      currentStatus === 'characterSelection' ? 'game' : currentStatus
-    )).catch((error) => {
+    if (!initialGameplayRef.current) {
+      initialGameplayRef.current = createInitialGameplay(liveGameData);
+    }
+
+    runTransaction(ref(db, `games/${gameID}`), (currentGame) => {
+      if (!currentGame || currentGame.status !== 'characterSelection') return undefined;
+
+      const currentRequiredTeams = getRequiredTeamKeys(currentGame);
+      const currentTeamsReady = currentRequiredTeams.every(
+        (teamKey) => Boolean(currentGame.teamModels?.[teamKey])
+      );
+      if (!currentTeamsReady) return undefined;
+
+      return {
+        ...currentGame,
+        gameplay: initialGameplayRef.current,
+        status: 'game',
+      };
+    }).catch((error) => {
       console.log('Unable to start game after vehicle selection', error);
     });
   }, [allTeamsReady, gameID, isHost, liveGameData?.status]);

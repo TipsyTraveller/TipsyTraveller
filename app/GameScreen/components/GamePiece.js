@@ -10,8 +10,8 @@ import {
   STOP_DISTANCES,
 } from '../constants/route';
 import VehicleModel from './VehicleModel';
+import { DRIVE_SPEED_UNITS_PER_SECOND } from '../constants/movement';
 
-const DRIVE_SPEED = 2;
 const CAR_ROTATION_OFFSET = Math.PI / 2;
 const CAR_BASE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.022;
 const CAR_BOUNCE_HEIGHT = 0.01;
@@ -299,7 +299,10 @@ const GamePiece = memo(({
     const startDistance = STOP_DISTANCES[currentLeg] ?? 0;
     const targetDistance = STOP_DISTANCES[target] ?? DRIVE_LENGTH;
 
-    distanceRef.current = Math.min(distanceRef.current + delta * DRIVE_SPEED, targetDistance);
+    distanceRef.current = Math.min(
+      distanceRef.current + delta * DRIVE_SPEED_UNITS_PER_SECOND,
+      targetDistance
+    );
     const curveProgress = THREE.MathUtils.clamp(distanceRef.current / DRIVE_LENGTH, 0, 1);
     const movingParkingOffset = getMovingParkingOffset({
       distance: distanceRef.current,

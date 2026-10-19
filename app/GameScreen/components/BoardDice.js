@@ -250,7 +250,7 @@ const ThrowMeLabel = ({ labelRef }) => (
   </group>
 );
 
-const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart }) => {
+const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollAction }) => {
   const diceRef = useRef();
   const faceRefs = useRef({});
   const labelRef = useRef();
@@ -277,6 +277,7 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart }) => {
     facesIsolated: false,
   });
   const diceMaterialsRef = useRef([]);
+  const lastPresentedActionIdRef = useRef(null);
   const resultTargetPosition = useMemo(() => new THREE.Vector3(), []);
   const resultTargetQuaternion = useMemo(() => new THREE.Quaternion(), []);
   const idleQuaternion = useMemo(() => (
@@ -337,6 +338,42 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart }) => {
     stateRef.current.idleBasePosition.copy(IDLE_POSITION);
     stateRef.current.mode = 'idle';
   }, [enabled, idleQuaternion]);
+
+  useEffect(() => {
+    if (
+      !rollAction?.id
+      || lastPresentedActionIdRef.current === rollAction.id
+      || !diceRef.current
+    ) {
+      return;
+    }
+
+    lastPresentedActionIdRef.current = rollAction.id;
+
+    // The device that physically threw the die is already presenting this result.
+    // Observing devices enter the same result animation from a stable board position.
+    if (stateRef.current.mode === 'result' && stateRef.current.result === rollAction.value) {
+      return;
+    }
+
+    stateRef.current.result = rollAction.value;
+    stateRef.current.mode = 'result';
+    diceRef.current.visible = true;
+    diceRef.current.position.copy(LAND_POSITION);
+    diceRef.current.quaternion.copy(FACE_QUATERNIONS[rollAction.value]);
+    diceRef.current.scale.setScalar(1);
+    diceMaterialsRef.current.forEach((material) => {
+      material.opacity = 1;
+    });
+    setVisibleFaces();
+    resultAnimationRef.current = {
+      active: true,
+      startTime: null,
+      startPosition: LAND_POSITION.clone(),
+      startQuaternion: diceRef.current.quaternion.clone(),
+      facesIsolated: false,
+    };
+  }, [rollAction?.id, rollAction?.value]);
 
   const beginPickup = (event) => {
     event.stopPropagation();

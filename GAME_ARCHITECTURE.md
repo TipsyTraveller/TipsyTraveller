@@ -40,7 +40,7 @@ The presentation combines two rendering systems:
 - React Native renders screens, forms, buttons, lobby content, the HUD, and challenge cards.
 - Three.js, through React Three Fiber and Expo GL, renders the map, route, markers, vehicles, camera, and interactive die.
 
-Firebase Realtime Database provides room creation, joining, team rosters, lobby updates, host reconnection metadata, and selected team models. AsyncStorage gives each installation a persistent anonymous device identifier.
+Firebase Realtime Database provides room creation, joining, team rosters, lobby updates, host reconnection metadata, selected team models, and synchronized live gameplay state. AsyncStorage gives each installation a persistent anonymous device identifier.
 
 ### Product identity
 
@@ -100,13 +100,12 @@ This document distinguishes between the visible product concept and what the cur
 - Animated vehicle movement along a curved route.
 - Animated country markers and camera following.
 - Configurable location challenge cards.
-- Turn switching, route completion, and local restart.
+- Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
+- Active-game re-entry through the room PIN with canonical state restoration.
 - iOS 27/Xcode 27 development support through Device Hub.
 
 ### Partially implemented
 
-- Multiplayer synchronization stops after lobby/model selection. Live turns and board progress are local React state.
-- Reconnection recognizes the original host device, but no full game-state restoration exists.
 - Difficulty and duration are stored in Firebase but do not modify gameplay.
 - Profile and settings icons are visible but have no actions.
 - The lobby `RULES` button opens a concise rules summary. Profile and settings icons remain decorative.
@@ -227,7 +226,7 @@ Every stack header is hidden; each screen supplies its own header or controls.
 
 ## 5. Gameplay state machine
 
-`GameScreen` is the authoritative controller for a local board session. It owns the state machine and passes data and callbacks into the renderer and overlays.
+`GameScreen` owns the game rules and visual state machine. In a real room, a versioned Firebase gameplay record is authoritative and `GameScreen` animates each client toward that shared state. Development mock games keep the original local-only controller path.
 
 ```mermaid
 stateDiagram-v2
@@ -278,7 +277,7 @@ stateDiagram-v2
 
 ### Reset behavior
 
-Restart clears rolls, targets, active movement, challenges, and team progress. It does not modify Firebase and does not ask other devices to restart.
+In a multiplayer room, only the host can restart. Restart transactionally replaces the Firebase gameplay record with a new session ID and initial team progress, which resets every connected client. Development mock games still restart locally.
 
 ---
 
@@ -308,7 +307,8 @@ flowchart LR
 - `index.js` registers the root React component through Expo.
 - `app/app/app.js` loads fonts and owns navigation.
 - Screen folders own user-flow pages and Firebase actions.
-- `GameScreen.js` owns the local game rules and turn state.
+- `GameScreen.js` owns game rules, local animation state, and scene/overlay orchestration.
+- `useMultiplayerGame.js` subscribes to the shared gameplay record and exposes transaction-backed roll, movement, challenge, and restart actions.
 - `GameScene.js` composes the 3D world but does not decide game rules.
 - `GameScreen/constants/` contains board geometry, route data, challenges, team definitions, camera positions, and model metadata.
 - `firebaseConfig.js` initializes the Firebase app and exports the Realtime Database client.
@@ -337,10 +337,11 @@ This keeps long text, buttons, and accessibility semantics out of WebGL while re
 | Room settings | Firebase `games/{gameID}` | Yes | Yes |
 | Team roster | Firebase `players/{gameID}` | Yes | Yes |
 | Team model choice | Firebase `games/{gameID}/teamModels` | Yes | Yes |
-| Current turn | `GameScreen` React state | No | No |
-| Die result | `GameScreen` React state | No | No |
-| Team route progress | `GameScreen` React state | No | No |
-| Current challenge | Derived/local React state | No | No |
+| Current turn | Firebase gameplay record | Yes | Yes |
+| Die result/action | Firebase gameplay record | Yes | Yes |
+| Team route progress | Firebase gameplay record | Yes | Yes |
+| Current challenge stop | Firebase gameplay record | Yes | Yes |
+| Per-frame animation state | `GameScreen` / Three.js refs | No | No |
 
 ---
 
@@ -435,7 +436,7 @@ Purpose: let every device identified as a team leader independently choose that 
 - When every required team has selected a model, the host transactionally changes the room status from `characterSelection` to `game`.
 - Every client observing `status: "game"` replaces the selection screen with `GameScreen` using the complete model map.
 
-Current caveat: vehicle readiness is synchronized, but the live board state after this transition remains local to each device.
+When the host observes that every required team is ready, one transaction creates the initial versioned gameplay record and changes the room status to `game`. Every client then replaces the selection screen with `GameScreen` and subscribes to that gameplay record.
 
 ### `GameScreen`
 
@@ -445,7 +446,9 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Creates two or three game pieces based on `nrOfPlayers`.
 - Resolves model choices from `gameData.teamModels`, falling back to the Rally Truck.
 - Creates a ref and progress record for each team.
-- Handles rolling, movement targets, landings, challenges, turn switching, finish state, and restart.
+- Subscribes to the room gameplay record and renders synchronized rolls, movement targets, landings, challenges, turn switching, finish state, and restart.
+- Limits roll and challenge controls to the active team's leader and restart to the host; other devices render the same action in spectator mode.
+- Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
 - The native HUD and turn control respect landscape safe-area insets, while long challenge tickets become scrollable and use a compact layout on short landscape viewports.
 
@@ -738,7 +741,7 @@ All animations use the native driver. Loops are stopped during cleanup.
 
 ### Completion semantics
 
-The button does not record success or failure. It simply closes the challenge, identifies the next unfinished team, clears the latest roll, and returns the game to `waiting`. Penalties are social instructions for the players to apply themselves.
+The button does not record success or failure. In a multiplayer room it is enabled only for the active team's leader; pressing it transactionally closes the challenge, identifies the next unfinished team, clears the latest roll, and returns every client to `waiting`. Penalties are social instructions for the players to apply themselves.
 
 ---
 
@@ -764,6 +767,31 @@ The current code expects this conceptual Realtime Database shape:
       "teamModels": {
         "team1": "car1",
         "team2": "vehicle003"
+      },
+      "gameplay": {
+        "schemaVersion": 1,
+        "sessionId": "m8abc123-roomrun",
+        "revision": 4,
+        "phase": "moving",
+        "activeTeamId": "team1",
+        "turnNumber": 3,
+        "teamProgress": {
+          "team1": { "currentLeg": 2, "isDone": false },
+          "team2": { "currentLeg": 1, "isDone": false }
+        },
+        "currentAction": {
+          "id": "device-action-id",
+          "type": "roll",
+          "teamId": "team1",
+          "value": 4,
+          "fromLeg": 2,
+          "targetLeg": 6,
+          "inputMethod": "boardDice",
+          "startedAt": 1792195200000,
+          "movementStartsAt": 1792195201850,
+          "movementEndsAt": 1792195207000
+        },
+        "updatedAt": 1792195200000
       }
     }
   },
@@ -829,6 +857,18 @@ The lobby listens to:
 - `games/{gameID}` for settings and status changes.
 
 Listeners are detached when the lobby unmounts.
+
+`GameScreen` listens to `games/{gameID}/gameplay`, `.info/connected`, and
+`.info/serverTimeOffset`. The gameplay listener drives the local board toward
+the shared phase and progress. A monotonically increasing revision and unique
+action ID make transitions and animations idempotent. Roll, movement-complete,
+challenge-complete, and restart writes use Realtime Database transactions.
+
+The active team's leader is the only client UI allowed to roll and complete a
+challenge. Every connected client may attempt the idempotent internal movement
+finalization after the stored movement deadline so a disconnected rolling
+device does not permanently stall the room. The host alone can restart a
+completed session.
 
 ### Security considerations
 
@@ -922,7 +962,9 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 }
 ```
 
-`GameScreen` currently consumes `gameData` only. `gameID` and `teamMembers` are passed but are not used for live gameplay.
+`GameScreen` consumes all three values. `gameID` selects the gameplay record,
+`teamMembers` maps the local AsyncStorage device ID to its team/leader role, and
+`gameData` supplies host identity, room settings, and vehicle models.
 
 ---
 
@@ -1148,7 +1190,12 @@ Use at least two separate installations or clear/device-specific storage careful
 7. Start from the host and confirm both clients navigate to character selection.
 8. Select a model from each leader device.
 9. Inspect Firebase to confirm `teamModels` values.
-10. Note the current limitation: clients do not coordinate entry into or state within `GameScreen`.
+10. Confirm every client enters `GameScreen` with Team 1 active.
+11. Confirm only Team 1's leader can roll and every device shows the same result and vehicle movement.
+12. Confirm every device opens the same challenge and only the active team's leader can press `DONE / NEXT TURN`.
+13. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.
+14. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
+15. Finish the tour, restart from the host, and confirm every device resets to Team 1 at the starting stop.
 
 ### Reconnection test
 
@@ -1179,11 +1226,12 @@ camera motion, GLTF appearance, and final 3D performance.
 
 ### Gameplay and synchronization
 
-1. **Board state is local.** Turns, rolls, progress, challenges, and completion are not written to Firebase.
-2. **Difficulty is unused.** Easy/medium/hard do not alter challenges or penalties.
-3. **Duration is unused.** Short/medium/long do not alter route length, target score, or timer.
-4. **No winner model.** The game waits for all teams instead of ranking the first finisher.
-5. **Challenges are honor-based.** Pass/fail and penalties are not recorded.
+1. **Peer-authoritative rolls.** Transactions prevent duplicate turns, but the active leader's client still generates the random value; trusted anti-cheat rolls require backend logic.
+2. **Animation clocks are approximate.** Clients use the Firebase server-time offset and shared movement deadlines, but rendering remains local and slow/backgrounded devices may catch up by snapping to canonical state.
+3. **Difficulty is unused.** Easy/medium/hard do not alter challenges or penalties.
+4. **Duration is unused.** Short/medium/long do not alter route length, target score, or timer.
+5. **No winner model.** The game waits for all teams instead of ranking the first finisher.
+6. **Challenges are honor-based.** Pass/fail and penalties are not recorded.
 
 ### Firebase and identity
 
@@ -1228,25 +1276,13 @@ camera motion, GLTF appearance, and final 3D performance.
 
 ## 19. Safe extension points
 
-### Make gameplay truly multiplayer
+### Harden synchronized gameplay
 
-Add a `gameplay` subtree under each room:
-
-```json
-{
-  "activeTeam": "team1",
-  "phase": "waiting",
-  "lastRoll": null,
-  "currentChallengeStop": null,
-  "revision": 12,
-  "teams": {
-    "team1": { "currentLeg": 2, "isDone": false },
-    "team2": { "currentLeg": 1, "isDone": false }
-  }
-}
-```
-
-Use Firebase transactions or a trusted backend for roll/turn transitions so two clients cannot submit a turn simultaneously. Treat the database record as authoritative and animate clients toward it.
+The gameplay subtree and transaction-backed client state machine are implemented.
+The next hardening step is to generate dice results in trusted backend logic and
+validate actions with Firebase Authentication plus versioned Realtime Database
+rules. Preserve the existing gameplay schema and action revisions so clients can
+continue to animate toward one canonical state.
 
 ### Activate difficulty
 
@@ -1336,7 +1372,9 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 
 | File | Responsibility |
 |---|---|
-| `app/GameScreen/GameScreen.js` | Local game state machine and scene/overlay orchestration |
+| `app/GameScreen/GameScreen.js` | Shared/local game controller and scene/overlay orchestration |
+| `app/GameScreen/gameplayState.js` | Gameplay schema initialization, team rotation, action IDs, and roll timing |
+| `app/GameScreen/hooks/useMultiplayerGame.js` | Firebase gameplay subscription, identity mapping, and transactional actions |
 | `components/GameScene.js` | Canvas and 3D scene composition |
 | `components/MapPlane.js` | Continuous ocean plane and raised vector-map viewport |
 | `components/DottedRouteLine.js` | Animated route path ribbon, flowing chevrons, and waypoint rings |
@@ -1344,7 +1382,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
-| `components/BoardDice.js` | Interactive die, throw animation, and camera-facing die result animation |
+| `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/TourControl.js` | Roll/restart control panel |
@@ -1357,6 +1395,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 |---|---|
 | `constants/mapCoordinates.js` | Board dimensions and UV-to-world conversion |
 | `constants/route.js` | Stops, curves, lengths, and names |
+| `constants/movement.js` | Shared vehicle speed used by rendering and synchronized action timing |
 | `constants/camera.js` | Overview and follow-camera geometry |
 | `constants/diceBounds.js` | Allowed die interaction region |
 | `constants/gamePieces.js` | Team IDs, colors, counts, and initial progress |
@@ -1405,6 +1444,6 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 
 ## Closing summary
 
-TipsyTraveller currently has a strong playable local board-game prototype, a visually distinctive 3D presentation, and a functional Firebase-backed room/lobby foundation. The most important architectural boundary is that the lobby is realtime multiplayer while the board is still local. The next major product milestone should be to make Firebase gameplay state authoritative, coordinate vehicle selection, and continue profiling map geometry and draw calls for reliable mobile GPU performance.
+TipsyTraveller has a playable synchronized board game, a visually distinctive 3D presentation, and a Firebase-backed room, lobby, vehicle-selection, and gameplay flow. Firebase owns the canonical turn-level state while React and Three.js keep per-frame animation local. The next major product milestones are authenticated/rules-enforced gameplay actions, trusted dice generation, and continued profiling of map geometry and draw calls for reliable mobile GPU performance.
 
 Once those items are addressed, the existing separation between screen flow, game controller, static game definitions, 3D scene components, and React Native overlays provides a practical base for additional routes, challenge sets, game modes, and production multiplayer behavior.
