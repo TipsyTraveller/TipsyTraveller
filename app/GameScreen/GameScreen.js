@@ -9,6 +9,7 @@ import { getChallengeForStop } from './constants/challenges';
 import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
 import { getDefaultModelOption, getModelOption } from './constants/modelOptions';
+import { devEventBus } from '../shared/dev/devEventBus';
 import {
   DRIVE_LEGS,
   getPathRevealDuration,
@@ -204,6 +205,24 @@ const GameScreen = ({ route }) => {
     setCurrentChallenge(getChallengeForStop(landedLeg));
     setState('challenge');
   };
+
+  useEffect(() => {
+    const unsubRoll = devEventBus.on('dev:forceRoll', ({ value }) => {
+      handleRoll(value, 0);
+    });
+    const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex }) => {
+      setCurrentChallenge(getChallengeForStop(stopIndex));
+      setState('challenge');
+    });
+    const unsubRestart = devEventBus.on('dev:restart', () => {
+      handleRestart();
+    });
+    return () => {
+      unsubRoll();
+      unsubChallenge();
+      unsubRestart();
+    };
+  });
 
   const focusedPiece = activePiece || getFocusedPiece(gamePieces, teamProgress);
   const focusedProgress = teamProgress[focusedPiece?.id] || { currentLeg: 0, isDone: false };

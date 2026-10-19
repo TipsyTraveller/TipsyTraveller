@@ -114,15 +114,21 @@ This document distinguishes between the visible product concept and what the cur
 
 ### Development-mode behavior
 
-`app/app/devGameRoute.js` currently contains:
+`app/app/devGameRoute.js` contains `START_ON_DEV_GAME_SCREEN = false`, so development and production builds start by default on `Home`.
 
-```js
-export const START_ON_DEV_GAME_SCREEN = false;
-```
+In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`). Its presence is controlled by:
 
-Therefore, development and production builds start on `Home` and follow the full setup or join flow. Developers can temporarily change this flag to `__DEV__ && true` to start directly on `GameScreen` with mock data without affecting production builds.
+1. `EXPO_PUBLIC_ENABLE_DEV_PORTAL` in `.env` or `.env.local` (set to `true` or `false`).
+2. `__DEV__` React Native global flag (fallback when the env variable is omitted).
 
-The development game creates two teams and assigns both the Rally Truck. Its room ID is `DEV-0000`; it does not create that room in Firebase.
+The Dev Portal provides four tabbed capability suites:
+
+- **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
+- **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
+- **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, triggering country challenge cards (stops 1 through 7) directly, and resetting board state.
+- **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
+
+The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK` and operates completely offline unless live Firebase room creation is explicitly requested.
 
 ---
 
@@ -1332,6 +1338,18 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `shared/components/MainAnimation` | Globe Lottie and app title |
 | `shared/components/LoadingComponent` | Currently unused loading animation |
 | `shared/styles/SafeAreaView` | Android safe-area adjustment |
+
+### Developer tools
+
+| File/group | Responsibility |
+|---|---|
+| `shared/dev/devConfig.js` | Evaluates `EXPO_PUBLIC_ENABLE_DEV_PORTAL` and `__DEV__` to determine portal visibility |
+| `shared/dev/DevPortal.js` | Root dev portal container mounting floating button and modal |
+| `shared/dev/DevPortalButton.js` | Draggable/dockable on-screen floating trigger button (`⚡ DEV`) |
+| `shared/dev/DevPortalModal.js` | Tabbed developer portal overlay (Screens, Multiplayer/Bots, Board Tools, Identity) |
+| `shared/dev/devNavigation.js` | Global navigation ref, instant screen starters (`startInstantGameScreen`, `startInstantCharacterSelection`, `startLiveTestLobby`) |
+| `shared/dev/devFirebaseService.js` | Bot player generation, 1-tap lobby auto-fill, team vehicle ready-up, live test room provisioning |
+| `shared/dev/devEventBus.js` | Decoupled event bus for in-game dev actions (`forceRoll`, `testChallenge`, `restart`) |
 
 ### Native code
 
