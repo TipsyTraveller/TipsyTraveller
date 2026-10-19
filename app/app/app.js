@@ -19,26 +19,15 @@ import { navigationRef } from '../shared/dev/devNavigation';
 const Stack = createStackNavigator();
 
 export default function App() {
-  const [activeRoute, setActiveRoute] = useState(null);
   const [fontsLoaded, fontError] = useFonts({
     "dogicapixelbold": require("../../assets/fonts/dogicapixelbold.otf"),
     "dogicapixel": require("../../assets/fonts/dogicapixel.otf"),
   });
   if (!fontsLoaded && !fontError) return null;
 
-  const updateActiveRoute = () => {
-    if (navigationRef.isReady()) {
-      setActiveRoute(navigationRef.getCurrentRoute());
-    }
-  };
-
   return (
     <SafeAreaProvider>
-      <NavigationContainer
-        ref={navigationRef}
-        onReady={updateActiveRoute}
-        onStateChange={updateActiveRoute}
-      >
+      <NavigationContainer ref={navigationRef}>
         <Stack.Navigator initialRouteName={START_ON_DEV_GAME_SCREEN ? "GameScreen" : "Home"}>
         <Stack.Screen
           name="Home"
@@ -79,7 +68,7 @@ export default function App() {
         />
         </Stack.Navigator>
       </NavigationContainer>
-      <DevPortal activeRoute={activeRoute} />
+      <DevPortal />
     </SafeAreaProvider>
   );
 }

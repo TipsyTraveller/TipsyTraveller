@@ -206,23 +206,28 @@ const GameScreen = ({ route }) => {
     setState('challenge');
   };
 
+  const handleRollRef = useRef(handleRoll);
+  handleRollRef.current = handleRoll;
+  const handleRestartRef = useRef(handleRestart);
+  handleRestartRef.current = handleRestart;
+
   useEffect(() => {
     const unsubRoll = devEventBus.on('dev:forceRoll', ({ value }) => {
-      handleRoll(value, 0);
+      handleRollRef.current?.(value, 0);
     });
     const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex }) => {
       setCurrentChallenge(getChallengeForStop(stopIndex));
       setState('challenge');
     });
     const unsubRestart = devEventBus.on('dev:restart', () => {
-      handleRestart();
+      handleRestartRef.current?.();
     });
     return () => {
       unsubRoll();
       unsubChallenge();
       unsubRestart();
     };
-  });
+  }, []);
 
   const focusedPiece = activePiece || getFocusedPiece(gamePieces, teamProgress);
   const focusedProgress = teamProgress[focusedPiece?.id] || { currentLeg: 0, isDone: false };
@@ -269,6 +274,7 @@ const GameScreen = ({ route }) => {
         pieceRefs={pieceRefs.current}
         targetRef={targetRef}
         teamProgress={teamProgress}
+        vehicleInMotion={isCarDriving}
       />
 
       <GameHud

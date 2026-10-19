@@ -20,6 +20,9 @@ const PASS_JUMP_HEIGHT = 0.72;
 const PASS_JUMP_RADIUS = 0.72;
 const PASS_FLIP_START = 0.22;
 const PASS_FLIP_END = 0.84;
+const PARKING_LATERAL_SPACING = 0.3;
+const PARKING_DAMPING = 9;
+const PARKING_TRANSITION_DISTANCE = 0.7;
 const ROTATION_DAMPING = 20;
 const EMPTY_PASSED_VEHICLE_DISTANCES = [];
 
@@ -31,6 +34,42 @@ const lerpAngle = (from, to, amount) => {
 const getCarHeading = (progress) => (
   getSmoothRouteTangentAngle(progress, 0.005) + CAR_ROTATION_OFFSET
 );
+
+const getMovingParkingOffset = ({
+  distance,
+  startDistance,
+  targetDistance,
+  startOffset,
+  targetOffset,
+}) => {
+  const travelDistance = Math.max(targetDistance - startDistance, 0.001);
+  const transitionDistance = Math.min(
+    PARKING_TRANSITION_DISTANCE,
+    travelDistance * 0.38
+  );
+  const departureEnd = startDistance + transitionDistance;
+  const approachStart = targetDistance - transitionDistance;
+
+  if (distance <= departureEnd) {
+    const departureProgress = THREE.MathUtils.smoothstep(
+      distance,
+      startDistance,
+      departureEnd
+    );
+    return THREE.MathUtils.lerp(startOffset, 0, departureProgress);
+  }
+
+  if (distance >= approachStart) {
+    const approachProgress = THREE.MathUtils.smoothstep(
+      distance,
+      approachStart,
+      targetDistance
+    );
+    return THREE.MathUtils.lerp(0, targetOffset, approachProgress);
+  }
+
+  return 0;
+};
 
 const updatePassJumpTransform = (distance, passedVehicleDistances, jumpTransform) => {
   jumpTransform.arc = 0;
@@ -70,6 +109,8 @@ const applyCarTransform = ({
   targetPoint,
   moving,
   distance,
+  parkingOffset,
+  parkingOffsetRef,
   passedVehicleDistances,
   passJumpTransform,
   clockTime,
@@ -80,13 +121,25 @@ const applyCarTransform = ({
   const clampedProgress = THREE.MathUtils.clamp(progress, 0, 1);
   DRIVE_CURVE.getPointAt(clampedProgress, targetPoint);
 
+  const routeAngle = getSmoothRouteTangentAngle(clampedProgress, 0.005);
+  if (moving) {
+    parkingOffsetRef.current = parkingOffset;
+  } else {
+    const parkingAlpha = 1 - Math.exp(-PARKING_DAMPING * delta);
+    parkingOffsetRef.current = THREE.MathUtils.lerp(
+      parkingOffsetRef.current,
+      parkingOffset,
+      parkingAlpha
+    );
+  }
+
   pieceRef.current.position.set(
-    targetPoint.x,
-    targetPoint.y,
+    targetPoint.x - Math.sin(routeAngle) * parkingOffsetRef.current,
+    targetPoint.y + Math.cos(routeAngle) * parkingOffsetRef.current,
     CAR_BASE_Z
   );
 
-  const targetHeading = getCarHeading(clampedProgress);
+  const targetHeading = routeAngle + CAR_ROTATION_OFFSET;
 
   if (snapRotation) {
     rotationRef.current = targetHeading;
@@ -119,6 +172,7 @@ const GamePiece = ({
   onDriveStart,
   onLegPass,
   onMoveComplete,
+  parkingOffsetFactor = 0,
   passedVehicleLegs = [],
   moveStartDelay = 0,
   pathRevealDuration = 0.75,
@@ -139,6 +193,9 @@ const GamePiece = ({
   const lastReportedLegRef = useRef(currentLeg);
   const hasStartedDrivingRef = useRef(false);
   const passJumpTransformRef = useRef({ arc: 0, height: 0, rotation: 0 });
+  const parkingOffsetRef = useRef(parkingOffsetFactor * PARKING_LATERAL_SPACING);
+  const departureParkingOffsetRef = useRef(parkingOffsetRef.current);
+  const parkingOffset = parkingOffsetFactor * PARKING_LATERAL_SPACING;
   const passedVehicleDistances = passedVehicleLegs
     .map((leg) => STOP_DISTANCES[leg])
     .filter((distance) => distance !== undefined);
@@ -147,6 +204,7 @@ const GamePiece = ({
     drivingRef.current = driving;
 
     if (driving) {
+      departureParkingOffsetRef.current = parkingOffsetRef.current;
       delayElapsedRef.current = 0;
       hasStartedDrivingRef.current = false;
       waitingForNextLegRef.current = false;
@@ -185,6 +243,8 @@ const GamePiece = ({
         targetPoint: carPosRef.current,
         moving: false,
         distance: legDistance,
+        parkingOffset,
+        parkingOffsetRef,
         passedVehicleDistances,
         passJumpTransform: passJumpTransformRef.current,
         clockTime: 0,
@@ -207,6 +267,8 @@ const GamePiece = ({
         targetPoint: carPosRef.current,
         moving: false,
         distance: distanceRef.current,
+        parkingOffset,
+        parkingOffsetRef,
         passedVehicleDistances,
         passJumpTransform: passJumpTransformRef.current,
         clockTime: clock.elapsedTime,
@@ -234,10 +296,18 @@ const GamePiece = ({
     }
 
     const target = targetLegRef.current;
+    const startDistance = STOP_DISTANCES[currentLeg] ?? 0;
     const targetDistance = STOP_DISTANCES[target] ?? DRIVE_LENGTH;
 
     distanceRef.current = Math.min(distanceRef.current + delta * DRIVE_SPEED, targetDistance);
     const curveProgress = THREE.MathUtils.clamp(distanceRef.current / DRIVE_LENGTH, 0, 1);
+    const movingParkingOffset = getMovingParkingOffset({
+      distance: distanceRef.current,
+      startDistance,
+      targetDistance,
+      startOffset: departureParkingOffsetRef.current,
+      targetOffset: parkingOffset,
+    });
 
     if (activeCarProgressRef) {
       activeCarProgressRef.current = curveProgress;
@@ -257,6 +327,8 @@ const GamePiece = ({
       targetPoint: carPosRef.current,
       moving: true,
       distance: distanceRef.current,
+      parkingOffset: movingParkingOffset,
+      parkingOffsetRef,
       passedVehicleDistances,
       passJumpTransform: passJumpTransformRef.current,
       clockTime: clock.elapsedTime,
