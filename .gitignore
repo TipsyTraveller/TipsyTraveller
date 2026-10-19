@@ -41,3 +41,6 @@ assets/model.gltf
 
 # typescript
 *.tsbuildinfo
+
+
+.env
