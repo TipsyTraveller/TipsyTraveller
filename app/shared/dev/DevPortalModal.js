@@ -38,7 +38,7 @@ const TABS = [
   { id: 'tools', label: '⚙️ Identity' },
 ];
 
-export default function DevPortalModal({ visible, onClose, activeRoute }) {
+export default function DevPortalModal({ visible, onClose }) {
   const [activeTab, setActiveTab] = useState('screens');
   const [gamePin, setGamePin] = useState('');
   const [deviceId, setDeviceId] = useState('');
@@ -52,7 +52,7 @@ export default function DevPortalModal({ visible, onClose, activeRoute }) {
       loadDeviceId();
       detectActiveGamePin();
     }
-  }, [visible, activeRoute]);
+  }, [visible]);
 
   const loadDeviceId = async () => {
     try {
@@ -64,10 +64,14 @@ export default function DevPortalModal({ visible, onClose, activeRoute }) {
   };
 
   const detectActiveGamePin = () => {
-    const routeInfo = getCurrentRouteInfo();
-    const activePin = routeInfo?.params?.gameID || routeInfo?.params?.editingGameID;
-    if (activePin && activePin !== 'DEV-INSTANT' && activePin !== 'DEV-MOCK') {
-      setGamePin(String(activePin));
+    try {
+      const routeInfo = getCurrentRouteInfo();
+      const activePin = routeInfo?.params?.gameID || routeInfo?.params?.editingGameID;
+      if (activePin && activePin !== 'DEV-INSTANT' && activePin !== 'DEV-MOCK') {
+        setGamePin(String(activePin));
+      }
+    } catch (e) {
+      console.warn('Failed to detect active pin', e);
     }
   };
 
@@ -217,7 +221,7 @@ export default function DevPortalModal({ visible, onClose, activeRoute }) {
     showStatus('AsyncStorage cleared!');
   };
 
-  const currentRouteName = activeRoute?.name || getCurrentRouteInfo()?.name || 'Unknown';
+  const currentRouteName = getCurrentRouteInfo()?.name || 'Unknown';
 
   return (
     <Modal
@@ -555,7 +559,12 @@ export default function DevPortalModal({ visible, onClose, activeRoute }) {
                   <Text style={styles.infoText}>Platform: {Platform.OS}</Text>
                   <Text style={styles.infoText}>__DEV__: {String(__DEV__)}</Text>
                   <Text style={styles.infoText}>
-                    EXPO_PUBLIC_ENABLE_DEV_PORTAL: {String(process.env.EXPO_PUBLIC_ENABLE_DEV_PORTAL)}
+                    EXPO_PUBLIC_ENABLE_DEV_PORTAL:{' '}
+                    {String(
+                      typeof process !== 'undefined' && process?.env
+                        ? process.env.EXPO_PUBLIC_ENABLE_DEV_PORTAL
+                        : 'unknown'
+                    )}
                   </Text>
                 </View>
               </View>

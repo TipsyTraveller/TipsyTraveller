@@ -178,7 +178,7 @@ The current implementation stores route geometry and display names in `constants
 - Movement cannot overshoot the finish.
 - Landing at the finish immediately marks that team done.
 - Landing before the finish opens a challenge.
-- There is no collision rule; multiple teams may occupy the same stop. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
+- There is no collision rule; multiple teams may occupy the same stop. Co-located vehicles park in center, left, and right slots instead of overlapping. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
 - There are no shortcuts, reverse movement, bonus rolls, or stored penalties in the current code.
 - Drinking penalties are instructions only; the app does not record whether a challenge was passed or failed.
 
@@ -673,6 +673,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - Heading comes from a tight look-ahead chord tangent (`getSmoothRouteTangentAngle`) plus a 90-degree model correction, interpolated with shortest-angle exponential damping.
 - An inner body group applies the driving sine bounce so the root group tracked by the camera remains free of vertical bounce jitter.
 - Before movement begins, `GamePieces` identifies other teams parked at route stops strictly between the mover's start and destination. The inner body group first lifts the active vehicle on a high smooth arc, then performs one full longitudinal rotation while airborne and returns the vehicle upright before landing. This visual kickflip does not change route distance, stop occupancy, or camera tracking.
+- `GamePieces` groups non-moving teams by stop and retains each car's center, left, or right assignment until that car departs. Two cars form a tight pair half a spacing to either side of the route; three use center, left, and right positions. Parked cars smoothly make room while an incoming car approaches. During movement, `GamePiece` follows a lane-change trajectory from its departure position onto the route centerline, then into its predicted destination position before stopping. Stable assignments prevent cars from swapping sides or sliding through one another when another team arrives or leaves.
 - Crossed intermediate stops decrement `remainingMoves` in `GameScreen`, and when the target stop is reached, `onMoveComplete(teamId, targetLeg)` fires exactly once.
 
 ---

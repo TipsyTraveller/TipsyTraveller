@@ -7,12 +7,21 @@
  */
 
 export const isDevPortalEnabled = () => {
-  const envVal = process.env.EXPO_PUBLIC_ENABLE_DEV_PORTAL;
-  if (envVal === 'false' || envVal === '0') {
-    return false;
+  try {
+    const envVal =
+      typeof process !== 'undefined' && process?.env
+        ? process.env.EXPO_PUBLIC_ENABLE_DEV_PORTAL
+        : undefined;
+
+    if (envVal === 'false' || envVal === '0') {
+      return false;
+    }
+    if (envVal === 'true' || envVal === '1') {
+      return true;
+    }
+  } catch (error) {
+    console.warn('[devConfig] Failed to read environment variable:', error);
   }
-  if (envVal === 'true' || envVal === '1') {
-    return true;
-  }
+
   return typeof __DEV__ !== 'undefined' ? Boolean(__DEV__) : false;
 };

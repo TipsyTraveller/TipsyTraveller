@@ -83,6 +83,7 @@ const GameScene = ({
   pieceRefs,
   targetRef,
   teamProgress,
+  vehicleInMotion,
 }) => (
   <Canvas
     style={canvasStyle}
@@ -125,6 +126,7 @@ const GameScene = ({
         pathRevealDuration={pathRevealDuration}
         pieceRefs={pieceRefs}
         teamProgress={teamProgress}
+        vehicleInMotion={vehicleInMotion}
       />
     </Suspense>
     <Suspense fallback={<CountryMarkersFallback currentLeg={currentLeg} targetLeg={moveTargetLeg} />}>

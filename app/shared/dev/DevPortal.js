@@ -3,7 +3,7 @@ import { isDevPortalEnabled } from './devConfig';
 import DevPortalButton from './DevPortalButton';
 import DevPortalModal from './DevPortalModal';
 
-export default function DevPortal({ activeRoute }) {
+export default function DevPortal() {
   const [isOpen, setIsOpen] = useState(false);
 
   if (!isDevPortalEnabled()) {
@@ -13,11 +13,12 @@ export default function DevPortal({ activeRoute }) {
   return (
     <>
       <DevPortalButton onPress={() => setIsOpen(true)} />
-      <DevPortalModal
-        visible={isOpen}
-        onClose={() => setIsOpen(false)}
-        activeRoute={activeRoute}
-      />
+      {isOpen && (
+        <DevPortalModal
+          visible={isOpen}
+          onClose={() => setIsOpen(false)}
+        />
+      )}
     </>
   );
 }
