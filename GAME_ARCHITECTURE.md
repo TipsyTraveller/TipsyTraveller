@@ -224,7 +224,7 @@ The root `Stack.Navigator` contains:
 8. `AccountScreen`
 9. `SettingsScreen`
 
-Every stack header is hidden; each screen supplies its own header or controls.
+Every stack header is hidden; each screen supplies its own header or controls. The application root is wrapped in `GestureHandlerRootView` to coordinate gesture recognizers across React Navigation, and screens with full-length vertical scrolling (`LobbyScreen`, `AccountScreen`, `SettingsScreen`) set `gestureEnabled: false` to ensure swipe recognizers do not conflict with or block scrollable content.
 
 ---
 
