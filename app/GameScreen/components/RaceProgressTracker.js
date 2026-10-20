@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 const VehicleIcon = ({ color, isActive }) => (
-  <View style={[styles.vehicleBadge, isActive && styles.vehicleBadgeActive]}>
-    <Svg width={18} height={11} viewBox="0 0 34 20" fill="none">
+  <View style={[styles.vehicleIcon, isActive && styles.vehicleIconActive]}>
+    <Svg width={26} height={15} viewBox="0 0 34 20" fill="none">
       <Path
         d="M3 13.5 5.6 9h5.2l3.4-4h8.1l4.2 4H30l1.5 4.5v2H3v-2Z"
         fill={color}
@@ -106,7 +106,8 @@ const RaceProgressTracker = ({
             {gamePieces.map((piece, index) => {
               const displayedLeg = teamProgress[piece.id]?.currentLeg ?? 0;
               const progress = routeModel.stopProgress[displayedLeg] ?? 0;
-              const laneOffset = (index - (gamePieces.length - 1) / 2) * 11;
+              const isActive = piece.id === activeTeamId;
+              const laneOffset = (index - (gamePieces.length - 1) / 2) * 9;
 
               return (
                 <View
@@ -114,13 +115,14 @@ const RaceProgressTracker = ({
                   key={piece.id}
                   style={[
                     styles.vehiclePosition,
+                    isActive && styles.activeVehiclePosition,
                     {
-                      marginLeft: -11 + laneOffset,
+                      marginLeft: -14 + laneOffset,
                       top: `${(1 - progress) * 100}%`,
                     },
                   ]}
                 >
-                  <VehicleIcon color={piece.color} isActive={piece.id === activeTeamId} />
+                  <VehicleIcon color={piece.color} isActive={isActive} />
                 </View>
               );
             })}
@@ -237,24 +239,23 @@ const styles = StyleSheet.create({
   vehiclePosition: {
     position: 'absolute',
     left: '50%',
-    width: 22,
-    height: 17,
-    marginTop: -8.5,
+    width: 28,
+    height: 20,
+    marginTop: -10,
     alignItems: 'center',
     zIndex: 3,
   },
-  vehicleBadge: {
-    width: 22,
-    height: 17,
+  activeVehiclePosition: {
+    zIndex: 4,
+  },
+  vehicleIcon: {
+    width: 28,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 5,
-    backgroundColor: '#FFF1CD',
   },
-  vehicleBadgeActive: {
-    borderWidth: 2,
-    borderColor: '#FFD700',
-    backgroundColor: '#FFFFFF',
+  vehicleIconActive: {
+    transform: [{ scale: 1.12 }],
   },
   startDot: {
     position: 'absolute',
