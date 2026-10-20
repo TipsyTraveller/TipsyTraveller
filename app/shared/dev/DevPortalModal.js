@@ -42,6 +42,7 @@ export default function DevPortalModal({ visible, onClose }) {
   const [activeTab, setActiveTab] = useState('screens');
   const [gamePin, setGamePin] = useState('');
   const [deviceId, setDeviceId] = useState('');
+  const [buttonCorner, setButtonCorner] = useState('top-right');
   const [loadingAction, setLoadingAction] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const { width, height } = useWindowDimensions();
@@ -51,6 +52,11 @@ export default function DevPortalModal({ visible, onClose }) {
     if (visible) {
       loadDeviceId();
       detectActiveGamePin();
+      AsyncStorage.getItem('dev_portal_button_corner')
+        .then((saved) => {
+          if (saved) setButtonCorner(saved);
+        })
+        .catch(() => {});
     }
     const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (visible) {
@@ -227,6 +233,12 @@ export default function DevPortalModal({ visible, onClose }) {
     const newId = await regenerateDeviceId();
     setDeviceId(newId);
     showStatus('AsyncStorage cleared!');
+  };
+
+  const handleChangeCorner = (newCorner) => {
+    setButtonCorner(newCorner);
+    devEventBus.emit('dev:setButtonCorner', newCorner);
+    showStatus(`Dev button moved to ${newCorner}`);
   };
 
   const currentRouteName = getCurrentRouteInfo()?.name || 'Unknown';
@@ -579,6 +591,37 @@ export default function DevPortalModal({ visible, onClose }) {
                   <Text style={styles.actionButtonText}>🗑️ Clear All AsyncStorage</Text>
                 </TouchableOpacity>
 
+                <Text style={styles.sectionHeading}>Dev Button Position</Text>
+                <Text style={styles.sectionDescription}>
+                  Placed to the left of header/tour controls so all buttons stay accessible.
+                </Text>
+                <View style={styles.gridRow}>
+                  {[
+                    { id: 'top-right', label: 'Top-Right' },
+                    { id: 'top-left', label: 'Top-Left' },
+                    { id: 'bottom-right', label: 'Bottom-Right' },
+                    { id: 'bottom-left', label: 'Bottom-Left' },
+                  ].map((pos) => (
+                    <TouchableOpacity
+                      key={pos.id}
+                      style={[
+                        styles.smallButton,
+                        buttonCorner === pos.id && styles.activeCornerButton,
+                      ]}
+                      onPress={() => handleChangeCorner(pos.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.smallButtonText,
+                          buttonCorner === pos.id && styles.activeCornerText,
+                        ]}
+                      >
+                        {pos.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
                 <Text style={styles.sectionHeading}>Environment Info</Text>
                 <View style={styles.infoBox}>
                   <Text style={styles.infoText}>Platform: {Platform.OS}</Text>
@@ -786,10 +829,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     alignItems: 'center',
   },
+  activeCornerButton: {
+    backgroundColor: '#ffd700',
+    borderColor: '#ffffff',
+  },
   smallButtonText: {
     color: '#fff',
     fontSize: 8.5,
     fontFamily: 'dogicapixel',
+  },
+  activeCornerText: {
+    color: '#1a2530',
+    fontFamily: 'dogicapixelbold',
   },
   subtext: {
     fontSize: 7.5,

@@ -117,7 +117,7 @@ This document distinguishes between the visible product concept and what the cur
 
 `app/app/devGameRoute.js` contains `START_ON_DEV_GAME_SCREEN = false`, so development and production builds start by default on `Home`.
 
-In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`). Its presence is controlled by:
+In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`), offset to the left of right-hand header icons and the in-game TourControl box so all interactive buttons remain accessible. Long-pressing the badge or selecting a position in the portal cycles its corner placement. Its presence is controlled by:
 
 1. `EXPO_PUBLIC_ENABLE_DEV_PORTAL` in `.env` or `.env.local` (set to `true` or `false`).
 2. `__DEV__` React Native global flag (fallback when the env variable is omitted).
