@@ -38,6 +38,7 @@ const GamePieces = memo(({
   pathRevealDuration,
   pieceRefs,
   teamProgress,
+  routeModel,
   vehicleInMotion,
 }) => {
   const parkingAssignmentsByLegRef = useRef({});
@@ -122,6 +123,7 @@ const GamePieces = memo(({
             targetLeg={targetLeg}
             teamCount={gamePieces.length}
             teamIndex={index}
+            routeModel={routeModel}
           />
         );
       })}

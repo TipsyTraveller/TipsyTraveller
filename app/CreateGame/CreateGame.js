@@ -13,6 +13,7 @@ import difficultyEasyImage from "../../assets/images/beer-flesje.png"
 import difficultyMediumImage from "../../assets/images/2beers-flesje.png"
 import difficultyHardImage from "../../assets/images/3beers-flesje.png";
 import LowerButtonContainer from "../shared/components/LowerButtonContainer/LowerButtonContainer";
+import { getRouteSnapshotForDuration } from "../GameScreen/services/countryStopsService";
 
 //TYPE
 /**
@@ -89,6 +90,7 @@ export default function SelectionPages ({ navigation, route }) {
                 );
                 return;
             }
+            const routeStops = await getRouteSnapshotForDuration(gameSettings.duration);
 
             const transaction = await runTransaction(
                 ref(db, `games/${editingGameID}`),
@@ -99,6 +101,7 @@ export default function SelectionPages ({ navigation, route }) {
                         ...currentGame,
                         difficulty: gameSettings.difficulty,
                         duration: gameSettings.duration,
+                        routeStops,
                         nrOfPlayers: gameSettings.nrOfPlayers,
                     };
                 }

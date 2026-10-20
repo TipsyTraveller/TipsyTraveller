@@ -30,11 +30,15 @@ import {
   startLiveTestLobby,
 } from './devNavigation';
 import { devEventBus } from './devEventBus';
+import CountryStopsTab from './CountryStopsTab';
+import { resolveGameRouteStops } from '../../GameScreen/constants/countryStops';
+import { subscribeCountryStops } from '../../GameScreen/services/countryStopsService';
 
 const TABS = [
   { id: 'screens', label: '🚀 Screens' },
   { id: 'multiplayer', label: '👥 Bots' },
   { id: 'board', label: '🎲 Board' },
+  ...(Platform.OS === 'web' ? [{ id: 'countries', label: '🗺 Countries' }] : []),
   { id: 'tools', label: '⚙️ Identity' },
 ];
 
@@ -45,6 +49,7 @@ export default function DevPortalModal({ visible, onClose }) {
   const [buttonCorner, setButtonCorner] = useState('top-right');
   const [loadingAction, setLoadingAction] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
+  const [authoredRouteStops, setAuthoredRouteStops] = useState([]);
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
@@ -67,6 +72,13 @@ export default function DevPortalModal({ visible, onClose }) {
     });
     return () => backSub.remove();
   }, [visible, onClose]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return undefined;
+    return subscribeCountryStops(setAuthoredRouteStops, (error) => {
+      console.warn('Failed to load authored country stops for Dev Portal board tools.', error);
+    });
+  }, []);
 
   const loadDeviceId = async () => {
     try {
@@ -241,7 +253,14 @@ export default function DevPortalModal({ visible, onClose }) {
     showStatus(`Dev button moved to ${newCorner}`);
   };
 
-  const currentRouteName = getCurrentRouteInfo()?.name || 'Unknown';
+  const currentRouteInfo = getCurrentRouteInfo();
+  const currentRouteName = currentRouteInfo?.name || 'Unknown';
+  const currentGameData = currentRouteInfo?.params?.gameData;
+  const shouldUseAuthoredStops = Platform.OS === 'web'
+    && (!currentGameData?.routeStops || currentRouteInfo?.params?.isDevGame);
+  const activeRouteStops = shouldUseAuthoredStops && authoredRouteStops.length >= 2
+      ? authoredRouteStops
+      : resolveGameRouteStops(currentGameData || {});
 
   return (
     <View style={styles.fullscreenOverlay}>
@@ -533,23 +552,19 @@ export default function DevPortalModal({ visible, onClose }) {
                   Instantly open country challenges to preview layout and typography.
                 </Text>
                 <View style={styles.challengeGrid}>
-                  {[
-                    { stop: 1, name: '1: Paris (Charades)' },
-                    { stop: 2, name: '2: Madrid (Tapas)' },
-                    { stop: 3, name: '3: Lisbon (Fado)' },
-                    { stop: 4, name: '4: Seville (Flamenco)' },
-                    { stop: 5, name: '5: Rome (Pasta)' },
-                    { stop: 6, name: '6: Berlin (Autobahn)' },
-                    { stop: 7, name: '7: Brussels (Toast)' },
-                  ].map((c) => (
+                  {activeRouteStops.slice(1).map((stop, index) => {
+                    const stopIndex = index + 1;
+                    const challengeTitle = stop.challenges?.[0]?.title || 'No challenge yet';
+                    return (
                     <TouchableOpacity
-                      key={c.stop}
+                      key={stop.id}
                       style={styles.challengeButton}
-                      onPress={() => handleTestChallenge(c.stop)}
+                      onPress={() => handleTestChallenge(stopIndex)}
                     >
-                      <Text style={styles.challengeButtonText}>{c.name}</Text>
+                      <Text style={styles.challengeButtonText}>{stopIndex}: {stop.name} ({challengeTitle})</Text>
                     </TouchableOpacity>
-                  ))}
+                    );
+                  })}
                 </View>
 
                 <Text style={styles.sectionHeading}>Board Controls</Text>
@@ -560,6 +575,10 @@ export default function DevPortalModal({ visible, onClose }) {
                   <Text style={styles.actionButtonText}>🔄 Reset Board State</Text>
                 </TouchableOpacity>
               </View>
+            )}
+
+            {activeTab === 'countries' && Platform.OS === 'web' && (
+              <CountryStopsTab onClose={onClose} />
             )}
 
             {/* TAB 4: IDENTITY & TOOLS */}

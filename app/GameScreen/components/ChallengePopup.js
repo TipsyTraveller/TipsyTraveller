@@ -17,7 +17,6 @@ import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
 import { DONE_LOOK, DONE_POS } from '../constants/camera';
 import { getChallengeTimer, getCountryFlag, getPenaltyTag } from '../constants/challenges';
-import { ROUTE } from '../constants/route';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
 const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
@@ -25,8 +24,8 @@ const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
 const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 const projectedPoint = new THREE.Vector3();
 
-const getMarkerScreenOffset = (stopIndex, width, height) => {
-  const stopPosition = ROUTE[stopIndex] || ROUTE[1] || ROUTE[0];
+const getMarkerScreenOffset = (routeModel, stopIndex, width, height) => {
+  const stopPosition = routeModel.route[stopIndex] || routeModel.route[1] || routeModel.route[0];
   if (!stopPosition || !width || !height) {
     return { x: 0, y: 0 };
   }
@@ -117,7 +116,7 @@ const CardBack = ({ compact, style }) => (
   </Animated.View>
 );
 
-const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete }) => {
+const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete, routeModel }) => {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const compact = height < 430;
@@ -126,7 +125,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   const tear = useRef(new Animated.Value(0)).current;
   const [tearing, setTearing] = useState(false);
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
-  const challengeKey = challenge ? `${challenge.stop}:${challenge.title}` : '';
+  const challengeKey = challenge ? `${challenge.stopIndex}:${challenge.title}` : '';
 
   useEffect(() => {
     if (!visible) {
@@ -180,7 +179,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
 
   if (!visible || !challenge) return null;
 
-  const markerOffset = getMarkerScreenOffset(challenge.stopIndex, width, height);
+  const markerOffset = getMarkerScreenOffset(routeModel, challenge.stopIndex, width, height);
   const launchTiltDeg = markerOffset.x >= 0 ? '16deg' : '-16deg';
   const midArcY = markerOffset.y * 0.35 - 48;
 
@@ -306,7 +305,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   };
   const timer = getChallengeTimer(challenge);
   const missionCode = challenge.code
-    ? `MISSION ${challenge.code}-${String(challenge.stop).padStart(2, '0')}`
+    ? `MISSION ${challenge.code}-${String(challenge.stopIndex).padStart(2, '0')}`
     : 'MISSION';
   // Give the ticket a landscape-card ratio instead of a flat strip, but never taller than the screen.
   const availableHeight = Math.max(210, height - insets.top - insets.bottom - 40);

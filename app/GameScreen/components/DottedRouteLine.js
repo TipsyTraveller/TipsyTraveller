@@ -1,12 +1,7 @@
-import { memo, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
-import {
-  DRIVE_CURVE,
-  getSmoothRouteTangentAngle,
-  STOP_PROGRESS,
-} from '../constants/route';
 
 const RIBBON_SEGMENTS = 900;
 const RIBBON_HALF_WIDTH = 0.0135;
@@ -20,7 +15,7 @@ const easeInOutCubic = (value) => (
     : 1 - Math.pow(-2 * value + 2, 3) / 2
 );
 
-const buildRibbonGeometry = (halfWidth, zHeight) => {
+const buildRibbonGeometry = (halfWidth, routeModel, zHeight) => {
   const vertexCount = (RIBBON_SEGMENTS + 1) * 2;
   const positions = new Float32Array(vertexCount * 3);
   const indices = new Uint16Array(RIBBON_SEGMENTS * 6);
@@ -28,8 +23,8 @@ const buildRibbonGeometry = (halfWidth, zHeight) => {
 
   for (let i = 0; i <= RIBBON_SEGMENTS; i += 1) {
     const progress = i / RIBBON_SEGMENTS;
-    DRIVE_CURVE.getPointAt(progress, point);
-    const tangentAngle = getSmoothRouteTangentAngle(progress, 0.006);
+    routeModel.curve.getPointAt(progress, point);
+    const tangentAngle = routeModel.getTangentAngle(progress, 0.006);
     const normalX = -Math.sin(tangentAngle);
     const normalY = Math.cos(tangentAngle);
 
@@ -73,6 +68,7 @@ const DottedRouteLine = memo(({
   fromLeg = 0,
   pathRevealDuration = 0.75,
   toLeg = 0,
+  routeModel,
 }) => {
   const groupRef = useRef();
   const moveAnimRef = useRef({
@@ -81,9 +77,11 @@ const DottedRouteLine = memo(({
   });
 
   const ribbonGeometry = useMemo(
-    () => buildRibbonGeometry(RIBBON_HALF_WIDTH, ROUTE_Z),
-    []
+    () => buildRibbonGeometry(RIBBON_HALF_WIDTH, routeModel, ROUTE_Z),
+    [routeModel]
   );
+
+  useEffect(() => () => ribbonGeometry.dispose(), [ribbonGeometry]);
 
   useFrame((_state, delta) => {
     const isMoveActive = driving && toLeg > fromLeg;
@@ -107,8 +105,8 @@ const DottedRouteLine = memo(({
       moveAnimRef.current.elapsed += delta;
     }
 
-    const startProgress = STOP_PROGRESS[fromLeg] ?? 0;
-    const endProgress = STOP_PROGRESS[toLeg] ?? 1;
+    const startProgress = routeModel.stopProgress[fromLeg] ?? 0;
+    const endProgress = routeModel.stopProgress[toLeg] ?? 1;
     const revealDuration = Math.max(pathRevealDuration, 0.4);
     const revealLinear = THREE.MathUtils.clamp(moveAnimRef.current.elapsed / revealDuration, 0, 1);
     const revealEased = easeInOutCubic(revealLinear);

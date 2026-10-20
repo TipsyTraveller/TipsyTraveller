@@ -1,9 +1,9 @@
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
 import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
-import { DRIVE_LEGS, getPathRevealDuration, STOP_DISTANCES } from './constants/route';
+import { getPathRevealDuration } from './constants/route';
 
-export const GAMEPLAY_SCHEMA_VERSION = 1;
+export const GAMEPLAY_SCHEMA_VERSION = 2;
 
 export const createSessionId = () => (
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -26,6 +26,7 @@ export const createInitialGameplay = (gameData, now = Date.now()) => {
     teamProgress: createInitialTeamProgress(gamePieces),
     currentAction: null,
     challengeStop: null,
+    challengeId: null,
     updatedAt: now,
   };
 };
@@ -46,13 +47,13 @@ export const getNextActiveTeamId = (teamIds, teamProgress, currentTeamId) => {
   return null;
 };
 
-export const getRollTiming = ({ fromLeg, targetLeg, now }) => {
+export const getRollTiming = ({ fromLeg, routeModel, targetLeg, now }) => {
   const moveCount = Math.max(targetLeg - fromLeg, 0);
   const resultDuration = (DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER) * 1000;
   const revealDuration = getPathRevealDuration(moveCount) * 1000 + 80;
   const movementDuration = Math.max(
     0,
-    ((STOP_DISTANCES[targetLeg] - STOP_DISTANCES[fromLeg]) / DRIVE_SPEED_UNITS_PER_SECOND) * 1000
+    ((routeModel.stopDistances[targetLeg] - routeModel.stopDistances[fromLeg]) / DRIVE_SPEED_UNITS_PER_SECOND) * 1000
   );
   const movementStartsAt = now + Math.max(resultDuration, revealDuration);
 
@@ -63,10 +64,10 @@ export const getRollTiming = ({ fromLeg, targetLeg, now }) => {
   };
 };
 
-export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, value }) => {
+export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, routeModel, value }) => {
   const activeProgress = gameplay?.teamProgress?.[gameplay.activeTeamId];
   const fromLeg = activeProgress?.currentLeg ?? 0;
-  const targetLeg = Math.min(fromLeg + value, DRIVE_LEGS.length);
+  const targetLeg = Math.min(fromLeg + value, routeModel.finalStopIndex);
 
   return {
     id: createActionId(deviceID),
@@ -76,6 +77,6 @@ export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, value })
     fromLeg,
     targetLeg,
     inputMethod,
-    ...getRollTiming({ fromLeg, targetLeg, now }),
+    ...getRollTiming({ fromLeg, routeModel, targetLeg, now }),
   };
 };
