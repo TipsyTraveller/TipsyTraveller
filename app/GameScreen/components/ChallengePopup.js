@@ -16,6 +16,10 @@ import { DONE_LOOK, DONE_POS } from '../constants/camera';
 import { getChallengeTimer, getCountryFlag, getPenaltyTag } from '../constants/challenges';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
+// Reference phone (landscape 844 x 390): card is 75% wide and 85% tall.
+const PHONE_CARD_WIDTH = 0.75;
+const PHONE_CARD_HEIGHT = 0.85;
+const PHONE_CARD_RATIO = (PHONE_CARD_WIDTH * 844) / (PHONE_CARD_HEIGHT * 390);
 const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
 
 const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
@@ -298,13 +302,21 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   const missionCode = challenge.code
     ? `MISSION ${challenge.code}-${String(challenge.stopIndex).padStart(2, '0')}`
     : 'MISSION';
-  // Give the ticket a landscape-card ratio instead of a flat strip, but never taller than the screen.
-  const availableHeight = Math.max(210, height - insets.top - insets.bottom - 40);
-  const cardWidth = Math.min(600, width * (compact ? 0.72 : 0.68));
-  // Stay a little below the HUD panels, which sit above and beside the centered card.
-  const minTicketHeight = Math.min(availableHeight * 0.88, Math.max(210, cardWidth * 0.7));
-  const roomy = minTicketHeight >= 280;
-  const landmarkWidth = roomy ? 162 : compact ? 112 : 150;
+  // Card size: on a phone it takes 75% of the screen width and 85% of its height.
+  // Larger screens keep that same landscape rectangle (the phone's aspect ratio)
+  // instead of stretching, scaled to fit inside the same 75% x 90% box.
+  const isPhone = Math.min(width, height) < 600;
+  let cardWidth;
+  let cardHeight;
+  if (isPhone) {
+    cardWidth = width * PHONE_CARD_WIDTH;
+    cardHeight = Math.min(height * PHONE_CARD_HEIGHT, height - insets.top - insets.bottom - 8);
+  } else {
+    cardHeight = Math.min(height * PHONE_CARD_HEIGHT, (width * PHONE_CARD_WIDTH) / PHONE_CARD_RATIO, 520);
+    cardWidth = cardHeight * PHONE_CARD_RATIO;
+  }
+  const roomy = cardHeight >= 280;
+  const landmarkWidth = Math.max(96, Math.min(160, cardHeight * 0.36));
 
   return (
     <View
@@ -326,13 +338,13 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       <Animated.View
         renderToHardwareTextureAndroid
         shouldRasterizeIOS
-        style={[styles.cardShadow, compact && styles.cardShadowCompact, flyWrapperStyle]}
+        style={[styles.cardShadow, { width: cardWidth, height: cardHeight }, flyWrapperStyle]}
       >
         <Animated.View
           pointerEvents={ready ? 'auto' : 'none'}
-          style={frontFaceAnimatedStyle}
+          style={[styles.frontFace, frontFaceAnimatedStyle]}
         >
-          <View style={[styles.scrollContent, { minHeight: minTicketHeight }]}>
+          <View style={styles.scrollContent}>
             <Animated.View
               renderToHardwareTextureAndroid={tearing}
               style={[styles.stubWrap, compact && styles.stubWrapCompact, tearStubStyle]}
@@ -425,11 +437,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardShadow: {
-    width: '68%',
-    maxWidth: 600,
+    alignSelf: 'center',
   },
-  cardShadowCompact: {
-    width: '72%',
+  frontFace: {
+    flex: 1,
   },
   backdropDim: {
     position: 'absolute',
@@ -589,7 +600,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    flexGrow: 1,
+    flex: 1,
     paddingRight: 8,
     paddingBottom: 8,
     flexDirection: 'row',
