@@ -179,7 +179,7 @@ The current implementation stores route geometry and display names in `constants
 - Landing before the finish opens a challenge.
 - There is no collision rule; multiple teams may occupy the same stop. Co-located vehicles park in center, left, and right slots instead of overlapping. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
 - There are no shortcuts, reverse movement, bonus rolls, or stored penalties in the current code.
-- Drinking penalties are instructions only; the app does not record whether a challenge was passed or failed.
+- Penalties are sips of water and are instructions only; the app does not record whether a challenge was passed or failed.
 
 ---
 
@@ -718,7 +718,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 
 ## 11. Challenges
 
-Challenges are static records in `constants/challenges.js`. Each has:
+Challenges are static records in `constants/challenges.js`, grouped as a pool of six water-based challenges per stop. `getChallengeForStop(stopIndex, seed)` picks one deterministically from the seed; without a seed it returns the first (original) challenge. In multiplayer the synced `currentAction.id` is the seed, so every device shows the same card; local play and the dev tool use `Math.random()`. Each challenge has:
 
 - Country
 - Title
@@ -726,16 +726,18 @@ Challenges are static records in `constants/challenges.js`. Each has:
 - Failure penalty
 - Accent color
 
-The popup is a React Native overlay styled as a travel ticket. It contains a country stamp, mission code, team badge, route rail, three-letter country code, challenge text, penalty, and completion button.
+`getChallengeForStop` also merges per-stop presentation data from `STOP_VISUALS` in the same file: a two-letter country `code`, the destination `city`, a `landmark` key, the country `flag` as weighted color segments, and the `stop` index. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds). The challenge fallback has no city, landmark, or flag, and the popup omits those parts.
+
+The popup is a React Native overlay styled as a two-part travel ticket. The navy stub on the left carries a thin vertical country-flag strip on its left edge, the "Country Challenge" label, the city landmark (`components/CityLandmark.js`, flat pixel silhouettes drawn with `react-native-svg`), country name, city name, team badge, and the Next Turn button. The cream body on the right carries the mission code (`MISSION FR-01`), optional timer chip, title, prompt, and a penalty row with a red tag plus the penalty sentence. A dashed perforation separates the two parts. Landmarks currently exist for Paris, Madrid, Lisbon, Sevilla, Rome, Berlin, and Brussels; add a new key in `CityLandmark.js` and `STOP_VISUALS` to introduce another city.
 
 ### Animation system
 
 Four `Animated.Value` objects drive:
 
 - Spring entrance with translation, scaling, and rotation.
-- Continuous pulse on badges, route dots, and button.
+- Continuous pulse on the Next Turn button, timer chip, and the accent beam behind the ticket.
 - Horizontal shimmer across the ticket.
-- Slow floating of layered ticket cards.
+- Slow floating of the ticket and its accent-colored backing card.
 
 All animations use the native driver. Loops are stopped during cleanup.
 
@@ -1387,6 +1389,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/TourControl.js` | Roll/restart control panel |
 | `components/ChallengePopup.js` | Animated ticket-style challenge overlay |
+| `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |
 | `components/ModelTestPanel.js` | Unused development model switcher |
 
 ### Game constants

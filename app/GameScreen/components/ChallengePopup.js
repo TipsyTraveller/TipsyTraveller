@@ -1,40 +1,23 @@
 import { Animated, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CityLandmark from './CityLandmark';
+import { getChallengeTimer, getPenaltyTag } from '../constants/challenges';
 
-const PERFORATION_DOTS = Array.from({ length: 12 });
-const PIXEL_SPARKS = Array.from({ length: 9 });
+const PERFORATION_DASHES = Array.from({ length: 14 });
 
-const getCountryCode = (country) => country.slice(0, 3).toUpperCase();
-
-const Perforation = ({ accent }) => (
+const Perforation = () => (
   <View style={styles.perforation} pointerEvents="none">
-    {PERFORATION_DOTS.map((_, index) => (
-      <View
-        key={`dot-${index}`}
-        style={[
-          styles.perforationDot,
-          index % 2 === 0 && { backgroundColor: accent },
-        ]}
-      />
+    {PERFORATION_DASHES.map((_, index) => (
+      <View key={`dash-${index}`} style={styles.perforationDash} />
     ))}
   </View>
 );
 
-const PixelSparks = ({ accent }) => (
-  <View style={styles.pixelSparks} pointerEvents="none">
-    {PIXEL_SPARKS.map((_, index) => (
-      <View
-        key={`spark-${index}`}
-        style={[
-          styles.pixelSpark,
-          {
-            backgroundColor: index % 3 === 0 ? accent : '#FFF1CD',
-            left: `${8 + index * 10}%`,
-            top: index % 2 === 0 ? 0 : 16,
-          },
-        ]}
-      />
+const FlagStrip = ({ flag }) => (
+  <View style={styles.flagStrip} pointerEvents="none">
+    {flag.map((segment, index) => (
+      <View key={`flag-${index}`} style={{ flex: segment.weight, backgroundColor: segment.color }} />
     ))}
   </View>
 );
@@ -79,7 +62,6 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       ])
     );
 
-    pulseLoop.start();
     const shimmerLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(shimmer, {
@@ -109,6 +91,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       ])
     );
 
+    pulseLoop.start();
     shimmerLoop.start();
     floatLoop.start();
 
@@ -144,29 +127,13 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       },
     ],
   };
-  const pulseStyle = {
-    opacity: pulse.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.55, 1],
-    }),
-    transform: [
-      {
-        scale: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.04],
-        }),
-      },
-    ],
-  };
   const accentGlow = {
     opacity: pulse.interpolate({
       inputRange: [0, 1],
       outputRange: [0.28, 0.72],
     }),
     transform: [
-      {
-        rotate: '-6deg',
-      },
+      { rotate: '-6deg' },
       {
         scaleX: pulse.interpolate({
           inputRange: [0, 1],
@@ -184,12 +151,10 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       {
         translateX: shimmer.interpolate({
           inputRange: [0, 1],
-          outputRange: [-260, 360],
+          outputRange: [-260, 760],
         }),
       },
-      {
-        rotate: '-18deg',
-      },
+      { rotate: '-18deg' },
     ],
   };
   const floatingLayerStyle = {
@@ -218,15 +183,11 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       },
     ],
   };
-  const routeDotStyle = {
-    transform: [
-      {
-        scale: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.34],
-        }),
-      },
-    ],
+  const chipPulseStyle = {
+    opacity: pulse.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.7, 1],
+    }),
   };
   const buttonPulseStyle = {
     transform: [
@@ -238,17 +199,11 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       },
     ],
   };
-  const countryPanelStyle = {
-    transform: [
-      {
-        rotate: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-1deg', '1deg'],
-        }),
-      },
-    ],
-  };
-  const countryCode = getCountryCode(challenge.country);
+  const timer = getChallengeTimer(challenge);
+  const missionCode = challenge.code
+    ? `MISSION ${challenge.code}-${String(challenge.stop).padStart(2, '0')}`
+    : 'MISSION';
+  const landmarkWidth = compact ? 112 : 150;
 
   return (
     <View
@@ -263,86 +218,46 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       ]}
       pointerEvents="auto"
     >
-      <View style={styles.backdropGrid} pointerEvents="none" />
-      <Animated.View style={[styles.accentBeam, accentGlow, { backgroundColor: challenge.accent }]} />
-
       <Animated.View
-        style={[
-          styles.cardShadow,
-          compact && styles.cardShadowCompact,
-          cardTransform,
-          { borderColor: challenge.accent },
-        ]}
-      >
+        pointerEvents="none"
+        style={[styles.accentBeam, accentGlow, { backgroundColor: challenge.accent }]}
+      />
+      <Animated.View style={[styles.cardShadow, compact && styles.cardShadowCompact, cardTransform]}>
         <Animated.View
-          style={[
-            styles.ticketLayer,
-            styles.ticketLayerLeft,
-            floatingLayerStyle,
-            { backgroundColor: challenge.accent },
-          ]}
+          pointerEvents="none"
+          style={[styles.ticketLayer, floatingLayerStyle, { backgroundColor: challenge.accent }]}
         />
-        <View style={[styles.ticketLayer, styles.ticketLayerRight]} />
+        <View pointerEvents="none" style={[styles.ticketLayer, styles.ticketLayerRight]} />
         <Animated.View style={[styles.ticket, floatingTicketStyle]}>
           <Animated.View pointerEvents="none" style={[styles.ticketShimmer, shimmerStyle]} />
-          <View style={[styles.topStripe, { backgroundColor: challenge.accent }]}>
-            <PixelSparks accent={challenge.accent} />
-          </View>
-
           <ScrollView
-            style={[styles.cardScroll, { maxHeight: Math.max(210, height - insets.top - insets.bottom - 78) }]}
-            contentContainerStyle={[styles.card, compact && styles.cardCompact]}
+            style={{ maxHeight: Math.max(210, height - insets.top - insets.bottom - 40) }}
+            contentContainerStyle={styles.scrollContent}
             bounces={false}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.headerRow}>
-              <View style={styles.headerLeft}>
-                <View style={[styles.stamp, { borderColor: challenge.accent }]}>
-                  <Text style={[styles.stampText, { color: challenge.accent }]}>
-                    {challenge.country}
-                  </Text>
+            <View style={[styles.stub, compact && styles.stubCompact]}>
+              {challenge.flag ? <FlagStrip flag={challenge.flag} /> : null}
+              <Perforation />
+              <Text style={styles.stubLabel}>Country Challenge</Text>
+              {challenge.landmark ? (
+                <View style={styles.landmark}>
+                  <CityLandmark name={challenge.landmark} width={landmarkWidth} />
                 </View>
-                <Text style={styles.ticketCode}>MISSION / {countryCode}-01</Text>
-              </View>
-
+              ) : null}
+              <Text
+                adjustsFontSizeToFit
+                numberOfLines={1}
+                style={[styles.country, compact && styles.countryCompact]}
+              >
+                {challenge.country}
+              </Text>
+              {challenge.city ? <Text style={styles.city}>{challenge.city}</Text> : null}
+              <View style={styles.stubSpacer} />
               <View style={styles.teamBadge}>
                 <Text style={styles.teamBadgeText}>{teamLabel}</Text>
               </View>
-            </View>
-
-            <View style={styles.routeRail}>
-              <View style={[styles.routeDot, { backgroundColor: challenge.accent }]} />
-              <View style={styles.routeDash} />
-              <Animated.View style={[styles.routeDot, routeDotStyle, { backgroundColor: challenge.accent }]} />
-              <View style={styles.routeDash} />
-              <View style={[styles.routeDot, { backgroundColor: challenge.accent }]} />
-            </View>
-
-            <View style={[styles.mainContent, compact && styles.mainContentCompact]}>
-              <Animated.View style={[styles.countryPanel, compact && styles.countryPanelCompact, countryPanelStyle, { borderColor: challenge.accent }]}>
-                <Text style={[styles.countryCode, { color: challenge.accent }]}>
-                  {countryCode}
-                </Text>
-                <Text style={styles.countryPanelText}>LANDED</Text>
-              </Animated.View>
-
-              <View style={styles.challengeContent}>
-                <Animated.View style={[styles.challengeBadge, pulseStyle, { backgroundColor: challenge.accent }]}>
-                  <Text style={styles.challengeBadgeText}>Country Challenge</Text>
-                </Animated.View>
-
-                <Text style={[styles.title, compact && styles.titleCompact]}>{challenge.title}</Text>
-                <Text style={[styles.prompt, compact && styles.promptCompact]}>{challenge.prompt}</Text>
-              </View>
-            </View>
-
-            <View style={[styles.footerRow, compact && styles.footerRowCompact]}>
-              <View style={styles.penaltyBox}>
-                <Text style={styles.penaltyLabel}>If you fail</Text>
-                <Text style={styles.penaltyText}>{challenge.penalty}</Text>
-              </View>
-
-              <Animated.View style={buttonPulseStyle}>
+              <Animated.View style={[styles.buttonWrap, buttonPulseStyle]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={canComplete
@@ -352,21 +267,39 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
                   onPress={onComplete}
                   style={({ pressed }) => [
                     styles.completeButton,
-                    { shadowColor: challenge.accent },
                     !canComplete && styles.completeButtonDisabled,
                     pressed && styles.completeButtonPressed,
                   ]}
                 >
-                  <Text style={styles.completeButtonText}>{canComplete ? 'Done' : 'Watching'}</Text>
-                  <Text style={styles.completeButtonSubText}>
-                    {canComplete ? 'Next Turn' : `Waiting for ${teamLabel}`}
-                  </Text>
+                  <Text style={styles.completeButtonText}>{canComplete ? 'Next Turn' : 'Watching'}</Text>
+                  {canComplete ? null : (
+                    <Text style={styles.completeButtonSubText}>{`Waiting for ${teamLabel}`}</Text>
+                  )}
                 </Pressable>
               </Animated.View>
             </View>
+
+            <View style={[styles.body, compact && styles.bodyCompact]}>
+              <View style={styles.bodyHeader}>
+                <Text style={styles.missionCode}>{missionCode}</Text>
+                {timer ? (
+                  <Animated.View style={[styles.timerChip, chipPulseStyle]}>
+                    <Text style={styles.timerChipText}>{timer}</Text>
+                  </Animated.View>
+                ) : null}
+              </View>
+              <Text style={[styles.title, compact && styles.titleCompact]}>{challenge.title}</Text>
+              <Text style={[styles.prompt, compact && styles.promptCompact]}>{challenge.prompt}</Text>
+              <View style={styles.bodySpacer} />
+              <View style={styles.penaltyBox}>
+                <View style={styles.penaltyTag}>
+                  <Text style={styles.penaltyTagText}>{getPenaltyTag(challenge)}</Text>
+                </View>
+                <Text style={styles.penaltyText}>{challenge.penalty}</Text>
+              </View>
+            </View>
+
           </ScrollView>
-          <View style={[styles.bottomStripe, { backgroundColor: challenge.accent }]} />
-          <Perforation accent={challenge.accent} />
         </Animated.View>
       </Animated.View>
     </View>
@@ -379,15 +312,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(8, 12, 18, 0.68)',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
   },
-  backdropGrid: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.18,
-    backgroundColor: '#223144',
-    borderWidth: 12,
-    borderColor: 'rgba(255, 241, 205, 0.2)',
+  cardShadow: {
+    width: '90%',
+    maxWidth: 720,
+  },
+  cardShadowCompact: {
+    width: '94%',
   },
   accentBeam: {
     position: 'absolute',
@@ -396,44 +327,19 @@ const styles = StyleSheet.create({
     top: '20%',
     borderRadius: 2,
   },
-  cardShadow: {
-    width: '90%',
-    maxWidth: 680,
-    borderRadius: 8,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.42,
-    shadowRadius: 18,
-    elevation: 12,
-  },
-  cardShadowCompact: {
-    width: '96%',
-  },
   ticketLayer: {
     position: 'absolute',
     left: 10,
     right: 10,
     top: 10,
     bottom: -10,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 3,
     borderColor: '#111111',
-  },
-  ticketLayerLeft: {
-    transform: [{ rotate: '-2.4deg' }],
   },
   ticketLayerRight: {
     backgroundColor: '#FFF1CD',
     transform: [{ rotate: '1.6deg' }],
-  },
-  ticket: {
-    borderRadius: 8,
-    borderWidth: 4,
-    borderColor: '#111111',
-    backgroundColor: '#2C3E50',
-    overflow: 'hidden',
   },
   ticketShimmer: {
     position: 'absolute',
@@ -443,207 +349,107 @@ const styles = StyleSheet.create({
     width: 58,
     backgroundColor: 'rgba(255, 255, 255, 0.42)',
   },
-  topStripe: {
-    height: 20,
-    borderBottomWidth: 3,
-    borderBottomColor: '#111111',
-  },
-  bottomStripe: {
-    height: 10,
-    borderTopWidth: 3,
-    borderTopColor: '#111111',
-  },
-  card: {
-    padding: 16,
+  ticket: {
+    borderRadius: 12,
+    borderWidth: 4,
+    borderColor: '#111111',
     backgroundColor: '#FAF3E0',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.42,
+    shadowRadius: 18,
+    elevation: 12,
   },
-  cardScroll: {
-    backgroundColor: '#FAF3E0',
-  },
-  cardCompact: {
-    padding: 10,
-  },
-  headerRow: {
+  scrollContent: {
+    flexGrow: 1,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'stretch',
+  },
+  stub: {
+    width: 210,
+    paddingTop: 14,
+    paddingBottom: 14,
+    paddingLeft: 26,
+    paddingRight: 14,
     alignItems: 'center',
-    gap: 12,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexShrink: 1,
-  },
-  stamp: {
-    minWidth: 128,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderWidth: 3,
-    borderRadius: 6,
-    backgroundColor: '#FFF1CD',
-    transform: [{ rotate: '-2deg' }],
-  },
-  stampText: {
-    fontFamily: 'dogicapixelbold',
-    fontSize: 14,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-  },
-  ticketCode: {
-    color: '#2C3E50',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 9,
-    textTransform: 'uppercase',
-  },
-  teamBadge: {
-    paddingVertical: 7,
-    paddingHorizontal: 10,
     backgroundColor: '#2C3E50',
-    borderRadius: 6,
   },
-  teamBadgeText: {
+  stubCompact: {
+    width: 168,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingLeft: 22,
+    paddingRight: 10,
+  },
+  flagStrip: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 9,
+    borderRightWidth: 3,
+    borderRightColor: '#111111',
+  },
+  stubLabel: {
     color: '#FFF1CD',
     fontFamily: 'dogicapixel',
-    fontSize: 10,
+    fontSize: 8,
     textTransform: 'uppercase',
   },
-  routeRail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 10,
-  },
-  routeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-    borderWidth: 2,
-    borderColor: '#111111',
-  },
-  routeDash: {
-    flex: 1,
-    height: 3,
-    marginHorizontal: 5,
-    backgroundColor: '#2C3E50',
-  },
-  mainContent: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'stretch',
-  },
-  mainContentCompact: {
-    gap: 10,
-  },
-  countryPanel: {
-    width: 134,
-    minHeight: 122,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF1CD',
-    borderRadius: 8,
-    borderWidth: 4,
-  },
-  countryPanelCompact: {
-    width: 104,
-    minHeight: 96,
-  },
-  countryCode: {
-    fontFamily: 'dogicapixelbold',
-    fontSize: 28,
-    lineHeight: 34,
-    textTransform: 'uppercase',
-  },
-  countryPanelText: {
+  landmark: {
     marginTop: 8,
-    color: '#2C3E50',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 9,
-    letterSpacing: 0,
   },
-  challengeContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  challengeBadge: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#111111',
-  },
-  challengeBadgeText: {
-    color: '#111111',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 10,
-    textTransform: 'uppercase',
-  },
-  title: {
-    marginTop: 10,
-    color: '#111111',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 22,
-    lineHeight: 29,
-    textTransform: 'uppercase',
-  },
-  titleCompact: {
-    marginTop: 7,
-    fontSize: 17,
-    lineHeight: 22,
-  },
-  prompt: {
-    marginTop: 7,
-    color: '#111111',
-    fontFamily: 'dogicapixel',
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  promptCompact: {
-    marginTop: 5,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 12,
-    marginTop: 14,
-  },
-  footerRowCompact: {
-    marginTop: 10,
-  },
-  penaltyBox: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#FFF1CD',
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#111111',
-  },
-  penaltyLabel: {
-    color: '#2C3E50',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 10,
-    textTransform: 'uppercase',
-  },
-  penaltyText: {
+  country: {
     marginTop: 6,
-    color: '#111111',
-    fontFamily: 'dogicapixel',
-    fontSize: 12,
-    lineHeight: 20,
+    color: '#FFF1CD',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 20,
+    textTransform: 'uppercase',
   },
-  completeButton: {
-    width: 152,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1BA39C',
-    borderRadius: 8,
+  countryCompact: {
+    fontSize: 16,
+  },
+  city: {
+    marginTop: 4,
+    color: '#9FB3C8',
+    fontFamily: 'dogicapixel',
+    fontSize: 9,
+    textTransform: 'uppercase',
+  },
+  stubSpacer: {
+    flex: 1,
+    minHeight: 8,
+  },
+  teamBadge: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFF1CD',
+    borderRadius: 999,
     borderWidth: 3,
     borderColor: '#111111',
+  },
+  teamBadgeText: {
+    color: '#111111',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 9,
+    textTransform: 'uppercase',
+  },
+  buttonWrap: {
+    alignSelf: 'stretch',
+    marginTop: 10,
+  },
+  completeButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    backgroundColor: '#1BA39C',
+    borderRadius: 10,
+    borderWidth: 3,
+    borderColor: '#111111',
+    shadowColor: '#111111',
     shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 1,
     shadowRadius: 0,
   },
   completeButtonPressed: {
@@ -654,42 +460,128 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   completeButtonText: {
-    color: '#FFFFFF',
+    color: '#111111',
     fontFamily: 'dogicapixelbold',
-    fontSize: 16,
+    fontSize: 12,
     textTransform: 'uppercase',
   },
   completeButtonSubText: {
-    marginTop: 4,
-    color: '#FFF1CD',
+    marginTop: 3,
+    color: '#111111',
     fontFamily: 'dogicapixel',
+    fontSize: 7,
+    textTransform: 'uppercase',
+  },
+  body: {
+    flex: 1,
+    paddingVertical: 18,
+    paddingLeft: 24,
+    paddingRight: 20,
+  },
+  bodyCompact: {
+    paddingVertical: 12,
+    paddingLeft: 18,
+    paddingRight: 14,
+  },
+  bodyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  missionCode: {
+    color: '#4A5A6B',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  timerChip: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    backgroundColor: '#FFF1CD',
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#111111',
+  },
+  timerChipText: {
+    color: '#111111',
+    fontFamily: 'dogicapixelbold',
     fontSize: 9,
     textTransform: 'uppercase',
+  },
+  title: {
+    marginTop: 12,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 20,
+    lineHeight: 27,
+    textTransform: 'uppercase',
+  },
+  titleCompact: {
+    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  prompt: {
+    marginTop: 10,
+    color: '#111111',
+    fontFamily: 'dogicapixel',
+    fontSize: 13,
+    lineHeight: 21,
+  },
+  promptCompact: {
+    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+  bodySpacer: {
+    flex: 1,
+    minHeight: 12,
+  },
+  penaltyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFF1CD',
+    borderRadius: 10,
+    borderWidth: 3,
+    borderColor: '#111111',
+  },
+  penaltyTag: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#B3261E',
+    borderRadius: 6,
+    borderWidth: 3,
+    borderColor: '#111111',
+  },
+  penaltyTagText: {
+    color: '#FFFFFF',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  penaltyText: {
+    flex: 1,
+    color: '#111111',
+    fontFamily: 'dogicapixel',
+    fontSize: 11,
+    lineHeight: 18,
   },
   perforation: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    right: 12,
+    right: 0,
+    width: 4,
     justifyContent: 'space-around',
   },
-  perforationDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 2,
-    backgroundColor: '#2C3E50',
-    borderWidth: 1,
-    borderColor: '#111111',
-  },
-  pixelSparks: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  pixelSpark: {
-    position: 'absolute',
-    width: 8,
+  perforationDash: {
+    width: 4,
     height: 8,
-    borderWidth: 1,
-    borderColor: '#111111',
+    backgroundColor: '#111111',
   },
 });
 

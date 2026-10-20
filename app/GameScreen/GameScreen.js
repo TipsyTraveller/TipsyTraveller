@@ -149,7 +149,7 @@ const GameScreen = ({ route }) => {
 
     if (gameplay.phase === 'challenge') {
       setLastRoll(action?.value ?? null);
-      setCurrentChallenge(getChallengeForStop(gameplay.challengeStop));
+      setCurrentChallenge(getChallengeForStop(gameplay.challengeStop, action?.id));
       setState('challenge');
       return;
     }
@@ -306,7 +306,7 @@ const GameScreen = ({ route }) => {
       return;
     }
 
-    setCurrentChallenge(getChallengeForStop(landedLeg));
+    setCurrentChallenge(getChallengeForStop(landedLeg, Math.random()));
     setState('challenge');
   };
 
@@ -321,7 +321,7 @@ const GameScreen = ({ route }) => {
     });
     const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex }) => {
       if (multiplayerEnabled) return;
-      setCurrentChallenge(getChallengeForStop(stopIndex));
+      setCurrentChallenge(getChallengeForStop(stopIndex, Math.random()));
       setState('challenge');
     });
     const unsubRestart = devEventBus.on('dev:restart', () => handleRestartRef.current?.());
