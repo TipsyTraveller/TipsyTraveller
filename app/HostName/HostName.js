@@ -10,6 +10,7 @@ import Button from "../shared/components/Button/Button"
 import Header from "../shared/components/Header/Header";
 import MainAnimation from "../shared/components/MainAnimation/MainAnimation";
 import InputField from "../shared/components/InputField/InputField";
+import { getRouteSnapshotForDuration } from "../GameScreen/services/countryStopsService";
 
 export default function HostName ({ navigation, route }) {
     const [userName, setUserName] = useState('');
@@ -88,6 +89,7 @@ export default function HostName ({ navigation, route }) {
                 let deviceID = await AsyncStorage.getItem("deviceID");
                 await set(ref(db, `games/${newGameID}`),{
                     ...settings,
+                    routeStops: await getRouteSnapshotForDuration(settings.duration),
                     HostName: userName.trim(),
                     createdAt: Date.now(),
                     hostDeviceID: deviceID,

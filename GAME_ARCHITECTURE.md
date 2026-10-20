@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 19 October 2026.
+> Last reviewed against the source code: 20 October 2026.
 
 ## Table of contents
 
@@ -100,6 +100,8 @@ This document distinguishes between the visible product concept and what the cur
 - Animated vehicle movement along a curved route.
 - Animated country markers and camera following.
 - Configurable location challenge cards.
+- Duration-driven routes: short rooms snapshot 4 ordered route points, medium rooms snapshot 6, and long rooms use every authored point.
+- Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Active-game re-entry through the room PIN with canonical state restoration.
 - Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
@@ -109,7 +111,7 @@ This document distinguishes between the visible product concept and what the cur
 
 ### Partially implemented
 
-- Difficulty and duration are stored in Firebase but do not modify gameplay.
+- Difficulty is stored in Firebase but does not modify gameplay.
 - The lobby `RULES` button opens a concise rules summary.
 - The game shows “Tour complete” when all teams finish, but it does not rank teams or announce a winner.
 
@@ -122,14 +124,15 @@ In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is r
 1. `EXPO_PUBLIC_ENABLE_DEV_PORTAL` in `.env` or `.env.local` (set to `true` or `false`).
 2. `__DEV__` React Native global flag (fallback when the env variable is omitted).
 
-The Dev Portal provides four tabbed capability suites:
+The Dev Portal provides four cross-platform capability suites plus one web-only authoring suite:
 
 - **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
 - **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
 - **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, triggering country challenge cards (stops 1 through 7) directly, and resetting board state.
+- **Countries (web only)**: Lists the Firebase-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. The tab and placement UI are not exposed on iOS or Android.
 - **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
 
-The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK` and operates completely offline unless live Firebase room creation is explicitly requested.
+The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK`. Instant GameScreen shortcuts load the current Firebase-authored catalogue and use the full long-duration route by default, so newly added or reordered stops remain visible after a browser refresh. If the catalogue cannot be read, the content service falls back to bundled defaults. The Dev Portal's Board tools likewise show the authored catalogue when no active room snapshot is available; live multiplayer rooms retain their immutable room route snapshot.
 
 ---
 
@@ -171,7 +174,7 @@ The board route is an ordered collection of destination coordinates joined by tr
 
 Stop index `0` is the initial position. Every following index represents another destination along the route. Intermediate stops may resolve to a challenge, while the final stop completes that team’s journey. The exact number of stops and their names are content choices and can change without altering the basic turn state machine.
 
-The current implementation stores route geometry and display names in `constants/route.js` and challenge content in `constants/challenges.js`. Those files contain the active content set, but this architecture document intentionally does not duplicate that list because routes and challenges are expected to expand over time.
+The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a full-length backwards-compatible fallback for rooms created before snapshots existed, while `constants/route.js` builds the runtime Three.js route model from the snapshot.
 
 ### Roll behavior
 
@@ -339,6 +342,8 @@ This keeps long text, buttons, and accessibility semantics out of WebGL while re
 |---|---|---:|---:|
 | Device ID | AsyncStorage | Yes | No |
 | Room settings | Firebase `games/{gameID}` | Yes | Yes |
+| Master country-stop catalogue | Firebase `gameContent/countryStops` | Yes | Yes |
+| Room route snapshot | Firebase `games/{gameID}/routeStops` | Yes | Yes |
 | Team roster | Firebase `players/{gameID}` | Yes | Yes |
 | Team model choice | Firebase `games/{gameID}/teamModels` | Yes | Yes |
 | Current turn | Firebase gameplay record | Yes | Yes |
@@ -376,7 +381,7 @@ The setup globe and wordmark use a larger compact presentation, while each optio
 
 When the host returns from an existing lobby, the same setup screen is opened in edit mode with the current choices preselected. Completing the steps transactionally updates the existing `games/{gameID}` record while preserving its ID, host metadata, and `players/{gameID}` roster. A player-range reduction is rejected if the current roster would not fit or Team 3 still has members.
 
-Current caveat: difficulty and duration are persisted but are not consumed by the game rules. All three duration choices also reuse the beer-bottle images originally used for difficulty.
+Duration is consumed when the room route snapshot is created: short selects the first 4 ordered points, medium the first 6, and long every available point. Editing duration while the room is still in the lobby regenerates this snapshot. Difficulty remains unused. All three duration choices also reuse the beer-bottle images originally used for difficulty.
 
 ### `HostName`
 
@@ -388,11 +393,12 @@ Creation sequence:
 2. Read `deviceID` from AsyncStorage or generate one from random base-36 text plus the current timestamp.
 3. Generate a random four-digit string.
 4. Query `games/{code}` and retry until the code is unused.
-5. Write settings, host name, creation timestamp, device ID, and `status: "lobby"`.
-6. Initialize `players/{code}` with a counter and three empty team placeholders.
-7. Push the host into Team 1 as `isLeader: true`.
-8. Register an `onDisconnect` update that writes `disconnectedAt` on the game.
-9. Reset navigation to `Home → LobbyScreen`, removing the completed setup and username screens so native back navigation cannot accidentally repeat room creation.
+5. Read the authored stop catalogue (falling back to bundled defaults if unavailable) and select the duration-sized route snapshot.
+6. Write settings, `routeStops`, host name, creation timestamp, device ID, and `status: "lobby"`.
+7. Initialize `players/{code}` with a counter and three empty team placeholders.
+8. Push the host into Team 1 as `isLeader: true`.
+9. Register an `onDisconnect` update that writes `disconnectedAt` on the game.
+10. Reset navigation to `Home → LobbyScreen`, removing the completed setup and username screens so native back navigation cannot accidentally repeat room creation.
 
 The username form uses a keyboard-avoiding, scrollable layout. Empty input is disabled, repeated submissions are blocked while creation is in progress, and connection failures are surfaced to the player.
 
@@ -535,7 +541,7 @@ Canvas
 │       └── GamePiece × 2 or 3
 ├── Suspense(CountryMarkersFallback)
 │   └── CountryMarkers
-│       └── CountryMarker × 7
+│       └── CountryMarker × route stop count
 ├── CameraController
 └── BoardDice
 ```
@@ -612,7 +618,7 @@ Android that quantized attributes render correctly.
 
 ### Route curve
 
-Each travel leg is an array of country endpoints plus intermediate control points. Each leg becomes a centripetal Catmull-Rom curve. The legs are also flattened into a single `DRIVE_CURVE` with `1,400` arc-length divisions.
+`createRouteModel(countryStops)` converts the room's ordered stop positions into a centripetal Catmull-Rom curve with `1,400` arc-length divisions. The model also exposes names, marker positions, the final stop index, and route-relative stop distances; board components receive this model rather than importing a fixed route.
 
 The global curve is used for:
 
@@ -621,11 +627,11 @@ The global curve is used for:
 - Smooth look-ahead vehicle tangent/heading.
 - Mapping country stops to travel distances.
 
-For every intermediate country stop, the code samples up to 1,400 points on the remaining curve to find the closest point. That produces `STOP_PROGRESS`, which is multiplied by the curve length to create `STOP_DISTANCES`.
+Each ordered stop is a Catmull-Rom control point. Its parameter-space index is mapped through the curve's 1,400-sample cumulative arc-length table to produce a monotonic route progress value. Those progress values are multiplied by the total curve length to create the movement distances used by rendering and synchronized timing. This avoids ambiguous nearest-point matches when an edited route crosses itself or revisits a coordinate.
 
 ### Animated route line
 
-Instead of static dots across the entire map, `DottedRouteLine` precomputes a single sleek semi-transparent ribbon geometry (`#2C3E50`, `opacity: 0.6`) along `DRIVE_CURVE` and uses `BufferGeometry.setDrawRange` so no geometry buffers are reallocated per frame:
+Instead of static dots across the entire map, `DottedRouteLine` precomputes a single sleek semi-transparent ribbon geometry (`#2C3E50`, `opacity: 0.6`) along the runtime route curve and uses `BufferGeometry.setDrawRange` so no geometry buffers are reallocated per frame:
 
 - When a dice roll determines the move target, the ribbon smoothly draws out (`easeInOutCubic`) from the active vehicle’s current stop to the target stop before the vehicle begins driving.
 - As the vehicle drives along the path, `activeCarProgressRef` advances the tail of the ribbon with the vehicle so the path is consumed cleanly into the destination stop.
@@ -735,7 +741,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 
 - After a roll, the vehicle waits for the animated route path to lay out (`getPathRevealDuration`) before driving.
 - Progress is stored as distance along the global route curve, advancing by `delta × 2` world units per frame while driving.
-- Position comes directly from `DRIVE_CURVE.getPointAt(normalizedDistance)`.
+- Position comes directly from `routeModel.curve.getPointAt(normalizedDistance)`.
 - Heading comes from a tight look-ahead chord tangent (`getSmoothRouteTangentAngle`) plus a 90-degree model correction, interpolated with shortest-angle exponential damping.
 - An inner body group applies the driving sine bounce so the root group tracked by the camera remains free of vertical bounce jitter.
 - Before movement begins, `GamePieces` identifies other teams parked at route stops strictly between the mover's start and destination. The inner body group first lifts the active vehicle on a high smooth arc, then performs one full longitudinal rotation while airborne and returns the vehicle upright before landing. This visual kickflip does not change route distance, stop occupancy, or camera tracking.
@@ -746,7 +752,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 
 ## 11. Challenges
 
-Challenges are static records in `constants/challenges.js`. Each has:
+Challenges are stored as a pool on each authored country stop. Each has:
 
 - Country
 - Title
@@ -754,7 +760,7 @@ Challenges are static records in `constants/challenges.js`. Each has:
 - Failure penalty
 - Accent color
 
-`constants/challenges.js` also exports `COUNTRY_FLAGS` and `getCountryFlag(country)` with per-country flag stripe layouts and colors, and `getChallengeForStop(stopIndex)` attaches `stopIndex` to the returned challenge record.
+`constants/challenges.js` retains country flag presentation and backwards-compatible fallback challenges. In multiplayer, movement completion deterministically chooses a challenge from the landed stop using the action ID and stores both `challengeStop` and `challengeId` in the canonical gameplay record, so every client renders the same prompt.
 
 The popup (`ChallengePopup.js`) is a two-sided React Native card overlay styled consistently with the Home and CharacterSelection screens:
 
@@ -797,8 +803,18 @@ The current code expects this conceptual Realtime Database shape:
         "team1": "car1",
         "team2": "vehicle003"
       },
+      "routeStops": [
+        {
+          "id": "belgium-start",
+          "name": "Belgium",
+          "order": 0,
+          "position": { "x": -0.4, "y": 1.93 },
+          "accent": "#1ba39c",
+          "challenges": []
+        }
+      ],
       "gameplay": {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "sessionId": "m8abc123-roomrun",
         "revision": 4,
         "phase": "moving",
@@ -820,7 +836,28 @@ The current code expects this conceptual Realtime Database shape:
           "movementStartsAt": 1792195201850,
           "movementEndsAt": 1792195207000
         },
+        "challengeStop": null,
+        "challengeId": null,
         "updatedAt": 1792195200000
+      }
+    }
+  },
+  "gameContent": {
+    "countryStops": {
+      "france": {
+        "id": "france",
+        "name": "France",
+        "order": 1,
+        "position": { "x": -1.09, "y": 0.1 },
+        "accent": "#d71920",
+        "challenges": {
+          "0": {
+            "id": "cafe-charades",
+            "title": "Cafe Charades",
+            "prompt": "Act out an order without words.",
+            "penalty": "Take 1 sip if nobody guesses."
+          }
+        }
       }
     }
   },
@@ -847,7 +884,7 @@ The current code expects this conceptual Realtime Database shape:
 }
 ```
 
-The timestamp above is illustrative. Firebase may omit keys whose values are set to `null`, and empty-string team placeholders become objects once players are pushed.
+The timestamp and route coordinates above are illustrative, and the single `routeStops` item abbreviates the complete room snapshot. Firebase may omit keys whose values are set to `null`, and empty-string team placeholders become objects once players are pushed.
 
 ### Room creation
 
@@ -1264,7 +1301,7 @@ camera motion, GLTF appearance, and final 3D performance.
 1. **Peer-authoritative rolls.** Transactions prevent duplicate turns, but the active leader's client still generates the random value; trusted anti-cheat rolls require backend logic.
 2. **Animation clocks are approximate.** Clients use the Firebase server-time offset and shared movement deadlines, but rendering remains local and slow/backgrounded devices may catch up by snapping to canonical state.
 3. **Difficulty is unused.** Easy/medium/hard do not alter challenges or penalties.
-4. **Duration is unused.** Short/medium/long do not alter route length, target score, or timer.
+4. **Duration controls only route size.** Short/medium/long change the number of snapshotted route points but do not change a target score or timer.
 5. **No winner model.** The game waits for all teams instead of ranking the first finisher.
 6. **Challenges are honor-based.** Pass/fail and penalties are not recorded.
 
@@ -1277,6 +1314,7 @@ camera motion, GLTF appearance, and final 3D performance.
 5. Database security rules are not versioned in this repository.
 6. `playerCounter` is not consistently updated for host creation and network joins; most balancing logic correctly counts team objects directly instead.
 7. Empty teams begin as empty strings, so the Firebase value type changes when players are added.
+8. The web-only content editor writes the shared `gameContent/countryStops` catalogue without an authenticated content-admin role; deployed database rules must restrict this path before the portal is used outside trusted development.
 
 ### UI and code quality
 
@@ -1329,15 +1367,9 @@ Possible mapping:
 
 Keep challenge content separate from rendering and select a challenge from a country/difficulty pool.
 
-### Activate duration
+### Extend duration modes
 
-Possible mapping:
-
-- Short: one route lap or fewer stops.
-- Medium: current route.
-- Long: expanded route, multiple challenge rounds, or a target score.
-
-The route constants should become a route definition selected from game settings rather than module-level globals.
+Duration currently snapshots the first 4 ordered points for short, the first 6 for medium, and every authored point for long. Future modes can make those counts content-configurable or add multiple laps and target scores. Preserve the room-level route snapshot so content edits never mutate an active game.
 
 ### Improve rendering performance
 
@@ -1424,6 +1456,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/TourControl.js` | Roll/restart control panel |
 | `components/ChallengePopup.js` | Country challenge card overlay |
+| `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
 | `components/ModelTestPanel.js` | Unused development model switcher |
 
 ### Game constants
@@ -1431,14 +1464,16 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | File | Responsibility |
 |---|---|
 | `constants/mapCoordinates.js` | Board dimensions and UV-to-world conversion |
-| `constants/route.js` | Stops, curves, lengths, and names |
+| `constants/route.js` | Builds runtime curves, lengths, tangent helpers, and stop distances from ordered stop data |
+| `constants/countryStops.js` | Default catalogue, normalization, duration counts, and old-room fallback |
 | `constants/movement.js` | Shared vehicle speed used by rendering and synchronized action timing |
 | `constants/camera.js` | Overview and follow-camera geometry |
 | `constants/diceBounds.js` | Allowed die interaction region |
 | `constants/gamePieces.js` | Team IDs, colors, counts, and initial progress |
 | `constants/modelOptions.js` | Vehicle registry and transforms |
 | `constants/boardAssets.js` | Map and marker GLB sources plus `preloadBoardAssets()` |
-| `constants/challenges.js` | Country challenge content |
+| `constants/challenges.js` | Flag presentation, challenge selection, and legacy fallback content |
+| `services/countryStopsService.js` | Firebase catalogue reads, subscriptions, ordering, mutations, and duration snapshots |
 
 ### Shared UI and local storage
 
@@ -1463,10 +1498,11 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `shared/dev/devConfig.js` | Evaluates `EXPO_PUBLIC_ENABLE_DEV_PORTAL` and `__DEV__` to determine portal visibility |
 | `shared/dev/DevPortal.js` | Root dev portal container mounting floating button and modal |
 | `shared/dev/DevPortalButton.js` | Draggable/dockable on-screen floating trigger button (`⚡ DEV`) |
-| `shared/dev/DevPortalModal.js` | Tabbed developer portal overlay (Screens, Multiplayer/Bots, Board Tools, Identity) |
+| `shared/dev/DevPortalModal.js` | Tabbed developer portal overlay, including the web-only Countries entry point |
+| `shared/dev/CountryStopsTab.js` | Web-only ordered stop list, challenge management, removal, and map-placement actions |
 | `shared/dev/devNavigation.js` | Global navigation ref, instant screen starters (`startInstantGameScreen`, `startInstantCharacterSelection`, `startLiveTestLobby`) |
 | `shared/dev/devFirebaseService.js` | Bot player generation, 1-tap lobby auto-fill, team vehicle ready-up, live test room provisioning |
-| `shared/dev/devEventBus.js` | Decoupled event bus for in-game dev actions (`forceRoll`, `testChallenge`, `restart`) |
+| `shared/dev/devEventBus.js` | Decoupled event bus for in-game dev actions and country placement handoff |
 
 ### Native code
 

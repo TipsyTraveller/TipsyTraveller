@@ -2,13 +2,6 @@ import { memo, useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
-import {
-  DRIVE_CURVE,
-  DRIVE_LENGTH,
-  getSmoothRouteTangentAngle,
-  ROUTE,
-  STOP_DISTANCES,
-} from '../constants/route';
 import VehicleModel from './VehicleModel';
 import { DRIVE_SPEED_UNITS_PER_SECOND } from '../constants/movement';
 
@@ -31,8 +24,8 @@ const lerpAngle = (from, to, amount) => {
   return from + diff * amount;
 };
 
-const getCarHeading = (progress) => (
-  getSmoothRouteTangentAngle(progress, 0.005) + CAR_ROTATION_OFFSET
+const getCarHeading = (routeModel, progress) => (
+  routeModel.getTangentAngle(progress, 0.005) + CAR_ROTATION_OFFSET
 );
 
 const getMovingParkingOffset = ({
@@ -116,12 +109,13 @@ const applyCarTransform = ({
   clockTime,
   delta,
   rotationRef,
+  routeModel,
   snapRotation = false,
 }) => {
   const clampedProgress = THREE.MathUtils.clamp(progress, 0, 1);
-  DRIVE_CURVE.getPointAt(clampedProgress, targetPoint);
+  routeModel.curve.getPointAt(clampedProgress, targetPoint);
 
-  const routeAngle = getSmoothRouteTangentAngle(clampedProgress, 0.005);
+  const routeAngle = routeModel.getTangentAngle(clampedProgress, 0.005);
   if (moving) {
     parkingOffsetRef.current = parkingOffset;
   } else {
@@ -179,11 +173,12 @@ const GamePiece = memo(({
   piece,
   pieceRef,
   targetLeg,
+  routeModel,
 }) => {
-  const initialDistance = STOP_DISTANCES[currentLeg] || 0;
-  const initialProgress = THREE.MathUtils.clamp(initialDistance / DRIVE_LENGTH, 0, 1);
+  const initialDistance = routeModel.stopDistances[currentLeg] || 0;
+  const initialProgress = THREE.MathUtils.clamp(initialDistance / routeModel.length, 0, 1);
   const distanceRef = useRef(initialDistance);
-  const rotationRef = useRef(getCarHeading(initialProgress));
+  const rotationRef = useRef(getCarHeading(routeModel, initialProgress));
   const carPosRef = useRef(new THREE.Vector3());
   const bodyRef = useRef();
   const drivingRef = useRef(driving);
@@ -197,7 +192,7 @@ const GamePiece = memo(({
   const departureParkingOffsetRef = useRef(parkingOffsetRef.current);
   const parkingOffset = parkingOffsetFactor * PARKING_LATERAL_SPACING;
   const passedVehicleDistances = passedVehicleLegs
-    .map((leg) => STOP_DISTANCES[leg])
+    .map((leg) => routeModel.stopDistances[leg])
     .filter((distance) => distance !== undefined);
 
   useEffect(() => {
@@ -212,7 +207,7 @@ const GamePiece = memo(({
 
       if (activeCarProgressRef) {
         activeCarProgressRef.current = THREE.MathUtils.clamp(
-          distanceRef.current / DRIVE_LENGTH,
+          distanceRef.current / routeModel.length,
           0,
           1
         );
@@ -221,7 +216,7 @@ const GamePiece = memo(({
       delayElapsedRef.current = 0;
       hasStartedDrivingRef.current = false;
     }
-  }, [activeCarProgressRef, currentLeg, driving]);
+  }, [activeCarProgressRef, currentLeg, driving, routeModel]);
 
   useEffect(() => {
     targetLegRef.current = targetLeg;
@@ -230,8 +225,8 @@ const GamePiece = memo(({
   useEffect(() => {
     if (drivingRef.current) return;
 
-    const legDistance = STOP_DISTANCES[currentLeg] || 0;
-    const legProgress = THREE.MathUtils.clamp(legDistance / DRIVE_LENGTH, 0, 1);
+    const legDistance = routeModel.stopDistances[currentLeg] || 0;
+    const legProgress = THREE.MathUtils.clamp(legDistance / routeModel.length, 0, 1);
     distanceRef.current = legDistance;
     waitingForNextLegRef.current = false;
 
@@ -250,16 +245,17 @@ const GamePiece = memo(({
         clockTime: 0,
         delta: 0.016,
         rotationRef,
+        routeModel,
         snapRotation: true,
       });
     }
-  }, [currentLeg, pieceRef]);
+  }, [currentLeg, pieceRef, routeModel]);
 
   useFrame(({ clock }, delta) => {
     if (!pieceRef.current) return;
 
     if (!drivingRef.current) {
-      const parkedProgress = THREE.MathUtils.clamp(distanceRef.current / DRIVE_LENGTH, 0, 1);
+      const parkedProgress = THREE.MathUtils.clamp(distanceRef.current / routeModel.length, 0, 1);
       applyCarTransform({
         pieceRef,
         bodyRef,
@@ -274,6 +270,7 @@ const GamePiece = memo(({
         clockTime: clock.elapsedTime,
         delta,
         rotationRef,
+        routeModel,
       });
       return;
     }
@@ -296,14 +293,14 @@ const GamePiece = memo(({
     }
 
     const target = targetLegRef.current;
-    const startDistance = STOP_DISTANCES[currentLeg] ?? 0;
-    const targetDistance = STOP_DISTANCES[target] ?? DRIVE_LENGTH;
+    const startDistance = routeModel.stopDistances[currentLeg] ?? 0;
+    const targetDistance = routeModel.stopDistances[target] ?? routeModel.length;
 
     distanceRef.current = Math.min(
       distanceRef.current + delta * DRIVE_SPEED_UNITS_PER_SECOND,
       targetDistance
     );
-    const curveProgress = THREE.MathUtils.clamp(distanceRef.current / DRIVE_LENGTH, 0, 1);
+    const curveProgress = THREE.MathUtils.clamp(distanceRef.current / routeModel.length, 0, 1);
     const movingParkingOffset = getMovingParkingOffset({
       distance: distanceRef.current,
       startDistance,
@@ -317,7 +314,7 @@ const GamePiece = memo(({
     }
 
     for (let legIdx = lastReportedLegRef.current + 1; legIdx < target; legIdx += 1) {
-      if (distanceRef.current >= (STOP_DISTANCES[legIdx] ?? Infinity) - 0.02) {
+      if (distanceRef.current >= (routeModel.stopDistances[legIdx] ?? Infinity) - 0.02) {
         lastReportedLegRef.current = legIdx;
         onLegPass?.(legIdx);
       }
@@ -337,12 +334,13 @@ const GamePiece = memo(({
       clockTime: clock.elapsedTime,
       delta,
       rotationRef,
+      routeModel,
     });
 
     if (distanceRef.current >= targetDistance) {
       distanceRef.current = targetDistance;
       if (activeCarProgressRef) {
-        activeCarProgressRef.current = THREE.MathUtils.clamp(targetDistance / DRIVE_LENGTH, 0, 1);
+        activeCarProgressRef.current = THREE.MathUtils.clamp(targetDistance / routeModel.length, 0, 1);
       }
       waitingForNextLegRef.current = true;
       onMoveComplete(piece.id, target);
@@ -350,7 +348,7 @@ const GamePiece = memo(({
   });
 
   return (
-    <group ref={pieceRef} position={[ROUTE[0].x, ROUTE[0].y, CAR_BASE_Z]}>
+    <group ref={pieceRef} position={[routeModel.route[0].x, routeModel.route[0].y, CAR_BASE_Z]}>
       <group ref={bodyRef}>
         <VehicleModel color={piece.color} model={piece.model} />
       </group>

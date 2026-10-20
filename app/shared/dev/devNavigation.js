@@ -1,5 +1,7 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { getOrCreateDevDeviceId, createLiveTestRoom } from './devFirebaseService';
+import { getStopsForDuration } from '../../GameScreen/constants/countryStops';
+import { getCountryStops } from '../../GameScreen/services/countryStopsService';
 
 export const navigationRef = createNavigationContainerRef();
 
@@ -32,13 +34,14 @@ export const getCurrentRouteInfo = () => {
 /**
  * Starts GameScreen directly with mock data, bypassing lobby and character selection entirely.
  */
-export const startInstantGameScreen = async ({ teamCount = 2, teamModels } = {}) => {
+export const startInstantGameScreen = async ({ teamCount = 2, teamModels, duration = 'long', routeStops } = {}) => {
   const isThreeTeams = teamCount === 3;
   const deviceID = await getOrCreateDevDeviceId();
+  const availableStops = routeStops || await getCountryStops();
 
   const mockGameData = {
     difficulty: 'medium',
-    duration: 'short',
+    duration,
     nrOfPlayers: isThreeTeams ? '9-12' : '1-4',
     HostName: 'Dev Host',
     status: 'game',
@@ -47,6 +50,7 @@ export const startInstantGameScreen = async ({ teamCount = 2, teamModels } = {})
       team2: 'car2',
       ...(isThreeTeams ? { team3: 'car3' } : {}),
     },
+    routeStops: getStopsForDuration(availableStops, duration),
   };
 
   const mockTeamMembers = {

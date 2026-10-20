@@ -8,7 +8,7 @@ import {
   getNextActiveTeamId,
   getRequiredTeamIds,
 } from '../gameplayState';
-import { DRIVE_LEGS } from '../constants/route';
+import { getChallengeIdForStop } from '../constants/challenges';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
   if (!deviceID) return { localTeamId: null, isTeamLeader: false };
@@ -25,7 +25,7 @@ const findLocalPlayer = (teamMembers, deviceID) => {
   return { localTeamId: null, isTeamLeader: false };
 };
 
-export default function useMultiplayerGame({ enabled, gameData, gameID, teamMembers }) {
+export default function useMultiplayerGame({ enabled, gameData, gameID, routeModel, teamMembers }) {
   const [gameplay, setGameplay] = useState(gameData?.gameplay || null);
   const [deviceID, setDeviceID] = useState(null);
   const [serverOffset, setServerOffset] = useState(0);
@@ -89,6 +89,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, teamMemb
       gameplay,
       inputMethod,
       now: now(),
+      routeModel,
       value,
     });
     const result = await runTransaction(gameplayRef, (current) => {
@@ -109,12 +110,13 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, teamMemb
         revision: (current.revision || 0) + 1,
         currentAction: action,
         challengeStop: null,
+        challengeId: null,
         updatedAt: action.startedAt,
       };
     });
 
     return result.committed;
-  }, [canControlTurn, deviceID, enabled, gameID, gameplay, identity.localTeamId, now]);
+  }, [canControlTurn, deviceID, enabled, gameID, gameplay, identity.localTeamId, now, routeModel]);
 
   const completeMovement = useCallback(async (actionId) => {
     if (!enabled || !gameID || !actionId) return false;
@@ -132,7 +134,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, teamMemb
       }
 
       const teamIds = getRequiredTeamIds(gameDataRef.current);
-      const hasFinishedRoute = action.targetLeg >= DRIVE_LEGS.length;
+      const hasFinishedRoute = action.targetLeg >= routeModel.finalStopIndex;
       const teamProgress = {
         ...current.teamProgress,
         [action.teamId]: {
@@ -148,6 +150,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, teamMemb
           revision: (current.revision || 0) + 1,
           teamProgress,
           challengeStop: action.targetLeg,
+          challengeId: getChallengeIdForStop(
+            routeModel.countryStops[action.targetLeg],
+            action.id
+          ),
           updatedAt: completedAt,
         };
       }
@@ -162,12 +168,13 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, teamMemb
         teamProgress,
         currentAction: null,
         challengeStop: null,
+        challengeId: null,
         updatedAt: completedAt,
       };
     });
 
     return result.committed;
-  }, [enabled, gameID, now]);
+  }, [enabled, gameID, now, routeModel]);
 
   const completeChallenge = useCallback(async () => {
     if (!enabled || !gameID || !canControlTurn) return false;
@@ -196,6 +203,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, teamMemb
         revision: (current.revision || 0) + 1,
         currentAction: null,
         challengeStop: null,
+        challengeId: null,
         updatedAt: now(),
       };
     });

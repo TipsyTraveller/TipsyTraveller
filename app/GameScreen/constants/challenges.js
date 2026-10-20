@@ -103,7 +103,35 @@ const DEFAULT_CHALLENGE = {
   accent: '#1ba39c',
 };
 
-export const getChallengeForStop = (stopIndex) => ({
-  stopIndex,
-  ...(CHALLENGES_BY_STOP[stopIndex] || DEFAULT_CHALLENGE),
-});
+export const getChallengeIdForStop = (stop, seed = '') => {
+  const challenges = Array.isArray(stop?.challenges)
+    ? stop.challenges
+    : Object.values(stop?.challenges || {});
+  if (!challenges.length) return null;
+  const hash = String(seed).split('').reduce((total, character) => (
+    ((total * 31) + character.charCodeAt(0)) >>> 0
+  ), 0);
+  return challenges[hash % challenges.length]?.id || challenges[0]?.id || null;
+};
+
+export const getChallengeForStop = (stopIndex, routeStops, challengeId) => {
+  const stop = routeStops?.[stopIndex];
+  const challenges = Array.isArray(stop?.challenges)
+    ? stop.challenges
+    : Object.values(stop?.challenges || {});
+  const selected = challenges.find((challenge) => challenge.id === challengeId) || challenges[0];
+
+  if (stop && selected) {
+    return {
+      stopIndex,
+      country: stop.name,
+      accent: stop.accent || '#1ba39c',
+      ...selected,
+    };
+  }
+
+  return {
+    stopIndex,
+    ...(CHALLENGES_BY_STOP[stopIndex] || { ...DEFAULT_CHALLENGE, country: stop?.name || DEFAULT_CHALLENGE.country }),
+  };
+};

@@ -4,7 +4,6 @@ import { useGLTF } from '@react-three/drei/native';
 import * as THREE from 'three';
 import { MAP_Z } from '../constants/mapCoordinates';
 import { MARKER_MODEL_SOURCE } from '../constants/boardAssets';
-import { MARKERS } from '../constants/route';
 
 // Two shared materials for all markers; per-marker materials only multiplied shader state.
 const markerMaterial = (color) => new THREE.MeshStandardMaterial({
@@ -79,15 +78,15 @@ const CountryMarker = ({ position, active }) => {
   );
 };
 
-const CountryMarkers = memo(({ currentLeg, targetLeg }) => {
+const CountryMarkers = memo(({ currentLeg, routeModel, targetLeg }) => {
   const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
     ? targetLeg
     : currentLeg + 1;
-  const activeMarker = destinationLeg % MARKERS.length;
+  const activeMarker = Math.min(destinationLeg, routeModel.markers.length - 1);
 
   return (
     <>
-      {MARKERS.map((position, index) => (
+      {routeModel.markers.map((position, index) => (
         <CountryMarker
           key={`${position.x}-${position.y}-${index}`}
           position={position}

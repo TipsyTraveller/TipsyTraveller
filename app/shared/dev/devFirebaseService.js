@@ -1,6 +1,7 @@
 import { child, get, push, ref, remove, runTransaction, serverTimestamp, set } from 'firebase/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../../firebaseConfig';
+import { getRouteSnapshotForDuration } from '../../GameScreen/services/countryStopsService';
 
 export const getOrCreateDevDeviceId = async () => {
   let deviceID = await AsyncStorage.getItem('deviceID');
@@ -154,6 +155,7 @@ export const createLiveTestRoom = async ({
     createdAt: Date.now(),
     status: 'lobby',
     teamModels: {},
+    routeStops: await getRouteSnapshotForDuration(duration),
   };
 
   await set(ref(db, `games/${newGameID}`), gameData);
