@@ -235,7 +235,7 @@ const buildLabelGeometry = (text) => {
   return geometry;
 };
 
-const createPillGeometry = (width, height, radius) => {
+const createRoundedRectangleGeometry = (width, height, radius) => {
   const shape = new THREE.Shape();
   const x = -width / 2;
   const y = -height / 2;
@@ -251,30 +251,28 @@ const createPillGeometry = (width, height, radius) => {
   shape.lineTo(x, y + r);
   shape.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false);
 
-  const geometry = new THREE.ShapeGeometry(shape, 16);
+  const geometry = new THREE.ShapeGeometry(shape, 8);
   geometry.computeBoundingSphere();
   return geometry;
 };
 
 const LABEL_GEOMETRY = buildLabelGeometry(LABEL_TEXT);
-const LABEL_PILL_BORDER_GEOMETRY = createPillGeometry(1.32, 0.30, 0.15);
-const LABEL_PILL_GEOMETRY = createPillGeometry(1.28, 0.26, 0.13);
+const LABEL_BACKGROUND_GEOMETRY = createRoundedRectangleGeometry(1.26, 0.26, 0.04);
 
-const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#111111', side: THREE.DoubleSide });
-const LABEL_PILL_MATERIAL = new THREE.MeshBasicMaterial({ color: '#1BA39C', side: THREE.DoubleSide });
-const LABEL_BORDER_MATERIAL = new THREE.MeshBasicMaterial({ color: '#2C3E50', side: THREE.DoubleSide });
+const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#fff1cd', side: THREE.DoubleSide });
+const LABEL_BACKGROUND_MATERIAL = new THREE.MeshBasicMaterial({
+  color: '#1BA39C',
+  opacity: 0.35,
+  transparent: true,
+  side: THREE.DoubleSide,
+});
 
 const ThrowMeLabel = ({ labelRef }) => (
   <group ref={labelRef}>
     <mesh
-      position={[0, 0, -0.002]}
-      geometry={LABEL_PILL_BORDER_GEOMETRY}
-      material={LABEL_BORDER_MATERIAL}
-    />
-    <mesh
       position={[0, 0, -0.001]}
-      geometry={LABEL_PILL_GEOMETRY}
-      material={LABEL_PILL_MATERIAL}
+      geometry={LABEL_BACKGROUND_GEOMETRY}
+      material={LABEL_BACKGROUND_MATERIAL}
     />
     <mesh
       position={[0, 0, 0.001]}
