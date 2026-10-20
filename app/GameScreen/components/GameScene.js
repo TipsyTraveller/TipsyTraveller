@@ -46,11 +46,11 @@ const CountryMarkersFallback = ({ currentLeg, routeModel, targetLeg }) => {
       {routeModel.markers.map((position, index) => (
         <group key={`${position.x}-${position.y}-${index}`} position={[position.x, position.y, MAP_Z + 0.09]}>
           <mesh>
-            <circleGeometry args={[index === activeMarker ? 0.1 : 0.075, 16]} />
+            <circleGeometry args={[index === activeMarker ? 0.145 : 0.11, 16]} />
             <meshBasicMaterial color={index === activeMarker ? '#FFD700' : '#E53935'} />
           </mesh>
           <mesh position={[0, 0, -0.003]}>
-            <ringGeometry args={[0.11, 0.15, 16]} />
+            <ringGeometry args={[index === activeMarker ? 0.16 : 0.12, index === activeMarker ? 0.22 : 0.17, 16]} />
             <meshBasicMaterial color="#1BA39C" />
           </mesh>
         </group>

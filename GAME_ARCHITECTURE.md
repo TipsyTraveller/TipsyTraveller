@@ -644,6 +644,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 - While waiting to roll, the next stop is active; during a move, the destination stop for that roll is highlighted as active.
 - Active markers rotate and display a pulsing outer ring.
 - Marker geometry is centered horizontally and aligned at its bottom tip (`box.min.y`) with a Three.js bounding box so the pin stands above the map surface.
+- Sized for mobile phone readability: inactive markers scale at `0.14` and active destination markers scale at `0.175`, floating with corresponding ground shadow and ring meshes.
 
 ### Camera
 
