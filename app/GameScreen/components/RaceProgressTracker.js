@@ -5,7 +5,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 const VehicleIcon = ({ color, isActive }) => (
   <View style={[styles.vehicleBadge, isActive && styles.vehicleBadgeActive]}>
-    <Svg width={23} height={14} viewBox="0 0 34 20" fill="none">
+    <Svg width={18} height={11} viewBox="0 0 34 20" fill="none">
       <Path
         d="M3 13.5 5.6 9h5.2l3.4-4h8.1l4.2 4H30l1.5 4.5v2H3v-2Z"
         fill={color}
@@ -73,9 +73,9 @@ const RaceProgressTracker = ({
       style={[
         styles.positioner,
         {
-          top: insets.top + 8,
-          right: insets.right + 8,
-          bottom: insets.bottom + 8,
+          top: insets.top + 4,
+          right: 0,
+          bottom: insets.bottom + 4,
         },
       ]}
     >
@@ -105,7 +105,7 @@ const RaceProgressTracker = ({
                 ? Math.max(storedLeg, passedLeg)
                 : storedLeg;
               const progress = routeModel.stopProgress[displayedLeg] ?? 0;
-              const laneOffset = (index - (gamePieces.length - 1) / 2) * 18;
+              const laneOffset = (index - (gamePieces.length - 1) / 2) * 11;
 
               return (
                 <View
@@ -114,7 +114,7 @@ const RaceProgressTracker = ({
                   style={[
                     styles.vehiclePosition,
                     {
-                      marginLeft: -14 + laneOffset,
+                      marginLeft: -11 + laneOffset,
                       top: `${(1 - progress) * 100}%`,
                     },
                   ]}
@@ -145,16 +145,17 @@ const RaceProgressTracker = ({
 const styles = StyleSheet.create({
   positioner: {
     position: 'absolute',
-    width: 78,
+    width: 56,
   },
   panel: {
     flex: 1,
-    width: 78,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
+    width: 56,
+    paddingHorizontal: 3,
+    paddingVertical: 4,
     borderWidth: 2,
     borderColor: '#111111',
-    borderRadius: 10,
+    borderTopLeftRadius: 9,
+    borderBottomLeftRadius: 9,
     backgroundColor: 'rgba(255, 241, 205, 0.92)',
     shadowColor: '#000000',
     shadowOffset: { width: -4, height: 4 },
@@ -162,19 +163,19 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
   },
   finishHeader: {
-    height: 28,
+    height: 24,
     alignItems: 'center',
   },
   finishLabel: {
     color: '#D71920',
     fontFamily: 'dogicapixelbold',
-    fontSize: 6,
-    letterSpacing: 0.4,
+    fontSize: 5,
+    letterSpacing: 0.2,
   },
   finishFlag: {
-    width: 21,
-    height: 20,
-    marginTop: 2,
+    width: 18,
+    height: 17,
+    marginTop: 1,
   },
   flagPole: {
     position: 'absolute',
@@ -188,8 +189,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 4,
     top: 0,
-    width: 16,
-    height: 13,
+    width: 14,
+    height: 11,
     flexDirection: 'row',
     flexWrap: 'wrap',
     borderWidth: 1,
@@ -224,34 +225,34 @@ const styles = StyleSheet.create({
   stopTick: {
     position: 'absolute',
     left: '50%',
-    width: 10,
+    width: 8,
     height: 2,
     marginTop: -1,
-    marginLeft: -5,
+    marginLeft: -4,
     borderRadius: 1,
     backgroundColor: '#1BA39C',
   },
   majorStopTick: {
-    width: 15,
+    width: 12,
     height: 3,
-    marginLeft: -7.5,
+    marginLeft: -6,
     backgroundColor: '#D71920',
   },
   vehiclePosition: {
     position: 'absolute',
     left: '50%',
-    width: 28,
-    height: 20,
-    marginTop: -10,
+    width: 22,
+    height: 17,
+    marginTop: -8.5,
     alignItems: 'center',
     zIndex: 3,
   },
   vehicleBadge: {
-    width: 28,
-    height: 20,
+    width: 22,
+    height: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 6,
+    borderRadius: 5,
     backgroundColor: '#FFF1CD',
   },
   vehicleBadgeActive: {
@@ -272,10 +273,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#1BA39C',
   },
   actionButton: {
-    minHeight: 30,
+    minHeight: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 1,
     borderWidth: 2,
     borderColor: '#111111',
     borderRadius: 7,
@@ -287,7 +288,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     color: '#FFFFFF',
     fontFamily: 'dogicapixelbold',
-    fontSize: 7,
+    fontSize: 6,
   },
 });
 
