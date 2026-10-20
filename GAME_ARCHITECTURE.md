@@ -463,7 +463,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
 - The native HUD and race tracker respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
-- Places a 56-pixel-wide mini race tracker flush against the right edge while respecting the top and bottom safe areas. It maps each team's current stop to the route's arc-length progress, tightly staggers co-located vehicle icons, marks the finish with a checkered flag, highlights the active team, and incorporates the compact roll/restart action.
+- Places a shadow-free, 56-pixel-wide mini race tracker four pixels inside the right edge while respecting the top and bottom safe areas. It maps each team's current stop to the route's arc-length progress, tightly staggers co-located vehicle icons, marks the finish with a checkered flag, highlights the active team, and incorporates the compact roll/restart action.
 
 ### `AccountScreen`
 

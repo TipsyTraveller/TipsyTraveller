@@ -74,7 +74,7 @@ const RaceProgressTracker = ({
         styles.positioner,
         {
           top: insets.top + 4,
-          right: 0,
+          right: 4,
           bottom: insets.bottom + 4,
         },
       ]}
@@ -157,10 +157,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 9,
     borderBottomLeftRadius: 9,
     backgroundColor: 'rgba(255, 241, 205, 0.92)',
-    shadowColor: '#000000',
-    shadowOffset: { width: -4, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 0,
   },
   finishHeader: {
     height: 24,
