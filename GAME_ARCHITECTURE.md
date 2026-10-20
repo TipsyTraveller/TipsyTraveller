@@ -773,9 +773,13 @@ The ticket is the front face of a two-sided card. The back face (`CardBack`) mat
 
 Three `Animated.Value` objects drive the card, all with the native driver:
 
-1. **Marker arc fly-out (`fly`)**: Projects the landed `ROUTE[stopIndex]` 3D marker coordinate to 2D screen space (`getMarkerScreenOffset`) and flies the card along a parabolic arc (`860ms`, `scale: 0.06 -> 1`, with 3D `rotateX`/`rotateZ` banking) to the center of the screen with the back face toward the viewer, while the backdrop dim fades in. Uses an Easy Ease bezier (`Easing.bezier(0.42, 0, 0.58, 1)`).
-2. **Card flip (`flip`)**: After a 120 ms hold, rotates the card 180 degrees around the Y axis (`780ms`, `perspective: 1300`), swapping from the back face to the ticket at the edge-on midpoint.
-3. **Tear-off (`tear`)**: Pressing Next Turn does not complete the challenge immediately. The stub and the body are separate halves, each with its own border and hard shadow. Over 720 ms (ease-in) the stub rips off along the perforation and falls away to the lower left while the body follows to the lower right, both fading out. `onComplete` fires only when the animation finishes. While tearing, the `ScrollView` switches to `overflow: visible` so the halves can leave its bounds; this is verified on web only, not on native.
+1. **Marker arc fly-out (`fly`)**: Projects the landed stop's 3D marker coordinate to 2D screen space (`getMarkerScreenOffset`) and flies the card along a parabolic arc (`860ms`, `scale: 0.06 -> 1`, with a small `rotateZ` tilt) to the center of the screen with the back face toward the viewer, while the backdrop dim fades in. Uses an Easy Ease bezier (`Easing.bezier(0.42, 0, 0.58, 1)`).
+2. **Card turn (`flip`)**: After a 120 ms hold, the back face squeezes to nothing with `scaleX` and the ticket opens out again (`780ms`), swapping faces at the midpoint without any opacity change. It deliberately uses `scaleX` instead of `rotateY`/`perspective`/`backfaceVisibility`, which rendered unreliably (flicker, clipped edges) on Android and some iOS GPUs. The ticket ignores touches and its button stays disabled until the turn has finished.
+3. **Tear-off (`tear`)**: Pressing Next Turn does not complete the challenge immediately. The stub and the body are separate halves, each with its own border and hard shadow. Over 720 ms (ease-in) the stub rips off along the perforation and falls away to the lower left while the body follows to the lower right, both fading out. `onComplete` fires only when the animation finishes. The halves are plain animated views (no `ScrollView`), so nothing clips them while they fall; the ticket therefore relies on its compact layout instead of scrolling on very short screens.
+
+While a challenge is open, `GameScreen` passes `lowPower` to `GameScene`, which sets the canvas to `frameloop="never"`. The board is covered by the dim backdrop, and a running GL loop competes with the card animation on phones; the loop resumes (and the camera continues from where it stopped) when the challenge closes. The opening animation also waits for `InteractionManager.runAfterInteractions`, so mounting the card does not eat its first frames. To keep the animated layers cheap, the card animates transforms only (no opacity fades except a one-step reveal), the hidden face is moved off-screen, and there is no `adjustsFontSizeToFit` or SVG pattern in the card. Verified on web only; Android and iOS devices still need a manual check. The ticket's height is capped at about 82% of the available height so it stays clear of the HUD panels.
+
+The fly wrapper sets `renderToHardwareTextureAndroid` and `shouldRasterizeIOS`, and, while tearing, both halves set `renderToHardwareTextureAndroid`, so the card is animated as a cached texture instead of being re-drawn each frame. The Next Turn button uses a bottom border for its hard shadow, because `shadowOffset` has no effect on Android.
 
 There are no looping effects: no shimmer, floating, button pulse, accent beam, or stacked backing cards. The animations are keyed on the challenge's `stop` and `title`, not on object identity, so a parent re-render cannot restart them.
 
@@ -1300,6 +1304,10 @@ camera motion, GLTF appearance, and final 3D performance.
 ---
 
 ## 18. Known limitations and technical debt
+
+### Platform pitfalls
+
+- **Use `StyleSheet.absoluteFill`, never `StyleSheet.absoluteFillObject`.** React Native 0.86 no longer exports `absoluteFillObject`, so spreading it gives an empty style on iOS and Android while still working on web. An overlay styled that way silently stops being absolutely positioned on devices and pushes the board canvas aside instead of covering it.
 
 ### Gameplay and synchronization
 

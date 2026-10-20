@@ -2,9 +2,8 @@ import {
   Animated,
   Easing,
   Image,
-  Platform,
+  InteractionManager,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -12,7 +11,6 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
 import { DONE_LOOK, DONE_POS } from '../constants/camera';
@@ -75,15 +73,6 @@ const CardBack = ({ compact, style }) => (
   <Animated.View pointerEvents="none" style={[styles.cardBackOverlay, style]}>
     <View style={styles.cardBackShadow} />
     <View style={styles.cardBackFace}>
-      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
-        <Defs>
-          <Pattern id="backStripes" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <Rect width="8" height="16" fill="rgba(44, 62, 80, 0.07)" />
-          </Pattern>
-        </Defs>
-        <Rect width="100%" height="100%" fill="url(#backStripes)" />
-      </Svg>
-
       <View style={[styles.cardBackStrip, styles.cardBackStripLeft]}>
         {BACK_STRIPES.map((color) => (
           <View key={`l-${color}`} style={{ flex: 1, backgroundColor: color }} />
@@ -124,6 +113,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   const flip = useRef(new Animated.Value(0)).current;
   const tear = useRef(new Animated.Value(0)).current;
   const [tearing, setTearing] = useState(false);
+  const [ready, setReady] = useState(false);
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
   const challengeKey = challenge ? `${challenge.stopIndex}:${challenge.title}` : '';
 
@@ -133,6 +123,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
       flip.setValue(0);
       tear.setValue(0);
       setTearing(false);
+      setReady(false);
       return;
     }
 
@@ -140,27 +131,40 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     flip.setValue(0);
     tear.setValue(0);
     setTearing(false);
+    setReady(false);
 
-    const flySequence = Animated.sequence([
-      Animated.timing(fly, {
-        toValue: 1,
-        duration: 860,
-        easing: EASY_EASE,
-        useNativeDriver: true,
-      }),
-      Animated.delay(120),
-      Animated.timing(flip, {
-        toValue: 1,
-        duration: 780,
-        easing: EASY_EASE,
-        useNativeDriver: true,
-      }),
-    ]);
+    let cancelled = false;
+    let flySequence = null;
 
-    flySequence.start();
+    // Let the card tree mount and the board settle before the first frame, so the
+    // opening animation is not starved by React/native layout work.
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      flySequence = Animated.sequence([
+        Animated.timing(fly, {
+          toValue: 1,
+          duration: 860,
+          easing: EASY_EASE,
+          useNativeDriver: true,
+        }),
+        Animated.delay(120),
+        Animated.timing(flip, {
+          toValue: 1,
+          duration: 780,
+          easing: EASY_EASE,
+          useNativeDriver: true,
+        }),
+      ]);
+
+      flySequence.start(({ finished }) => {
+        if (finished) setReady(true);
+      });
+    });
 
     return () => {
-      flySequence.stop();
+      cancelled = true;
+      task.cancel();
+      if (flySequence) flySequence.stop();
     };
   }, [challengeKey, flip, fly, tear, visible]);
 
@@ -192,11 +196,10 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
 
   const flyWrapperStyle = {
     opacity: fly.interpolate({
-      inputRange: [0, 0.15, 1],
+      inputRange: [0, 0.02, 1],
       outputRange: [0, 1, 1],
     }),
     transform: [
-      { perspective: 1200 },
       {
         translateX: fly.interpolate({
           inputRange: [0, 0.75, 1],
@@ -216,12 +219,6 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
         }),
       },
       {
-        rotateX: fly.interpolate({
-          inputRange: [0, 0.6, 1],
-          outputRange: ['26deg', '-4deg', '0deg'],
-        }),
-      },
-      {
         rotateZ: fly.interpolate({
           inputRange: [0, 0.65, 1],
           outputRange: [launchTiltDeg, '0deg', '0deg'],
@@ -230,53 +227,45 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     ],
   };
 
+  // A scaleX "card turn" instead of rotateY: it needs no perspective or backface
+  // culling, which render unreliably on Android and some iOS GPUs.
+  // The hidden face is also moved off-screen, so no hairline of its border is left
+  // over the visible face once its scaleX reaches zero.
   const backFaceAnimatedStyle = {
-    opacity: flip.interpolate({
-      inputRange: [0, 0.499, 0.5, 1],
-      outputRange: [1, 1, 0, 0],
-    }),
     transform: [
-      { perspective: 1300 },
       {
-        scale: flip.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [1, 1.07, 1],
+        translateX: flip.interpolate({
+          inputRange: [0, 0.5, 0.501, 1],
+          outputRange: [0, 0, 4000, 4000],
         }),
       },
       {
-        rotateY: flip.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['0deg', '180deg'],
+        scaleX: flip.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [1, 0.0001, 0.0001],
         }),
       },
     ],
   };
 
   const frontFaceAnimatedStyle = {
-    opacity: flip.interpolate({
-      inputRange: [0, 0.499, 0.5, 1],
-      outputRange: [0, 0, 1, 1],
-    }),
     transform: [
-      { perspective: 1300 },
       {
-        scale: flip.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [1, 1.07, 1],
+        translateX: flip.interpolate({
+          inputRange: [0, 0.499, 0.5, 1],
+          outputRange: [4000, 4000, 0, 0],
         }),
       },
       {
-        rotateY: flip.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-180deg', '0deg'],
+        scaleX: flip.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [0.0001, 0.0001, 1],
         }),
       },
     ],
   };
 
-  const tearOpacity = tear.interpolate({ inputRange: [0, 0.75, 1], outputRange: [1, 1, 0] });
   const tearStubStyle = {
-    opacity: tearOpacity,
     transform: [
       {
         translateX: tear.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, -10, -210] }),
@@ -290,7 +279,6 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     ],
   };
   const tearBodyStyle = {
-    opacity: tearOpacity,
     transform: [
       {
         translateX: tear.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 6, 150] }),
@@ -310,7 +298,8 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   // Give the ticket a landscape-card ratio instead of a flat strip, but never taller than the screen.
   const availableHeight = Math.max(210, height - insets.top - insets.bottom - 40);
   const cardWidth = Math.min(720, width * (compact ? 0.94 : 0.9));
-  const minTicketHeight = Math.min(availableHeight, Math.max(210, cardWidth * 0.56));
+  // Stay a little below the HUD panels, which sit above and beside the centered card.
+  const minTicketHeight = Math.min(availableHeight * 0.82, Math.max(210, cardWidth * 0.56));
   const roomy = minTicketHeight >= 300;
   const landmarkWidth = roomy ? 162 : compact ? 112 : 150;
 
@@ -331,31 +320,31 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
         pointerEvents="none"
         style={[styles.backdropDim, backdropAnimatedStyle]}
       />
-      <Animated.View style={[styles.cardShadow, compact && styles.cardShadowCompact, flyWrapperStyle]}>
-        <Animated.View style={[styles.frontFace, frontFaceAnimatedStyle]}>
-          <ScrollView
-              style={[
-                { maxHeight: availableHeight },
-                // Let the torn halves leave the scroll bounds without remounting them mid-animation.
-                tearing && styles.scrollTearing,
-              ]}
-              contentContainerStyle={[styles.scrollContent, { minHeight: minTicketHeight }]}
-              bounces={false}
-              showsVerticalScrollIndicator={false}
+      <Animated.View
+        renderToHardwareTextureAndroid
+        shouldRasterizeIOS
+        style={[styles.cardShadow, compact && styles.cardShadowCompact, flyWrapperStyle]}
+      >
+        <Animated.View
+          pointerEvents={ready ? 'auto' : 'none'}
+          style={frontFaceAnimatedStyle}
+        >
+          <View style={[styles.scrollContent, { minHeight: minTicketHeight }]}>
+<Animated.View
+              renderToHardwareTextureAndroid={tearing}
+              style={[styles.stubWrap, compact && styles.stubWrapCompact, tearStubStyle]}
             >
-<Animated.View style={[styles.stubWrap, compact && styles.stubWrapCompact, tearStubStyle]}>
               <View pointerEvents="none" style={styles.stubShadow} />
               <View style={[styles.stub, compact && styles.stubCompact]}>
               <FlagStrip country={challenge.country} />
               <Perforation />
-              <Text style={styles.stubLabel}>Country Challenge</Text>
+              <Text numberOfLines={1} style={styles.stubLabel}>Country Challenge</Text>
               {challenge.landmark ? (
                 <View style={styles.landmark}>
                   <CityLandmark name={challenge.landmark} width={landmarkWidth} />
                 </View>
               ) : null}
               <Text
-                adjustsFontSizeToFit
                 numberOfLines={1}
                 style={[styles.country, compact && styles.countryCompact]}
               >
@@ -372,7 +361,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
                   accessibilityLabel={canComplete
                     ? 'Complete challenge and start next turn'
                     : `Waiting for ${teamLabel} to complete the challenge`}
-                  disabled={!canComplete || tearing}
+                  disabled={!canComplete || tearing || !ready}
                   onPress={handleComplete}
                   style={({ pressed }) => [
                     styles.completeButton,
@@ -389,7 +378,10 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
               </View>
             </Animated.View>
 
-            <Animated.View style={[styles.bodyWrap, tearBodyStyle]}>
+            <Animated.View
+              renderToHardwareTextureAndroid={tearing}
+              style={[styles.bodyWrap, tearBodyStyle]}
+            >
               <View pointerEvents="none" style={styles.bodyShadow} />
               <View style={[styles.body, compact && styles.bodyCompact]}>
               <View style={styles.bodyHeader}>
@@ -411,7 +403,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
               </View>
               </View>
             </Animated.View>
-            </ScrollView>
+          </View>
         </Animated.View>
         <CardBack compact={compact} style={backFaceAnimatedStyle} />
       </Animated.View>
@@ -421,7 +413,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -433,12 +425,11 @@ const styles = StyleSheet.create({
     width: '94%',
   },
   backdropDim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(8, 12, 18, 0.68)',
   },
   cardBackOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backfaceVisibility: 'hidden',
+    ...StyleSheet.absoluteFill,
   },
   cardBackShadow: {
     position: 'absolute',
@@ -553,9 +544,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     textTransform: 'uppercase',
   },
-  frontFace: {
-    backfaceVisibility: 'hidden',
-  },
   stubShadow: {
     position: 'absolute',
     left: 8,
@@ -584,10 +572,6 @@ const styles = StyleSheet.create({
   },
   bodyWrap: {
     flex: 1,
-  },
-  scrollTearing: {
-    overflow: 'visible',
-    ...(Platform.OS === 'web' ? { overflowX: 'visible', overflowY: 'visible' } : null),
   },
   scrollContent: {
     flexGrow: 1,
@@ -630,6 +614,7 @@ const styles = StyleSheet.create({
     color: '#FFF1CD',
     fontFamily: 'dogicapixel',
     fontSize: 8,
+    lineHeight: 12,
     textTransform: 'uppercase',
   },
   landmark: {
@@ -679,15 +664,13 @@ const styles = StyleSheet.create({
   completeButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 11,
+    paddingTop: 11,
+    paddingBottom: 8,
     backgroundColor: '#1BA39C',
     borderRadius: 10,
     borderWidth: 3,
     borderColor: '#111111',
-    shadowColor: '#111111',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
+    borderBottomWidth: 7,
   },
   completeButtonPressed: {
     transform: [{ translateY: 2 }],

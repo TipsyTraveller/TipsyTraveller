@@ -413,6 +413,7 @@ const GameScreen = ({ route }) => {
         currentLeg={currentLeg}
         diceEnabled={canRoll && !placementRequest}
         driving={state === 'moving'}
+        lowPower={state === 'challenge'}
         gamePieces={gamePieces}
         moveFromLeg={moveStartLeg}
         moveStartDelay={moveStartDelay}
