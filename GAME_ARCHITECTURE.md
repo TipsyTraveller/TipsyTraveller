@@ -422,6 +422,7 @@ Purpose: show synchronized teams and allow the host to start.
 - Native swipe-back is disabled on the lobby. For hosts, the visible back control opens the explicit edit-settings route; the completed username/creation flow is no longer retained beneath the lobby.
 - Team panels scroll independently of the fixed room header and lower controls, keeping large rosters usable on shorter phones.
 - The optional local-player field moves above the keyboard and blocks empty or duplicate submissions.
+- The host-only local-player control is presented as a bordered cream card with a labeled name field, teal add action, and clear disabled/pressed feedback matching the setup controls.
 - The `RULES` button opens a concise overview of the current turn and completion rules.
 
 ### `CharacterSelection`

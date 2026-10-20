@@ -13,6 +13,9 @@ export default function InputField({
     maxLength = 24,
     onSubmitEditing,
     returnKeyType = "done",
+    containerStyle,
+    inputStyle,
+    accessibilityLabel,
 }) {
 
 
@@ -21,11 +24,12 @@ export default function InputField({
     };
 
     return (
-        <View style={styles.inputfieldContainer}>
+        <View style={[styles.inputfieldContainer, containerStyle]}>
             <TextInput
-                style={styles.inputfield}
+                style={[styles.inputfield, inputStyle]}
                 value={value}
                 placeholder={placeholder}
+                accessibilityLabel={accessibilityLabel || placeholder}
                 onChangeText={handleChange}
                 ref={inputRef}
                 maxLength={maxLength}
