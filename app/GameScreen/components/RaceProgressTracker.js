@@ -1,5 +1,5 @@
-import React, { memo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { memo, useEffect, useRef } from 'react';
+import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
@@ -50,15 +50,32 @@ const RaceProgressTracker = ({
   onRoll,
   routeModel,
   teamProgress,
+  visible,
 }) => {
   const insets = useSafeAreaInsets();
   const buttonLabel = getActionLabel({ canRoll, isConnected });
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    opacity.stopAnimation();
+    Animated.timing(opacity, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 180 : 140,
+      easing: visible ? Easing.out(Easing.quad) : Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+
+    return () => opacity.stopAnimation();
+  }, [opacity, visible]);
 
   return (
-    <View
-      pointerEvents="box-none"
+    <Animated.View
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
+      pointerEvents={visible ? 'box-none' : 'none'}
       style={[
         styles.positioner,
+        { opacity },
         {
           top: insets.top + 4,
           right: insets.right + 4,
@@ -115,14 +132,14 @@ const RaceProgressTracker = ({
         <TouchableOpacity
           accessibilityLabel="Roll dice"
           accessibilityRole="button"
-          disabled={!canRoll}
+          disabled={!visible || !canRoll}
           onPress={onRoll}
-          style={[styles.actionButton, !canRoll && styles.actionButtonDisabled]}
+          style={[styles.actionButton, (!visible || !canRoll) && styles.actionButtonDisabled]}
         >
           <Text style={styles.actionLabel}>{buttonLabel}</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 

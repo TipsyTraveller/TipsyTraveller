@@ -463,7 +463,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
 - The native HUD and race tracker respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
-- Shows a shadow-free, 56-pixel-wide mini race tracker only during the `waiting` phase. It sits four pixels inside the device's right safe-area inset, maps each team's current stop to the route's arc-length progress, tightly staggers co-located vehicle icons, marks the finish with a checkered flag, highlights the active team, and incorporates the compact roll action. It unmounts during dice animation, vehicle movement, challenges, loading, and game completion; the completed-game restart action lives in `GameHud` instead.
+- Shows a shadow-free, 56-pixel-wide mini race tracker only during the `waiting` phase. It sits four pixels inside the device's right safe-area inset, maps each team's current stop to the route's arc-length progress, tightly staggers co-located vehicle icons, marks the finish with a checkered flag, highlights the active team, and incorporates the compact roll action. A native-driver opacity animation fades it in over 180 ms and out over 140 ms; touch and accessibility focus are disabled as soon as it begins hiding during dice animation, vehicle movement, challenges, loading, and game completion. The completed-game restart action lives in `GameHud` instead.
 
 ### `AccountScreen`
 
@@ -701,7 +701,7 @@ The throw lasts 1.75 seconds; the first 42% is airborne. During the fade, only t
 
 ### Tracker roll shortcut
 
-The compact `ROLL` button at the bottom of `RaceProgressTracker` calls `GameScreen.requestRoll()` directly. It generates the same random range and triggers the animated route path and vehicle movement without animating the 3D die. The tracker then disappears until the next team returns to `waiting`. The host-only `RESTART` action appears in the completed-state `GameHud`, preserving both controls without a separate turn panel.
+The compact `ROLL` button at the bottom of `RaceProgressTracker` calls `GameScreen.requestRoll()` directly. It generates the same random range and triggers the animated route path and vehicle movement without animating the 3D die. The tracker then fades out until the next team returns to `waiting`, when it fades back in. The host-only `RESTART` action appears in the completed-state `GameHud`, preserving both controls without a separate turn panel.
 
 ---
 
@@ -1255,7 +1255,7 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 8. Confirm the appropriate challenge appears.
 9. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
 10. Use the tracker roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
-11. Confirm the narrow right-side race tracker sits fully inside the device safe area while waiting, shows every team's vehicle and the compact roll action, then disappears during rolling, movement, and the challenge card before returning for the next turn.
+11. Confirm the narrow right-side race tracker sits fully inside the device safe area while waiting, shows every team's vehicle and the compact roll action, fades out during rolling, movement, and the challenge card, then fades back in for the next turn.
 12. Restore `START_ON_DEV_GAME_SCREEN` to `false` after the focused board test.
 
 ### Smoke test: full multiplayer flow

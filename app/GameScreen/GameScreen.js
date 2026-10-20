@@ -446,17 +446,16 @@ const GameScreen = ({ route }) => {
         state={state}
         toName={toName}
       />
-      {state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading) && (
-        <RaceProgressTracker
-          activeTeamId={activePiece?.id}
-          canRoll={canRoll}
-          gamePieces={gamePieces}
-          isConnected={!multiplayerEnabled || multiplayer.isConnected}
-          onRoll={() => requestRoll()}
-          routeModel={routeModel}
-          teamProgress={teamProgress}
-        />
-      )}
+      <RaceProgressTracker
+        activeTeamId={activePiece?.id}
+        canRoll={canRoll}
+        gamePieces={gamePieces}
+        isConnected={!multiplayerEnabled || multiplayer.isConnected}
+        onRoll={() => requestRoll()}
+        routeModel={routeModel}
+        teamProgress={teamProgress}
+        visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading)}
+      />
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
         challenge={currentChallenge}
