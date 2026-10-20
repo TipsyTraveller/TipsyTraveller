@@ -116,6 +116,8 @@ const PLANE_POINT = new THREE.Vector3();
 const HOLD_POINT = new THREE.Vector3();
 const DRAG_DELTA = new THREE.Vector3();
 const IDLE_TARGET = new THREE.Vector3();
+const LABEL_CAMERA_UP = new THREE.Vector3();
+const LABEL_OFFSET_Y = 0.58;
 
 const clampToHoldPlane = (point, target) => target.set(
   THREE.MathUtils.clamp(point.x, HOLD_BOUNDS.minX, HOLD_BOUNDS.maxX),
@@ -199,10 +201,14 @@ const buildLabelGeometry = (text) => {
     cursor += letterWidth + LABEL_LETTER_GAP;
   });
 
-  const offsetX = -cursor / 2;
-  const offsetY = 0.06;
-  const offsetZ = 0.01;
   const half = (LABEL_CELL_SIZE * 0.82) / 2;
+  const minX = Math.min(...cells.map((cell) => cell.x - half));
+  const maxX = Math.max(...cells.map((cell) => cell.x + half));
+  const minY = Math.min(...cells.map((cell) => cell.y - half));
+  const maxY = Math.max(...cells.map((cell) => cell.y + half));
+  const offsetX = -(minX + maxX) / 2;
+  const offsetY = -(minY + maxY) / 2;
+  const offsetZ = 0.001;
   const positions = new Float32Array(cells.length * 4 * 3);
   const indices = new Uint16Array(cells.length * 6);
 
@@ -229,24 +235,52 @@ const buildLabelGeometry = (text) => {
   return geometry;
 };
 
+const createRoundedRectangleGeometry = (width, height, radius) => {
+  const shape = new THREE.Shape();
+  const x = -width / 2;
+  const y = -height / 2;
+  const r = Math.min(radius, width / 2, height / 2);
+
+  shape.moveTo(x + r, y);
+  shape.lineTo(x + width - r, y);
+  shape.absarc(x + width - r, y + r, r, -Math.PI / 2, 0, false);
+  shape.lineTo(x + width, y + height - r);
+  shape.absarc(x + width - r, y + height - r, r, 0, Math.PI / 2, false);
+  shape.lineTo(x + r, y + height);
+  shape.absarc(x + r, y + height - r, r, Math.PI / 2, Math.PI, false);
+  shape.lineTo(x, y + r);
+  shape.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false);
+
+  const geometry = new THREE.ShapeGeometry(shape, 8);
+  geometry.computeBoundingSphere();
+  return geometry;
+};
+
 const LABEL_GEOMETRY = buildLabelGeometry(LABEL_TEXT);
-const LABEL_BACKGROUND_GEOMETRY = new THREE.PlaneGeometry(1.25, 0.34);
-const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#fff1cd', side: THREE.DoubleSide });
-const LABEL_BACKGROUND_MATERIAL = new THREE.MeshBasicMaterial({
-  color: '#111111',
-  opacity: 0.72,
-  side: THREE.DoubleSide,
-  transparent: true,
-});
+const LABEL_BORDER_GEOMETRY = createRoundedRectangleGeometry(1.28, 0.28, 0.05);
+const LABEL_BACKGROUND_GEOMETRY = createRoundedRectangleGeometry(1.25, 0.25, 0.04);
+
+const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#2C3E50', side: THREE.DoubleSide });
+const LABEL_BACKGROUND_MATERIAL = new THREE.MeshBasicMaterial({ color: '#FFF1CD', side: THREE.DoubleSide });
+const LABEL_BORDER_MATERIAL = new THREE.MeshBasicMaterial({ color: '#2C3E50', side: THREE.DoubleSide });
 
 const ThrowMeLabel = ({ labelRef }) => (
   <group ref={labelRef}>
     <mesh
-      position={[0, 0, -0.01]}
+      position={[0, 0, -0.002]}
+      geometry={LABEL_BORDER_GEOMETRY}
+      material={LABEL_BORDER_MATERIAL}
+    />
+    <mesh
+      position={[0, 0, -0.001]}
       geometry={LABEL_BACKGROUND_GEOMETRY}
       material={LABEL_BACKGROUND_MATERIAL}
     />
-    <mesh geometry={LABEL_GEOMETRY} material={LABEL_TEXT_MATERIAL} />
+    <mesh
+      position={[0, 0, 0.001]}
+      geometry={LABEL_GEOMETRY}
+      material={LABEL_TEXT_MATERIAL}
+    />
   </group>
 );
 
@@ -565,11 +599,10 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
 
       if (labelRef.current) {
         labelRef.current.visible = enabled;
-        labelRef.current.position.set(
-          diceRef.current.position.x,
-          diceRef.current.position.y,
-          diceRef.current.position.z + 0.68
-        );
+        LABEL_CAMERA_UP.set(0, 1, 0).applyQuaternion(camera.quaternion);
+        labelRef.current.position
+          .copy(diceRef.current.position)
+          .addScaledVector(LABEL_CAMERA_UP, LABEL_OFFSET_Y);
         labelRef.current.quaternion.copy(camera.quaternion);
       }
       return;
