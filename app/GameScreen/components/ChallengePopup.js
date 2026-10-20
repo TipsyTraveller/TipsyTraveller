@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
 import { DONE_LOOK, DONE_POS } from '../constants/camera';
@@ -69,37 +70,48 @@ const FlagStrip = ({ country }) => {
   );
 };
 
+const BACK_STRIPES = ['#1BA39C', '#FFF1CD', '#E8412F'];
+
 const CardBack = ({ compact, style }) => (
-  <Animated.View
-    pointerEvents="none"
-    style={[
-      styles.cardContainer,
-      styles.cardBackOverlay,
-      compact && styles.cardContainerCompact,
-      style,
-    ]}
-  >
-    <View style={[styles.cardBackFrame, compact && styles.cardBackFrameCompact]}>
-      <View style={styles.cardBackInner}>
-        <View style={[styles.cornerDot, styles.cornerTopLeft]} />
-        <View style={[styles.cornerDot, styles.cornerTopRight]} />
-        <View style={[styles.cornerDot, styles.cornerBottomLeft]} />
-        <View style={[styles.cornerDot, styles.cornerBottomRight]} />
+  <Animated.View pointerEvents="none" style={[styles.cardBackOverlay, style]}>
+    <View style={styles.cardBackShadow} />
+    <View style={styles.cardBackFace}>
+      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+        <Defs>
+          <Pattern id="backStripes" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <Rect width="8" height="16" fill="rgba(44, 62, 80, 0.07)" />
+          </Pattern>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#backStripes)" />
+      </Svg>
 
-        <View style={[styles.logoHalo, compact && styles.logoHaloCompact]}>
-          <Image
-            source={CARD_BACK_LOGO}
-            style={[styles.cardBackLogo, compact && styles.cardBackLogoCompact]}
-            resizeMode="contain"
-          />
-        </View>
+      <View style={[styles.cardBackStrip, styles.cardBackStripLeft]}>
+        {BACK_STRIPES.map((color) => (
+          <View key={`l-${color}`} style={{ flex: 1, backgroundColor: color }} />
+        ))}
+      </View>
+      <View style={[styles.cardBackStrip, styles.cardBackStripRight]}>
+        {BACK_STRIPES.map((color) => (
+          <View key={`r-${color}`} style={{ flex: 1, backgroundColor: color }} />
+        ))}
+      </View>
+      <View style={[styles.cardBackStud, styles.studTopLeft]} />
+      <View style={[styles.cardBackStud, styles.studTopRight]} />
+      <View style={[styles.cardBackStud, styles.studBottomLeft]} />
+      <View style={[styles.cardBackStud, styles.studBottomRight]} />
 
-        <Text style={[styles.cardBackBrand, compact && styles.cardBackBrandCompact]}>
-          TIPSY TRAVELLER
-        </Text>
-        <View style={styles.cardBackTag}>
-          <Text style={styles.cardBackTagText}>COUNTRY CHALLENGE</Text>
-        </View>
+      <View style={[styles.logoHalo, compact && styles.logoHaloCompact]}>
+        <Image
+          source={CARD_BACK_LOGO}
+          style={[styles.cardBackLogo, compact && styles.cardBackLogoCompact]}
+          resizeMode="contain"
+        />
+      </View>
+      <Text style={[styles.cardBackBrand, compact && styles.cardBackBrandCompact]}>
+        {'TIPSY\nTRAVELLER'}
+      </Text>
+      <View style={styles.cardBackTag}>
+        <Text style={styles.cardBackTagText}>COUNTRY CHALLENGE</Text>
       </View>
     </View>
   </Animated.View>
@@ -425,127 +437,121 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(8, 12, 18, 0.68)',
   },
-  cardContainer: {
-    width: '100%',
-    borderRadius: 12,
-    backgroundColor: '#FAF3E0',
-    borderWidth: 4,
-    borderColor: '#111111',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.24,
-    shadowRadius: 12,
-    elevation: 10,
-    overflow: 'hidden',
-    backfaceVisibility: 'hidden',
-  },
-  cardContainerCompact: {
-    borderRadius: 16,
-  },
   cardBackOverlay: {
     ...StyleSheet.absoluteFillObject,
+    backfaceVisibility: 'hidden',
+  },
+  cardBackShadow: {
+    position: 'absolute',
+    left: 8,
+    right: 0,
+    top: 8,
+    bottom: 0,
+    borderRadius: 12,
+    backgroundColor: '#111111',
+  },
+  cardBackFace: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
     right: 8,
     bottom: 8,
-  },
-  cardBackFrame: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#FAF3E0',
-  },
-  cardBackFrameCompact: {
-    padding: 9,
-  },
-  cardBackInner: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#2C3E50',
-    backgroundColor: '#FFF1CD',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 4,
+    borderColor: '#111111',
+    backgroundColor: '#FFF1CD',
     overflow: 'hidden',
   },
-  cornerDot: {
+  cardBackStrip: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#1BA39C',
-    borderWidth: 1.5,
-    borderColor: '#2C3E50',
+    top: 0,
+    bottom: 0,
+    width: 9,
   },
-  cornerTopLeft: {
-    top: 10,
-    left: 10,
+  cardBackStripLeft: {
+    left: 0,
+    borderRightWidth: 3,
+    borderRightColor: '#111111',
   },
-  cornerTopRight: {
-    top: 10,
-    right: 10,
+  cardBackStripRight: {
+    right: 0,
+    borderLeftWidth: 3,
+    borderLeftColor: '#111111',
   },
-  cornerBottomLeft: {
-    bottom: 10,
-    left: 10,
+  cardBackStud: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    backgroundColor: '#2C3E50',
+    borderWidth: 2,
+    borderColor: '#111111',
   },
-  cornerBottomRight: {
-    bottom: 10,
-    right: 10,
-  },
+  studTopLeft: { top: 18, left: 28 },
+  studTopRight: { top: 18, right: 28 },
+  studBottomLeft: { bottom: 18, left: 28 },
+  studBottomRight: { bottom: 18, right: 28 },
   logoHalo: {
     width: 128,
     height: 128,
     borderRadius: 64,
     backgroundColor: '#FAF3E0',
-    borderWidth: 2,
-    borderColor: '#2C3E50',
+    borderWidth: 4,
+    borderColor: '#111111',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 5,
-    elevation: 4,
+    shadowColor: '#111111',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
   },
   logoHaloCompact: {
-    width: 98,
-    height: 98,
-    borderRadius: 49,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
   },
   cardBackLogo: {
-    width: 112,
-    height: 112,
+    width: 100,
+    height: 100,
   },
   cardBackLogoCompact: {
-    width: 86,
-    height: 86,
+    width: 64,
+    height: 64,
   },
   cardBackBrand: {
-    marginTop: 10,
+    marginTop: 14,
     color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 22,
+    lineHeight: 30,
     textAlign: 'center',
+    textShadowColor: '#1BA39C',
+    textShadowOffset: { width: 3, height: 3 },
+    textShadowRadius: 0,
   },
   cardBackBrandCompact: {
-    marginTop: 7,
-    fontSize: 13,
-    lineHeight: 17,
+    marginTop: 6,
+    fontSize: 15,
+    lineHeight: 20,
   },
   cardBackTag: {
-    marginTop: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    marginTop: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    borderRadius: 6,
     backgroundColor: '#1BA39C',
-    borderWidth: 1.5,
-    borderColor: '#2C3E50',
+    borderWidth: 3,
+    borderColor: '#111111',
+    shadowColor: '#111111',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
   },
   cardBackTagText: {
-    color: '#FFFFFF',
+    color: '#111111',
     fontFamily: 'dogicapixelbold',
-    fontSize: 8,
+    fontSize: 9,
     textTransform: 'uppercase',
   },
   frontFace: {
@@ -711,7 +717,7 @@ const styles = StyleSheet.create({
     borderColor: '#111111',
     borderTopRightRadius: 12,
     borderBottomRightRadius: 12,
-    backgroundColor: '#FAF3E0',
+    backgroundColor: '#FFF1CD',
     overflow: 'hidden',
     paddingVertical: 18,
     paddingLeft: 24,
@@ -737,7 +743,7 @@ const styles = StyleSheet.create({
   timerChip: {
     paddingVertical: 3,
     paddingHorizontal: 8,
-    backgroundColor: '#FFF1CD',
+    backgroundColor: '#FAF3E0',
     borderRadius: 4,
     borderWidth: 2,
     borderColor: '#111111',
@@ -793,7 +799,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#FFF1CD',
+    backgroundColor: '#FAF3E0',
     borderRadius: 10,
     borderWidth: 3,
     borderColor: '#111111',
