@@ -2,6 +2,7 @@ import {
   Animated,
   Easing,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,7 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
@@ -110,22 +111,24 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   const compact = height < 430;
   const fly = useRef(new Animated.Value(0)).current;
   const flip = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
-  const shimmer = useRef(new Animated.Value(0)).current;
-  const float = useRef(new Animated.Value(0)).current;
+  const tear = useRef(new Animated.Value(0)).current;
+  const [tearing, setTearing] = useState(false);
+  // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
+  const challengeKey = challenge ? `${challenge.stop}:${challenge.title}` : '';
 
   useEffect(() => {
     if (!visible) {
       fly.setValue(0);
       flip.setValue(0);
-      pulse.setValue(0);
-      shimmer.setValue(0);
-      float.setValue(0);
+      tear.setValue(0);
+      setTearing(false);
       return;
     }
 
     fly.setValue(0);
     flip.setValue(0);
+    tear.setValue(0);
+    setTearing(false);
 
     const flySequence = Animated.sequence([
       Animated.timing(fly, {
@@ -145,61 +148,23 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
 
     flySequence.start();
 
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    const shimmerLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 1350,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0,
-          duration: 320,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    const floatLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(float, {
-          toValue: 1,
-          duration: 1450,
-          useNativeDriver: true,
-        }),
-        Animated.timing(float, {
-          toValue: 0,
-          duration: 1450,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    pulseLoop.start();
-    shimmerLoop.start();
-    floatLoop.start();
-
     return () => {
       flySequence.stop();
-      pulseLoop.stop();
-      shimmerLoop.stop();
-      floatLoop.stop();
     };
-  }, [challenge, flip, float, fly, pulse, shimmer, visible]);
+  }, [challengeKey, flip, fly, tear, visible]);
+
+  const handleComplete = useCallback(() => {
+    if (tearing) return;
+    setTearing(true);
+    Animated.timing(tear, {
+      toValue: 1,
+      duration: 720,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) onComplete?.();
+    });
+  }, [onComplete, tear, tearing]);
 
   if (!visible || !challenge) return null;
 
@@ -298,75 +263,32 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     ],
   };
 
-  const accentGlow = {
-    opacity: pulse.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.28, 0.72],
-    }),
+  const tearOpacity = tear.interpolate({ inputRange: [0, 0.75, 1], outputRange: [1, 1, 0] });
+  const tearStubStyle = {
+    opacity: tearOpacity,
     transform: [
-      { rotate: '-6deg' },
       {
-        scaleX: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.72, 1],
-        }),
+        translateX: tear.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, -10, -210] }),
+      },
+      {
+        translateY: tear.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, -8, 320] }),
+      },
+      {
+        rotate: tear.interpolate({ inputRange: [0, 0.18, 1], outputRange: ['0deg', '-5deg', '-34deg'] }),
       },
     ],
   };
-  const shimmerStyle = {
-    opacity: shimmer.interpolate({
-      inputRange: [0, 0.18, 0.62, 1],
-      outputRange: [0, 0.48, 0.48, 0],
-    }),
+  const tearBodyStyle = {
+    opacity: tearOpacity,
     transform: [
       {
-        translateX: shimmer.interpolate({
-          inputRange: [0, 1],
-          outputRange: [-260, 760],
-        }),
-      },
-      { rotate: '-18deg' },
-    ],
-  };
-  const floatingLayerStyle = {
-    transform: [
-      {
-        translateY: float.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -4],
-        }),
+        translateX: tear.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 6, 150] }),
       },
       {
-        rotate: float.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-2.4deg', '-1.2deg'],
-        }),
+        translateY: tear.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 4, 380] }),
       },
-    ],
-  };
-  const floatingTicketStyle = {
-    transform: [
       {
-        translateY: float.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -3],
-        }),
-      },
-    ],
-  };
-  const chipPulseStyle = {
-    opacity: pulse.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.7, 1],
-    }),
-  };
-  const buttonPulseStyle = {
-    transform: [
-      {
-        scale: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.03],
-        }),
+        rotate: tear.interpolate({ inputRange: [0, 0.3, 1], outputRange: ['0deg', '2deg', '16deg'] }),
       },
     ],
   };
@@ -374,7 +296,12 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   const missionCode = challenge.code
     ? `MISSION ${challenge.code}-${String(challenge.stop).padStart(2, '0')}`
     : 'MISSION';
-  const landmarkWidth = compact ? 112 : 150;
+  // Give the ticket a landscape-card ratio instead of a flat strip, but never taller than the screen.
+  const availableHeight = Math.max(210, height - insets.top - insets.bottom - 40);
+  const cardWidth = Math.min(720, width * (compact ? 0.94 : 0.9));
+  const minTicketHeight = Math.min(availableHeight, Math.max(210, cardWidth * 0.56));
+  const roomy = minTicketHeight >= 300;
+  const landmarkWidth = roomy ? 162 : compact ? 112 : 150;
 
   return (
     <View
@@ -393,26 +320,21 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
         pointerEvents="none"
         style={[styles.backdropDim, backdropAnimatedStyle]}
       />
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.accentBeam, accentGlow, { backgroundColor: challenge.accent }]}
-      />
       <Animated.View style={[styles.cardShadow, compact && styles.cardShadowCompact, flyWrapperStyle]}>
         <Animated.View style={[styles.frontFace, frontFaceAnimatedStyle]}>
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.ticketLayer, floatingLayerStyle, { backgroundColor: challenge.accent }]}
-        />
-        <View pointerEvents="none" style={[styles.ticketLayer, styles.ticketLayerRight]} />
-        <Animated.View style={[styles.ticket, floatingTicketStyle]}>
-          <Animated.View pointerEvents="none" style={[styles.ticketShimmer, shimmerStyle]} />
           <ScrollView
-            style={{ maxHeight: Math.max(210, height - insets.top - insets.bottom - 40) }}
-            contentContainerStyle={styles.scrollContent}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={[styles.stub, compact && styles.stubCompact]}>
+              style={[
+                { maxHeight: availableHeight },
+                // Let the torn halves leave the scroll bounds without remounting them mid-animation.
+                tearing && styles.scrollTearing,
+              ]}
+              contentContainerStyle={[styles.scrollContent, { minHeight: minTicketHeight }]}
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+            >
+<Animated.View style={[styles.stubWrap, compact && styles.stubWrapCompact, tearStubStyle]}>
+              <View pointerEvents="none" style={styles.stubShadow} />
+              <View style={[styles.stub, compact && styles.stubCompact]}>
               <FlagStrip country={challenge.country} />
               <Perforation />
               <Text style={styles.stubLabel}>Country Challenge</Text>
@@ -429,18 +351,18 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
                 {challenge.country}
               </Text>
               {challenge.city ? <Text style={styles.city}>{challenge.city}</Text> : null}
-              <View style={styles.stubSpacer} />
+              {challenge.landmark ? null : <View style={styles.stubSpacer} />}
               <View style={styles.teamBadge}>
                 <Text style={styles.teamBadgeText}>{teamLabel}</Text>
               </View>
-              <Animated.View style={[styles.buttonWrap, buttonPulseStyle]}>
+              <View style={styles.buttonWrap}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={canComplete
                     ? 'Complete challenge and start next turn'
                     : `Waiting for ${teamLabel} to complete the challenge`}
-                  disabled={!canComplete}
-                  onPress={onComplete}
+                  disabled={!canComplete || tearing}
+                  onPress={handleComplete}
                   style={({ pressed }) => [
                     styles.completeButton,
                     !canComplete && styles.completeButtonDisabled,
@@ -452,20 +374,23 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
                     <Text style={styles.completeButtonSubText}>{`Waiting for ${teamLabel}`}</Text>
                   )}
                 </Pressable>
-              </Animated.View>
-            </View>
+              </View>
+              </View>
+            </Animated.View>
 
-            <View style={[styles.body, compact && styles.bodyCompact]}>
+            <Animated.View style={[styles.bodyWrap, tearBodyStyle]}>
+              <View pointerEvents="none" style={styles.bodyShadow} />
+              <View style={[styles.body, compact && styles.bodyCompact]}>
               <View style={styles.bodyHeader}>
                 <Text style={styles.missionCode}>{missionCode}</Text>
                 {timer ? (
-                  <Animated.View style={[styles.timerChip, chipPulseStyle]}>
+                  <View style={styles.timerChip}>
                     <Text style={styles.timerChipText}>{timer}</Text>
-                  </Animated.View>
+                  </View>
                 ) : null}
               </View>
-              <Text style={[styles.title, compact && styles.titleCompact]}>{challenge.title}</Text>
-              <Text style={[styles.prompt, compact && styles.promptCompact]}>{challenge.prompt}</Text>
+              <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{challenge.title}</Text>
+              <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>{challenge.prompt}</Text>
               <View style={styles.bodySpacer} />
               <View style={styles.penaltyBox}>
                 <View style={styles.penaltyTag}>
@@ -473,10 +398,9 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
                 </View>
                 <Text style={styles.penaltyText}>{challenge.penalty}</Text>
               </View>
-            </View>
-
-          </ScrollView>
-        </Animated.View>
+              </View>
+            </Animated.View>
+            </ScrollView>
         </Animated.View>
         <CardBack compact={compact} style={backFaceAnimatedStyle} />
       </Animated.View>
@@ -520,6 +444,8 @@ const styles = StyleSheet.create({
   },
   cardBackOverlay: {
     ...StyleSheet.absoluteFillObject,
+    right: 8,
+    bottom: 8,
   },
   cardBackFrame: {
     flex: 1,
@@ -625,54 +551,54 @@ const styles = StyleSheet.create({
   frontFace: {
     backfaceVisibility: 'hidden',
   },
-  accentBeam: {
+  stubShadow: {
     position: 'absolute',
-    width: '84%',
-    height: 14,
-    top: '20%',
-    borderRadius: 2,
+    left: 8,
+    right: -8,
+    top: 8,
+    bottom: -8,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    backgroundColor: '#111111',
   },
-  ticketLayer: {
+  bodyShadow: {
     position: 'absolute',
-    left: 10,
-    right: 10,
-    top: 10,
-    bottom: -10,
-    borderRadius: 12,
-    borderWidth: 3,
-    borderColor: '#111111',
+    left: 0,
+    right: -8,
+    top: 8,
+    bottom: -8,
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+    backgroundColor: '#111111',
   },
-  ticketLayerRight: {
-    backgroundColor: '#FFF1CD',
-    transform: [{ rotate: '1.6deg' }],
+  stubWrap: {
+    width: 210,
   },
-  ticketShimmer: {
-    position: 'absolute',
-    zIndex: 2,
-    top: -90,
-    bottom: -90,
-    width: 58,
-    backgroundColor: 'rgba(255, 255, 255, 0.42)',
+  stubWrapCompact: {
+    width: 168,
   },
-  ticket: {
-    borderRadius: 12,
-    borderWidth: 4,
-    borderColor: '#111111',
-    backgroundColor: '#FAF3E0',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.42,
-    shadowRadius: 18,
-    elevation: 12,
+  bodyWrap: {
+    flex: 1,
+  },
+  scrollTearing: {
+    overflow: 'visible',
+    ...(Platform.OS === 'web' ? { overflowX: 'visible', overflowY: 'visible' } : null),
   },
   scrollContent: {
     flexGrow: 1,
+    paddingRight: 8,
+    paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'stretch',
   },
   stub: {
-    width: 210,
+    flex: 1,
+    borderWidth: 4,
+    borderRightWidth: 0,
+    borderColor: '#111111',
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    overflow: 'hidden',
     paddingTop: 14,
     paddingBottom: 14,
     paddingLeft: 26,
@@ -681,7 +607,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2C3E50',
   },
   stubCompact: {
-    width: 168,
     paddingTop: 10,
     paddingBottom: 10,
     paddingLeft: 22,
@@ -703,7 +628,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   landmark: {
-    marginTop: 8,
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 8,
   },
   country: {
     marginTop: 6,
@@ -779,6 +706,13 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+    borderWidth: 4,
+    borderLeftWidth: 0,
+    borderColor: '#111111',
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+    backgroundColor: '#FAF3E0',
+    overflow: 'hidden',
     paddingVertical: 18,
     paddingLeft: 24,
     paddingRight: 20,
@@ -822,6 +756,11 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     textTransform: 'uppercase',
   },
+  titleRoomy: {
+    marginTop: 16,
+    fontSize: 24,
+    lineHeight: 32,
+  },
   titleCompact: {
     marginTop: 8,
     fontSize: 15,
@@ -833,6 +772,11 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixel',
     fontSize: 13,
     lineHeight: 21,
+  },
+  promptRoomy: {
+    marginTop: 14,
+    fontSize: 15,
+    lineHeight: 25,
   },
   promptCompact: {
     marginTop: 6,

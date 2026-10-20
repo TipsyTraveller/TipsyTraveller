@@ -756,21 +756,19 @@ Challenges are static records in `constants/challenges.js`, grouped as a pool of
 
 `getChallengeForStop` also merges per-stop presentation data from `STOP_VISUALS` in the same file: a two-letter country `code`, the destination `city`, a `landmark` key, and the `stop`/`stopIndex`. The flag strip reads its colors from `COUNTRY_FLAGS`/`getCountryFlag` by country name. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds). The challenge fallback has no city, landmark, or flag, and the popup omits those parts.
 
-The popup is a React Native overlay styled as a two-part travel ticket. The navy stub on the left carries a thin vertical country-flag strip on its left edge, the "Country Challenge" label, the city landmark (`components/CityLandmark.js`, flat pixel silhouettes drawn with `react-native-svg`), country name, city name, team badge, and the Next Turn button. The cream body on the right carries the mission code (`MISSION FR-01`), optional timer chip, title, prompt, and a penalty row with a red tag plus the penalty sentence. A dashed perforation separates the two parts. Landmarks currently exist for Paris, Madrid, Lisbon, Sevilla, Rome, Berlin, and Brussels; add a new key in `CityLandmark.js` and `STOP_VISUALS` to introduce another city.
+The popup is a React Native overlay styled as a two-part travel ticket. The navy stub on the left carries a thin vertical country-flag strip on its left edge, the "Country Challenge" label, the city landmark (`components/CityLandmark.js`, flat pixel silhouettes drawn with `react-native-svg`), country name, city name, team badge, and the Next Turn button. The cream body on the right carries the mission code (`MISSION FR-01`), optional timer chip, title, prompt, and a penalty row with a red tag plus the penalty sentence. A dashed perforation separates the two parts. The ticket is at most 720 px wide and has a minimum height of about 0.56 times its width (never taller than the safe screen height), so it keeps a landscape-card ratio instead of a flat strip; when that height is 300 px or more, the title and prompt use larger type and the landmark is centered in the stub. Landmarks currently exist for Paris, Madrid, Lisbon, Sevilla, Rome, Berlin, and Brussels; add a new key in `CityLandmark.js` and `STOP_VISUALS` to introduce another city.
 
 The ticket is the front face of a two-sided card. The back face (`CardBack`) is a `#FAF3E0` frame with a `#FFF1CD` inner panel, the app logo (`assets/icons/splash-icon-light.png`) in a circular halo, the `TIPSY TRAVELLER` wordmark, and a `COUNTRY CHALLENGE` badge.
 
 ### Animation system
 
-Five `Animated.Value` objects drive the card, all with the native driver:
+Three `Animated.Value` objects drive the card, all with the native driver:
 
 1. **Marker arc fly-out (`fly`)**: Projects the landed `ROUTE[stopIndex]` 3D marker coordinate to 2D screen space (`getMarkerScreenOffset`) and flies the card along a parabolic arc (`860ms`, `scale: 0.06 -> 1`, with 3D `rotateX`/`rotateZ` banking) to the center of the screen with the back face toward the viewer, while the backdrop dim fades in. Uses an Easy Ease bezier (`Easing.bezier(0.42, 0, 0.58, 1)`).
 2. **Card flip (`flip`)**: After a 120 ms hold, rotates the card 180 degrees around the Y axis (`780ms`, `perspective: 1300`), swapping from the back face to the ticket at the edge-on midpoint.
-3. **Pulse (`pulse`)**: Continuous loop on the Next Turn button, the timer chip, and the accent beam behind the ticket.
-4. **Shimmer (`shimmer`)**: Continuous horizontal light sweep across the ticket.
-5. **Float (`float`)**: Continuous slow floating of the ticket and its accent-colored backing card.
+3. **Tear-off (`tear`)**: Pressing Next Turn does not complete the challenge immediately. The stub and the body are separate halves, each with its own border and hard shadow. Over 720 ms (ease-in) the stub rips off along the perforation and falls away to the lower left while the body follows to the lower right, both fading out. `onComplete` fires only when the animation finishes. While tearing, the `ScrollView` switches to `overflow: visible` so the halves can leave its bounds; this is verified on web only, not on native.
 
-Loops are stopped during cleanup.
+There are no looping effects: no shimmer, floating, button pulse, accent beam, or stacked backing cards. The animations are keyed on the challenge's `stop` and `title`, not on object identity, so a parent re-render cannot restart them.
 
 ### Completion semantics
 
