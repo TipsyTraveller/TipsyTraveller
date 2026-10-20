@@ -85,6 +85,10 @@ export default function Settings({ navigation }) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled={true}
+        bounces={true}
+        alwaysBounceVertical={true}
       >
         {/* Banner notification */}
         {Boolean(saveBanner) && (
@@ -420,15 +424,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAF3E0',
+    ...Platform.select({
+      web: {
+        height: '100%',
+        maxHeight: '100vh',
+        overflow: 'hidden',
+      },
+    }),
   },
   scroll: {
     flex: 1,
     width: '100%',
+    ...Platform.select({
+      web: {
+        height: '100%',
+        maxHeight: '100%',
+        minHeight: 0,
+        overflowY: 'auto',
+      },
+    }),
   },
   scrollContent: {
+    flexGrow: 1,
+    width: '100%',
     paddingHorizontal: 16,
     paddingBottom: 40,
     alignItems: 'center',
+    ...Platform.select({
+      web: {
+        minHeight: '100%',
+      },
+    }),
   },
   banner: {
     backgroundColor: '#1BA39C',

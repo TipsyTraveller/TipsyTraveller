@@ -224,7 +224,7 @@ The root `Stack.Navigator` contains:
 8. `AccountScreen`
 9. `SettingsScreen`
 
-Every stack header is hidden; each screen supplies its own header or controls.
+Every stack header is hidden; each screen supplies its own header or controls. The application root is wrapped in `GestureHandlerRootView` to coordinate gesture recognizers across React Navigation, and screens with full-length vertical scrolling (`LobbyScreen`, `AccountScreen`, `SettingsScreen`) set `gestureEnabled: false` to ensure swipe recognizers do not conflict with or block scrollable content.
 
 ---
 
@@ -422,6 +422,7 @@ Purpose: show synchronized teams and allow the host to start.
 - Native swipe-back is disabled on the lobby. For hosts, the visible back control opens the explicit edit-settings route; the completed username/creation flow is no longer retained beneath the lobby.
 - Team panels scroll independently of the fixed room header and lower controls, keeping large rosters usable on shorter phones.
 - The optional local-player field moves above the keyboard and blocks empty or duplicate submissions.
+- The host-only local-player control uses a compact labeled name field and teal add action with clear disabled/pressed feedback.
 - The `RULES` button opens a concise overview of the current turn and completion rules.
 
 ### `CharacterSelection`

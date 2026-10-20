@@ -172,6 +172,9 @@ export default function Account({ navigation }) {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+          bounces={true}
+          alwaysBounceVertical={true}
         >
           {/* Banner notification */}
           {Boolean(saveBanner) && (
@@ -233,6 +236,7 @@ export default function Account({ navigation }) {
             <Text style={[styles.fieldLabel, { marginTop: 16 }]}>FAVORITE VEHICLE</Text>
             <ScrollView
               horizontal
+              nestedScrollEnabled={true}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.vehicleScroll}
             >
@@ -380,18 +384,49 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAF3E0',
+    ...Platform.select({
+      web: {
+        height: '100%',
+        maxHeight: '100vh',
+        overflow: 'hidden',
+      },
+    }),
   },
   keyboardView: {
     flex: 1,
+    width: '100%',
+    ...Platform.select({
+      web: {
+        height: '100%',
+        maxHeight: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+      },
+    }),
   },
   scroll: {
     flex: 1,
     width: '100%',
+    ...Platform.select({
+      web: {
+        height: '100%',
+        maxHeight: '100%',
+        minHeight: 0,
+        overflowY: 'auto',
+      },
+    }),
   },
   scrollContent: {
+    flexGrow: 1,
+    width: '100%',
     paddingHorizontal: 16,
     paddingBottom: 40,
     alignItems: 'center',
+    ...Platform.select({
+      web: {
+        minHeight: '100%',
+      },
+    }),
   },
   banner: {
     backgroundColor: '#1BA39C',
