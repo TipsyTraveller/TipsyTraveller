@@ -666,7 +666,7 @@ Position and look-at target are interpolated every frame using exponential dampi
 - Each of six faces has a manually defined transform.
 - Pips are small circle meshes placed from lookup tables.
 - Opposite faces use the standard 1/6, 2/5, and 3/4 pairing.
-- A pixel-art “THROW ME” label is built once as a centered merged geometry and rendered within a subtle translucent teal rounded rectangle (#1BA39C, 35% opacity) with clean white Dogica Pixel text and no border; dice pips share one geometry and material.
+- A pixel-art “THROW ME” label is built once as a centered merged geometry and rendered within a warm cream rounded badge (#FFF1CD) with dark navy text (#2C3E50) and a thin navy rim matching the HUD and die; dice pips share one geometry and material.
 
 ### Internal modes
 
