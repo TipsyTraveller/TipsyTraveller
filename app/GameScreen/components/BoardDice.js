@@ -116,6 +116,8 @@ const PLANE_POINT = new THREE.Vector3();
 const HOLD_POINT = new THREE.Vector3();
 const DRAG_DELTA = new THREE.Vector3();
 const IDLE_TARGET = new THREE.Vector3();
+const LABEL_CAMERA_UP = new THREE.Vector3();
+const LABEL_OFFSET_Y = 0.58;
 
 const clampToHoldPlane = (point, target) => target.set(
   THREE.MathUtils.clamp(point.x, HOLD_BOUNDS.minX, HOLD_BOUNDS.maxX),
@@ -199,10 +201,14 @@ const buildLabelGeometry = (text) => {
     cursor += letterWidth + LABEL_LETTER_GAP;
   });
 
-  const offsetX = -cursor / 2;
-  const offsetY = 0.06;
-  const offsetZ = 0.01;
   const half = (LABEL_CELL_SIZE * 0.82) / 2;
+  const minX = Math.min(...cells.map((cell) => cell.x - half));
+  const maxX = Math.max(...cells.map((cell) => cell.x + half));
+  const minY = Math.min(...cells.map((cell) => cell.y - half));
+  const maxY = Math.max(...cells.map((cell) => cell.y + half));
+  const offsetX = -(minX + maxX) / 2;
+  const offsetY = -(minY + maxY) / 2;
+  const offsetZ = 0.001;
   const positions = new Float32Array(cells.length * 4 * 3);
   const indices = new Uint16Array(cells.length * 6);
 
@@ -230,11 +236,10 @@ const buildLabelGeometry = (text) => {
 };
 
 const LABEL_GEOMETRY = buildLabelGeometry(LABEL_TEXT);
-const LABEL_BACKGROUND_GEOMETRY = new THREE.PlaneGeometry(1.25, 0.34);
 const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#fff1cd', side: THREE.DoubleSide });
-const LABEL_BACKGROUND_MATERIAL = new THREE.MeshBasicMaterial({
-  color: '#111111',
-  opacity: 0.72,
+const LABEL_SHADOW_MATERIAL = new THREE.MeshBasicMaterial({
+  color: '#111822',
+  opacity: 0.65,
   side: THREE.DoubleSide,
   transparent: true,
 });
@@ -242,9 +247,9 @@ const LABEL_BACKGROUND_MATERIAL = new THREE.MeshBasicMaterial({
 const ThrowMeLabel = ({ labelRef }) => (
   <group ref={labelRef}>
     <mesh
-      position={[0, 0, -0.01]}
-      geometry={LABEL_BACKGROUND_GEOMETRY}
-      material={LABEL_BACKGROUND_MATERIAL}
+      position={[0.012, -0.012, -0.002]}
+      geometry={LABEL_GEOMETRY}
+      material={LABEL_SHADOW_MATERIAL}
     />
     <mesh geometry={LABEL_GEOMETRY} material={LABEL_TEXT_MATERIAL} />
   </group>
@@ -565,11 +570,10 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
 
       if (labelRef.current) {
         labelRef.current.visible = enabled;
-        labelRef.current.position.set(
-          diceRef.current.position.x,
-          diceRef.current.position.y,
-          diceRef.current.position.z + 0.68
-        );
+        LABEL_CAMERA_UP.set(0, 1, 0).applyQuaternion(camera.quaternion);
+        labelRef.current.position
+          .copy(diceRef.current.position)
+          .addScaledVector(LABEL_CAMERA_UP, LABEL_OFFSET_Y);
         labelRef.current.quaternion.copy(camera.quaternion);
       }
       return;
