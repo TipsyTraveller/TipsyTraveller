@@ -67,6 +67,7 @@ const GameScene = memo(({
   currentLeg,
   diceEnabled,
   driving,
+  lowPower,
   gamePieces,
   moveFromLeg,
   moveStartDelay,
@@ -90,6 +91,9 @@ const GameScene = memo(({
 }) => (
   <Canvas
     style={canvasStyle}
+    // Paused while a challenge card is on screen: the board is covered by the dim
+    // backdrop, and a running GL loop competes with the card animation on phones.
+    frameloop={lowPower ? 'never' : 'always'}
     camera={{ position: DONE_POS.toArray(), fov: 50 }}
     dpr={[1, 1.5]}
     gl={{
