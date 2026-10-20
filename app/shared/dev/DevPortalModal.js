@@ -664,7 +664,11 @@ export default function DevPortalModal({ visible, onClose }) {
 
 const styles = StyleSheet.create({
   fullscreenOverlay: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -673,7 +677,11 @@ const styles = StyleSheet.create({
     elevation: 999999,
   },
   backdropTouch: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   modalCard: {
     width: '100%',

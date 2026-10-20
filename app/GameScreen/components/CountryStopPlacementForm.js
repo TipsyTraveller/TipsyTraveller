@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   banner: { position: 'absolute', top: 18, alignSelf: 'center', zIndex: 100000, backgroundColor: '#131c24', borderColor: '#ffd700', borderWidth: 2, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 16 },
   bannerText: { color: '#ffd700', fontFamily: 'dogicapixelbold', fontSize: 10 },
   cancelCompact: { backgroundColor: '#c0392b', borderRadius: 5, padding: 8 },
-  backdrop: { ...StyleSheet.absoluteFill, zIndex: 100000, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center' },
+  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 100000, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center' },
   card: { width: '92%', maxWidth: 520, backgroundColor: '#1a2530', borderWidth: 2, borderColor: '#ffd700', borderRadius: 12, padding: 18 },
   heading: { color: '#ffd700', fontFamily: 'dogicapixelbold', fontSize: 13, marginBottom: 6 },
   coordinates: { color: '#1ba39c', fontFamily: 'dogicapixel', fontSize: 8, marginBottom: 12 },

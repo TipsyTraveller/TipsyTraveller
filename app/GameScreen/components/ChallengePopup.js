@@ -2,7 +2,6 @@ import {
   Animated,
   Easing,
   Image,
-  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
@@ -136,34 +135,38 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     let cancelled = false;
     let flySequence = null;
 
-    // Let the card tree mount and the board settle before the first frame, so the
-    // opening animation is not starved by React/native layout work.
-    const task = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      flySequence = Animated.sequence([
-        Animated.timing(fly, {
-          toValue: 1,
-          duration: 860,
-          easing: EASY_EASE,
-          useNativeDriver: true,
-        }),
-        Animated.delay(120),
-        Animated.timing(flip, {
-          toValue: 1,
-          duration: 780,
-          easing: EASY_EASE,
-          useNativeDriver: true,
-        }),
-      ]);
+    // Wait two frames so the card tree is mounted and laid out before the opening
+    // animation starts; otherwise its first frames are spent on layout work.
+    let secondFrame = null;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        if (cancelled) return;
+        flySequence = Animated.sequence([
+          Animated.timing(fly, {
+            toValue: 1,
+            duration: 860,
+            easing: EASY_EASE,
+            useNativeDriver: true,
+          }),
+          Animated.delay(120),
+          Animated.timing(flip, {
+            toValue: 1,
+            duration: 780,
+            easing: EASY_EASE,
+            useNativeDriver: true,
+          }),
+        ]);
 
-      flySequence.start(({ finished }) => {
-        if (finished) setReady(true);
+        flySequence.start(({ finished }) => {
+          if (finished) setReady(true);
+        });
       });
     });
 
     return () => {
       cancelled = true;
-      task.cancel();
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) cancelAnimationFrame(secondFrame);
       if (flySequence) flySequence.stop();
     };
   }, [challengeKey, flip, fly, tear, visible]);
@@ -297,10 +300,10 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     : 'MISSION';
   // Give the ticket a landscape-card ratio instead of a flat strip, but never taller than the screen.
   const availableHeight = Math.max(210, height - insets.top - insets.bottom - 40);
-  const cardWidth = Math.min(720, width * (compact ? 0.94 : 0.9));
+  const cardWidth = Math.min(600, width * (compact ? 0.72 : 0.68));
   // Stay a little below the HUD panels, which sit above and beside the centered card.
-  const minTicketHeight = Math.min(availableHeight * 0.82, Math.max(210, cardWidth * 0.56));
-  const roomy = minTicketHeight >= 300;
+  const minTicketHeight = Math.min(availableHeight * 0.88, Math.max(210, cardWidth * 0.7));
+  const roomy = minTicketHeight >= 280;
   const landmarkWidth = roomy ? 162 : compact ? 112 : 150;
 
   return (
@@ -330,7 +333,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
           style={frontFaceAnimatedStyle}
         >
           <View style={[styles.scrollContent, { minHeight: minTicketHeight }]}>
-<Animated.View
+            <Animated.View
               renderToHardwareTextureAndroid={tearing}
               style={[styles.stubWrap, compact && styles.stubWrapCompact, tearStubStyle]}
             >
@@ -413,23 +416,35 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardShadow: {
-    width: '90%',
-    maxWidth: 720,
+    width: '68%',
+    maxWidth: 600,
   },
   cardShadowCompact: {
-    width: '94%',
+    width: '72%',
   },
   backdropDim: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: 'rgba(8, 12, 18, 0.68)',
   },
   cardBackOverlay: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   cardBackShadow: {
     position: 'absolute',
