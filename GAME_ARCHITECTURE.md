@@ -996,7 +996,7 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 
 ### Header / DevPortal → AccountScreen & SettingsScreen
 
-Header buttons across setup screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`, `CharacterSelection`) and the DevPortal screen switcher navigate to `AccountScreen` and `SettingsScreen` without required parameters. Both screens mount a `<Header showBackButton title="..." />` control that returns players to their prior route.
+Header buttons across setup screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`, `CharacterSelection`) and the DevPortal screen switcher navigate to `AccountScreen` and `SettingsScreen` without required parameters. Both screens mount a `<Header showBackButton title="..." onBackPress={() => navigation.navigate('Home')} />` control and a navigation `beforeRemove` listener that always return players directly to `Home`. Tapping between `AccountScreen` and `SettingsScreen` via the header icon buttons uses route replacement (`replace`) to prevent nested back stacks.
 
 ---
 
