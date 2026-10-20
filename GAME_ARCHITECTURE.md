@@ -103,7 +103,7 @@ This document distinguishes between the visible product concept and what the cur
 - Duration-driven routes: short rooms snapshot 4 ordered route points, medium rooms snapshot 6, and long rooms use every authored point.
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
-- Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll/restart action.
+- Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll action while waiting for a throw.
 - Active-game re-entry through the room PIN with canonical state restoration.
 - Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
 - Dedicated Game Settings screen (`SettingsScreen`) with audio/haptics toggles, party drinking modes (classic vs sips & dares), challenge timer pace, 3D board options, and interactive rules guide.
@@ -463,7 +463,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
 - The native HUD and race tracker respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
-- Places a shadow-free, 56-pixel-wide mini race tracker four pixels inside the right edge while respecting the top and bottom safe areas. It maps each team's current stop to the route's arc-length progress, tightly staggers co-located vehicle icons, marks the finish with a checkered flag, highlights the active team, and incorporates the compact roll/restart action.
+- Shows a shadow-free, 56-pixel-wide mini race tracker only during the `waiting` phase. It sits four pixels inside the device's right safe-area inset, maps each team's current stop to the route's arc-length progress, tightly staggers co-located vehicle icons, marks the finish with a checkered flag, highlights the active team, and incorporates the compact roll action. It unmounts during dice animation, vehicle movement, challenges, loading, and game completion; the completed-game restart action lives in `GameHud` instead.
 
 ### `AccountScreen`
 
@@ -701,7 +701,7 @@ The throw lasts 1.75 seconds; the first 42% is airborne. During the fade, only t
 
 ### Tracker roll shortcut
 
-The compact `ROLL` button at the bottom of `RaceProgressTracker` calls `GameScreen.requestRoll()` directly. It generates the same random range and triggers the animated route path and vehicle movement without animating the 3D die. In the completed state the same button becomes the host-only `RESTART` action. This preserves a touch fallback without a separate turn panel.
+The compact `ROLL` button at the bottom of `RaceProgressTracker` calls `GameScreen.requestRoll()` directly. It generates the same random range and triggers the animated route path and vehicle movement without animating the 3D die. The tracker then disappears until the next team returns to `waiting`. The host-only `RESTART` action appears in the completed-state `GameHud`, preserving both controls without a separate turn panel.
 
 ---
 
@@ -1255,7 +1255,7 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 8. Confirm the appropriate challenge appears.
 9. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
 10. Use the tracker roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
-11. Confirm the narrow right-side race tracker shows every team's vehicle, advances the moving team upward as it crosses stops, keeps the finish flag visible, and exposes the compact roll/restart action without a separate turn box.
+11. Confirm the narrow right-side race tracker sits fully inside the device safe area while waiting, shows every team's vehicle and the compact roll action, then disappears during rolling, movement, and the challenge card before returning for the next turn.
 12. Restore `START_ON_DEV_GAME_SCREEN` to `false` after the focused board test.
 
 ### Smoke test: full multiplayer flow
@@ -1463,7 +1463,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
-| `components/RaceProgressTracker.js` | Compact right-side team route progress, finish-line, and roll/restart overlay |
+| `components/RaceProgressTracker.js` | Waiting-phase right-side team route progress, finish-line, and roll overlay |
 | `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
 | `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |

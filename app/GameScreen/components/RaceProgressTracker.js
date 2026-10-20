@@ -37,35 +37,22 @@ const FinishFlag = () => (
   </View>
 );
 
-const getActionLabel = ({ canRestart, canRoll, isConnected, state }) => {
+const getActionLabel = ({ canRoll, isConnected }) => {
   if (!isConnected) return 'OFFLINE';
-  if (state === 'loading') return 'LOAD';
-  if (state === 'waiting') return canRoll ? 'ROLL' : 'WAIT';
-  if (state === 'rolling') return 'ROLLING';
-  if (state === 'moving') return 'MOVING';
-  if (state === 'challenge') return 'TASK';
-  if (state === 'done') return canRestart ? 'RESTART' : 'WAIT';
-  return 'WAIT';
+  return canRoll ? 'ROLL' : 'WAIT';
 };
 
 const RaceProgressTracker = ({
   activeTeamId,
-  canRestart,
   canRoll,
   gamePieces,
   isConnected,
-  movingPieceId,
-  onRestart,
   onRoll,
-  passedLeg,
   routeModel,
-  state,
   teamProgress,
 }) => {
   const insets = useSafeAreaInsets();
-  const isDone = state === 'done';
-  const buttonDisabled = isDone ? !canRestart : !canRoll;
-  const buttonLabel = getActionLabel({ canRestart, canRoll, isConnected, state });
+  const buttonLabel = getActionLabel({ canRoll, isConnected });
 
   return (
     <View
@@ -74,7 +61,7 @@ const RaceProgressTracker = ({
         styles.positioner,
         {
           top: insets.top + 4,
-          right: 4,
+          right: insets.right + 4,
           bottom: insets.bottom + 4,
         },
       ]}
@@ -100,10 +87,7 @@ const RaceProgressTracker = ({
             ))}
 
             {gamePieces.map((piece, index) => {
-              const storedLeg = teamProgress[piece.id]?.currentLeg ?? 0;
-              const displayedLeg = state === 'moving' && movingPieceId === piece.id
-                ? Math.max(storedLeg, passedLeg)
-                : storedLeg;
+              const displayedLeg = teamProgress[piece.id]?.currentLeg ?? 0;
               const progress = routeModel.stopProgress[displayedLeg] ?? 0;
               const laneOffset = (index - (gamePieces.length - 1) / 2) * 11;
 
@@ -129,11 +113,11 @@ const RaceProgressTracker = ({
         </View>
 
         <TouchableOpacity
-          accessibilityLabel={isDone ? 'Restart game' : 'Roll dice'}
+          accessibilityLabel="Roll dice"
           accessibilityRole="button"
-          disabled={buttonDisabled}
-          onPress={isDone ? onRestart : onRoll}
-          style={[styles.actionButton, buttonDisabled && styles.actionButtonDisabled]}
+          disabled={!canRoll}
+          onPress={onRoll}
+          style={[styles.actionButton, !canRoll && styles.actionButtonDisabled]}
         >
           <Text style={styles.actionLabel}>{buttonLabel}</Text>
         </TouchableOpacity>
@@ -154,8 +138,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderWidth: 2,
     borderColor: '#111111',
-    borderTopLeftRadius: 9,
-    borderBottomLeftRadius: 9,
+    borderRadius: 9,
     backgroundColor: 'rgba(255, 241, 205, 0.92)',
   },
   finishHeader: {

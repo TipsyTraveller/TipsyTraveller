@@ -437,27 +437,26 @@ const GameScreen = ({ route }) => {
 
       <GameHud
         activeTeamLabel={activePiece?.label}
+        canRestart={!multiplayerEnabled || multiplayer.isHost}
         fromName={fromName}
         lastRoll={lastRoll}
+        onRestart={handleRestart}
         progress={progress}
         remainingMoves={remainingMoves}
         state={state}
         toName={toName}
       />
-      <RaceProgressTracker
-        activeTeamId={activePiece?.id}
-        canRestart={!multiplayerEnabled || multiplayer.isHost}
-        canRoll={canRoll}
-        gamePieces={gamePieces}
-        isConnected={!multiplayerEnabled || multiplayer.isConnected}
-        movingPieceId={movingPieceId}
-        onRestart={handleRestart}
-        onRoll={() => requestRoll()}
-        passedLeg={passedLeg}
-        routeModel={routeModel}
-        state={multiplayerEnabled && multiplayer.isLoading ? 'loading' : state}
-        teamProgress={teamProgress}
-      />
+      {state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading) && (
+        <RaceProgressTracker
+          activeTeamId={activePiece?.id}
+          canRoll={canRoll}
+          gamePieces={gamePieces}
+          isConnected={!multiplayerEnabled || multiplayer.isConnected}
+          onRoll={() => requestRoll()}
+          routeModel={routeModel}
+          teamProgress={teamProgress}
+        />
+      )}
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
         challenge={currentChallenge}
