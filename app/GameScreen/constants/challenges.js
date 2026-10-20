@@ -1,3 +1,48 @@
+export const COUNTRY_FLAGS = {
+  France: {
+    layout: 'vertical',
+    stripes: ['#0055A4', '#FFFFFF', '#EF4135'],
+    banner: ['#0055A4', '#FFFFFF', '#EF4135'],
+  },
+  Spain: {
+    layout: 'horizontal',
+    stripes: ['#C60B1E', '#FFC400', '#C60B1E'],
+    stripeWeights: [1, 1.8, 1],
+    banner: ['#C60B1E', '#FFC400', '#C60B1E'],
+  },
+  Portugal: {
+    layout: 'portugal',
+    stripes: ['#006600', '#DA291C'],
+    stripeWeights: [1.1, 1.7],
+    emblemColor: '#FFD700',
+    banner: ['#006600', '#FFD700', '#DA291C'],
+  },
+  Italy: {
+    layout: 'vertical',
+    stripes: ['#009246', '#FFFFFF', '#CE2B37'],
+    banner: ['#009246', '#FFFFFF', '#CE2B37'],
+  },
+  Germany: {
+    layout: 'horizontal',
+    stripes: ['#222222', '#DD0000', '#FFCE00'],
+    banner: ['#222222', '#DD0000', '#FFCE00'],
+  },
+  Belgium: {
+    layout: 'vertical',
+    stripes: ['#222222', '#FDDA24', '#EF3340'],
+    banner: ['#222222', '#FDDA24', '#EF3340'],
+  },
+  Europe: {
+    layout: 'horizontal',
+    stripes: ['#003399', '#FFCC00', '#003399'],
+    banner: ['#003399', '#FFCC00', '#003399'],
+  },
+};
+
+export const getCountryFlag = (country) => (
+  COUNTRY_FLAGS[country] || COUNTRY_FLAGS.Europe
+);
+
 const FALLBACK_CHALLENGE = {
   country: 'Europe',
   title: 'Border Check',
@@ -280,15 +325,15 @@ const hashSeed = (seed) => {
 };
 
 // Per-stop ticket presentation: the destination city, the landmark drawn in
-// `CityLandmark`, and the country flag as weighted segments for the ticket edge.
+// `CityLandmark`. Flag colors come from `COUNTRY_FLAGS` by country name.
 const STOP_VISUALS = {
-  1: { code: 'FR', city: 'Paris', landmark: 'paris', flag: [{ color: '#1F4FA3', weight: 1 }, { color: '#FFFFFF', weight: 1 }, { color: '#E8412F', weight: 1 }] },
-  2: { code: 'ES', city: 'Madrid', landmark: 'madrid', flag: [{ color: '#C60B1E', weight: 1 }, { color: '#FFC400', weight: 2 }, { color: '#C60B1E', weight: 1 }] },
-  3: { code: 'PT', city: 'Lisbon', landmark: 'lisbon', flag: [{ color: '#006600', weight: 2 }, { color: '#FF0000', weight: 3 }] },
-  4: { code: 'ES', city: 'Sevilla', landmark: 'sevilla', flag: [{ color: '#C60B1E', weight: 1 }, { color: '#FFC400', weight: 2 }, { color: '#C60B1E', weight: 1 }] },
-  5: { code: 'IT', city: 'Rome', landmark: 'rome', flag: [{ color: '#009246', weight: 1 }, { color: '#FFFFFF', weight: 1 }, { color: '#CE2B37', weight: 1 }] },
-  6: { code: 'DE', city: 'Berlin', landmark: 'berlin', flag: [{ color: '#111111', weight: 1 }, { color: '#DD0000', weight: 1 }, { color: '#FFCE00', weight: 1 }] },
-  7: { code: 'BE', city: 'Brussels', landmark: 'brussels', flag: [{ color: '#111111', weight: 1 }, { color: '#FFD90C', weight: 1 }, { color: '#EF3340', weight: 1 }] },
+  1: { code: 'FR', city: 'Paris', landmark: 'paris' },
+  2: { code: 'ES', city: 'Madrid', landmark: 'madrid' },
+  3: { code: 'PT', city: 'Lisbon', landmark: 'lisbon' },
+  4: { code: 'ES', city: 'Sevilla', landmark: 'sevilla' },
+  5: { code: 'IT', city: 'Rome', landmark: 'rome' },
+  6: { code: 'DE', city: 'Berlin', landmark: 'berlin' },
+  7: { code: 'BE', city: 'Brussels', landmark: 'brussels' },
 };
 
 // Short badge for the failure penalty, taken from the penalty sentence unless a
@@ -312,6 +357,7 @@ const withStopVisuals = (stopIndex, challenge) => ({
   ...challenge,
   ...STOP_VISUALS[stopIndex],
   stop: stopIndex,
+  stopIndex,
 });
 
 // `seed` must be identical on every device (e.g. the synced action id) so a

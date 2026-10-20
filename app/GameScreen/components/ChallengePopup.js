@@ -1,8 +1,47 @@
-import { Animated, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
-import { getChallengeTimer, getPenaltyTag } from '../constants/challenges';
+import { DONE_LOOK, DONE_POS } from '../constants/camera';
+import { getChallengeTimer, getCountryFlag, getPenaltyTag } from '../constants/challenges';
+import { ROUTE } from '../constants/route';
+
+const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
+const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
+
+const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+const projectedPoint = new THREE.Vector3();
+
+const getMarkerScreenOffset = (stopIndex, width, height) => {
+  const stopPosition = ROUTE[stopIndex] || ROUTE[1] || ROUTE[0];
+  if (!stopPosition || !width || !height) {
+    return { x: 0, y: 0 };
+  }
+
+  projectionCamera.aspect = width / height;
+  projectionCamera.position.copy(DONE_POS);
+  projectionCamera.lookAt(DONE_LOOK);
+  projectionCamera.updateProjectionMatrix();
+  projectionCamera.updateMatrixWorld(true);
+
+  projectedPoint.copy(stopPosition).project(projectionCamera);
+
+  return {
+    x: projectedPoint.x * (width * 0.5),
+    y: -projectedPoint.y * (height * 0.5),
+  };
+};
 
 const PERFORATION_DASHES = Array.from({ length: 14 });
 
@@ -14,38 +53,97 @@ const Perforation = () => (
   </View>
 );
 
-const FlagStrip = ({ flag }) => (
-  <View style={styles.flagStrip} pointerEvents="none">
-    {flag.map((segment, index) => (
-      <View key={`flag-${index}`} style={{ flex: segment.weight, backgroundColor: segment.color }} />
-    ))}
-  </View>
+const FlagStrip = ({ country }) => {
+  const flag = getCountryFlag(country);
+
+  return (
+    <View style={styles.flagStrip} pointerEvents="none">
+      {flag.stripes.map((color, index) => (
+        <View
+          key={`flag-${index}`}
+          style={{ flex: flag.stripeWeights?.[index] ?? 1, backgroundColor: color }}
+        />
+      ))}
+    </View>
+  );
+};
+
+const CardBack = ({ compact, style }) => (
+  <Animated.View
+    pointerEvents="none"
+    style={[
+      styles.cardContainer,
+      styles.cardBackOverlay,
+      compact && styles.cardContainerCompact,
+      style,
+    ]}
+  >
+    <View style={[styles.cardBackFrame, compact && styles.cardBackFrameCompact]}>
+      <View style={styles.cardBackInner}>
+        <View style={[styles.cornerDot, styles.cornerTopLeft]} />
+        <View style={[styles.cornerDot, styles.cornerTopRight]} />
+        <View style={[styles.cornerDot, styles.cornerBottomLeft]} />
+        <View style={[styles.cornerDot, styles.cornerBottomRight]} />
+
+        <View style={[styles.logoHalo, compact && styles.logoHaloCompact]}>
+          <Image
+            source={CARD_BACK_LOGO}
+            style={[styles.cardBackLogo, compact && styles.cardBackLogoCompact]}
+            resizeMode="contain"
+          />
+        </View>
+
+        <Text style={[styles.cardBackBrand, compact && styles.cardBackBrandCompact]}>
+          TIPSY TRAVELLER
+        </Text>
+        <View style={styles.cardBackTag}>
+          <Text style={styles.cardBackTagText}>COUNTRY CHALLENGE</Text>
+        </View>
+      </View>
+    </View>
+  </Animated.View>
 );
 
 const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete }) => {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const compact = height < 430;
-  const entrance = useRef(new Animated.Value(0)).current;
+  const fly = useRef(new Animated.Value(0)).current;
+  const flip = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const shimmer = useRef(new Animated.Value(0)).current;
   const float = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!visible) {
-      entrance.setValue(0);
+      fly.setValue(0);
+      flip.setValue(0);
       pulse.setValue(0);
       shimmer.setValue(0);
       float.setValue(0);
       return;
     }
 
-    Animated.spring(entrance, {
-      toValue: 1,
-      friction: 7,
-      tension: 72,
-      useNativeDriver: true,
-    }).start();
+    fly.setValue(0);
+    flip.setValue(0);
+
+    const flySequence = Animated.sequence([
+      Animated.timing(fly, {
+        toValue: 1,
+        duration: 860,
+        easing: EASY_EASE,
+        useNativeDriver: true,
+      }),
+      Animated.delay(120),
+      Animated.timing(flip, {
+        toValue: 1,
+        duration: 780,
+        easing: EASY_EASE,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    flySequence.start();
 
     const pulseLoop = Animated.loop(
       Animated.sequence([
@@ -96,37 +194,110 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     floatLoop.start();
 
     return () => {
+      flySequence.stop();
       pulseLoop.stop();
       shimmerLoop.stop();
       floatLoop.stop();
     };
-  }, [entrance, float, pulse, shimmer, visible]);
+  }, [challenge, flip, float, fly, pulse, shimmer, visible]);
 
   if (!visible || !challenge) return null;
 
-  const cardTransform = {
-    opacity: entrance,
+  const markerOffset = getMarkerScreenOffset(challenge.stopIndex, width, height);
+  const launchTiltDeg = markerOffset.x >= 0 ? '16deg' : '-16deg';
+  const midArcY = markerOffset.y * 0.35 - 48;
+
+  const backdropAnimatedStyle = {
+    opacity: fly.interpolate({
+      inputRange: [0, 0.7, 1],
+      outputRange: [0, 0.85, 1],
+    }),
+  };
+
+  const flyWrapperStyle = {
+    opacity: fly.interpolate({
+      inputRange: [0, 0.15, 1],
+      outputRange: [0, 1, 1],
+    }),
     transform: [
+      { perspective: 1200 },
       {
-        translateY: entrance.interpolate({
-          inputRange: [0, 1],
-          outputRange: [42, 0],
+        translateX: fly.interpolate({
+          inputRange: [0, 0.75, 1],
+          outputRange: [markerOffset.x, markerOffset.x * 0.06, 0],
         }),
       },
       {
-        scale: entrance.interpolate({
-          inputRange: [0, 0.72, 1],
-          outputRange: [0.72, 1.05, 1],
+        translateY: fly.interpolate({
+          inputRange: [0, 0.55, 1],
+          outputRange: [markerOffset.y, midArcY, 0],
         }),
       },
       {
-        rotate: entrance.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-4deg', '0deg'],
+        scale: fly.interpolate({
+          inputRange: [0, 0.65, 1],
+          outputRange: [0.06, 0.82, 1],
+        }),
+      },
+      {
+        rotateX: fly.interpolate({
+          inputRange: [0, 0.6, 1],
+          outputRange: ['26deg', '-4deg', '0deg'],
+        }),
+      },
+      {
+        rotateZ: fly.interpolate({
+          inputRange: [0, 0.65, 1],
+          outputRange: [launchTiltDeg, '0deg', '0deg'],
         }),
       },
     ],
   };
+
+  const backFaceAnimatedStyle = {
+    opacity: flip.interpolate({
+      inputRange: [0, 0.499, 0.5, 1],
+      outputRange: [1, 1, 0, 0],
+    }),
+    transform: [
+      { perspective: 1300 },
+      {
+        scale: flip.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [1, 1.07, 1],
+        }),
+      },
+      {
+        rotateY: flip.interpolate({
+          inputRange: [0, 1],
+          outputRange: ['0deg', '180deg'],
+        }),
+      },
+    ],
+  };
+
+  const frontFaceAnimatedStyle = {
+    opacity: flip.interpolate({
+      inputRange: [0, 0.499, 0.5, 1],
+      outputRange: [0, 0, 1, 1],
+    }),
+    transform: [
+      { perspective: 1300 },
+      {
+        scale: flip.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [1, 1.07, 1],
+        }),
+      },
+      {
+        rotateY: flip.interpolate({
+          inputRange: [0, 1],
+          outputRange: ['-180deg', '0deg'],
+        }),
+      },
+    ],
+  };
+
   const accentGlow = {
     opacity: pulse.interpolate({
       inputRange: [0, 1],
@@ -220,9 +391,14 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
     >
       <Animated.View
         pointerEvents="none"
+        style={[styles.backdropDim, backdropAnimatedStyle]}
+      />
+      <Animated.View
+        pointerEvents="none"
         style={[styles.accentBeam, accentGlow, { backgroundColor: challenge.accent }]}
       />
-      <Animated.View style={[styles.cardShadow, compact && styles.cardShadowCompact, cardTransform]}>
+      <Animated.View style={[styles.cardShadow, compact && styles.cardShadowCompact, flyWrapperStyle]}>
+        <Animated.View style={[styles.frontFace, frontFaceAnimatedStyle]}>
         <Animated.View
           pointerEvents="none"
           style={[styles.ticketLayer, floatingLayerStyle, { backgroundColor: challenge.accent }]}
@@ -237,7 +413,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
             showsVerticalScrollIndicator={false}
           >
             <View style={[styles.stub, compact && styles.stubCompact]}>
-              {challenge.flag ? <FlagStrip flag={challenge.flag} /> : null}
+              <FlagStrip country={challenge.country} />
               <Perforation />
               <Text style={styles.stubLabel}>Country Challenge</Text>
               {challenge.landmark ? (
@@ -301,6 +477,8 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
 
           </ScrollView>
         </Animated.View>
+        </Animated.View>
+        <CardBack compact={compact} style={backFaceAnimatedStyle} />
       </Animated.View>
     </View>
   );
@@ -311,7 +489,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(8, 12, 18, 0.68)',
   },
   cardShadow: {
     width: '90%',
@@ -319,6 +496,134 @@ const styles = StyleSheet.create({
   },
   cardShadowCompact: {
     width: '94%',
+  },
+  backdropDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(8, 12, 18, 0.68)',
+  },
+  cardContainer: {
+    width: '100%',
+    borderRadius: 12,
+    backgroundColor: '#FAF3E0',
+    borderWidth: 4,
+    borderColor: '#111111',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
+    elevation: 10,
+    overflow: 'hidden',
+    backfaceVisibility: 'hidden',
+  },
+  cardContainerCompact: {
+    borderRadius: 16,
+  },
+  cardBackOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  cardBackFrame: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: '#FAF3E0',
+  },
+  cardBackFrameCompact: {
+    padding: 9,
+  },
+  cardBackInner: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#2C3E50',
+    backgroundColor: '#FFF1CD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+  },
+  cornerDot: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#1BA39C',
+    borderWidth: 1.5,
+    borderColor: '#2C3E50',
+  },
+  cornerTopLeft: {
+    top: 10,
+    left: 10,
+  },
+  cornerTopRight: {
+    top: 10,
+    right: 10,
+  },
+  cornerBottomLeft: {
+    bottom: 10,
+    left: 10,
+  },
+  cornerBottomRight: {
+    bottom: 10,
+    right: 10,
+  },
+  logoHalo: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: '#FAF3E0',
+    borderWidth: 2,
+    borderColor: '#2C3E50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  logoHaloCompact: {
+    width: 98,
+    height: 98,
+    borderRadius: 49,
+  },
+  cardBackLogo: {
+    width: 112,
+    height: 112,
+  },
+  cardBackLogoCompact: {
+    width: 86,
+    height: 86,
+  },
+  cardBackBrand: {
+    marginTop: 10,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  cardBackBrandCompact: {
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  cardBackTag: {
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1BA39C',
+    borderWidth: 1.5,
+    borderColor: '#2C3E50',
+  },
+  cardBackTagText: {
+    color: '#FFFFFF',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  frontFace: {
+    backfaceVisibility: 'hidden',
   },
   accentBeam: {
     position: 'absolute',

@@ -1,5 +1,5 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, StyleSheet, View } from "react-native";
 import {useEffect, useState} from "react";
 //COMPONENTS
 import TeamContainer from "./components/TeamContainer";
@@ -277,25 +277,32 @@ export default function Lobby ({ navigation, route }) {
             </ScrollView>
 
             {host && readyToAdd && (
-                    <View style={ style.inputContainer}>
-                        {/*<Text style={ style.inputLabel }>ENTER USERNAME</Text>*/}
-                        <View style={ style.inputField }>
+                    <View style={style.addPlayerSection}>
+                        <Text style={style.addPlayerLabel}>ADD PLAYER</Text>
+                        <View style={style.inputContainer}>
                             <InputField
-                                placeholder="ADD PLAYERS"
+                                placeholder="PLAYER NAME"
                                 value={ userName }
                                 setValue={ setUserName }
+                                accessibilityLabel="Local player name"
+                                containerStyle={style.inputField}
+                                inputStyle={style.inputFieldText}
+                                onSubmitEditing={handleAddPlayer}
                             />
-                        </View>
-                        <View style={ style.deleteButton }>
-                            <TouchableOpacity
+                            <Pressable
                                 accessibilityLabel="Add player"
                                 accessibilityRole="button"
+                                accessibilityState={{ disabled: !userName.trim() || isAddingPlayer }}
                                 disabled={!userName.trim() || isAddingPlayer}
                                 onPress={handleAddPlayer}
-                                style={style.addButton}
+                                style={({ pressed }) => [
+                                    style.addButton,
+                                    (!userName.trim() || isAddingPlayer) && style.addButtonDisabled,
+                                    pressed && style.addButtonPressed,
+                                ]}
                             >
-                                <Text style={ style.plusIcon }>{isAddingPlayer ? '...' : '+'}</Text>
-                            </TouchableOpacity>
+                                <Text style={style.addButtonText}>{isAddingPlayer ? 'ADDING' : 'ADD'}</Text>
+                            </Pressable>
                         </View>
                     </View>
                 )
@@ -353,39 +360,57 @@ const style = StyleSheet.create({
         paddingTop: 12,
         paddingBottom: 8,
     },
-    inputContainer: {
+    addPlayerSection: {
         width: "100%",
-        paddingHorizontal: 0,
+        marginBottom: 16,
+    },
+    addPlayerLabel: {
+        color: "#2C3E50",
+        fontFamily: "dogicapixelbold",
+        fontSize: 11,
+        marginBottom: 8,
+    },
+    inputContainer: {
         flexDirection: "row",
-        marginBottom: 20,
-        alignItems: "center",
-        minHeight: 58,
+        alignItems: "stretch",
+        gap: 10,
     },
-
     inputField: {
-        marginRight: 10,
         flex: 1,
+        minHeight: 54,
+        marginTop: 0,
+        backgroundColor: "#FFFFFF",
+        borderColor: "#2C3E50",
+        borderWidth: 2,
+        borderRadius: 12,
     },
-
-    deleteButton: {
-        backgroundColor: "#1BA39C",
-        width: 54,
-        height: 54,
-        justifyContent: "center",
-        alignItems: "center",
-        borderRadius: 5,
+    inputFieldText: {
+        color: "#2C3E50",
+        fontSize: 13,
+        textAlign: "left",
     },
     addButton: {
-        width: "100%",
-        height: "100%",
+        minWidth: 82,
+        minHeight: 54,
+        paddingHorizontal: 12,
+        backgroundColor: "#1BA39C",
+        borderColor: "#2C3E50",
+        borderWidth: 2,
+        borderRadius: 12,
         alignItems: "center",
         justifyContent: "center",
     },
-
-    plusIcon: {
-        fontSize: 24,
-        color: "#fff",
-        fontWeight: "bold"
+    addButtonDisabled: {
+        opacity: 0.42,
+    },
+    addButtonPressed: {
+        opacity: 0.75,
+        transform: [{ translateY: 1 }],
+    },
+    addButtonText: {
+        color: "#FFFFFF",
+        fontFamily: "dogicapixelbold",
+        fontSize: 12,
     },
     waitingForPlayersContainer: {
         paddingBottom: 25,

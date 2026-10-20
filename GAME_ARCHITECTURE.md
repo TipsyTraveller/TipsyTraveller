@@ -102,20 +102,22 @@ This document distinguishes between the visible product concept and what the cur
 - Configurable location challenge cards.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Active-game re-entry through the room PIN with canonical state restoration.
+- Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
+- Dedicated Game Settings screen (`SettingsScreen`) with audio/haptics toggles, party drinking modes (classic vs sips & dares), challenge timer pace, 3D board options, and interactive rules guide.
+- Interactive retro arcade Header buttons for Account and Settings with vector SVG iconography and tactile press states.
 - iOS 27/Xcode 27 development support through Device Hub.
 
 ### Partially implemented
 
 - Difficulty and duration are stored in Firebase but do not modify gameplay.
-- Profile and settings icons are visible but have no actions.
-- The lobby `RULES` button opens a concise rules summary. Profile and settings icons remain decorative.
+- The lobby `RULES` button opens a concise rules summary.
 - The game shows “Tour complete” when all teams finish, but it does not rank teams or announce a winner.
 
 ### Development-mode behavior
 
 `app/app/devGameRoute.js` contains `START_ON_DEV_GAME_SCREEN = false`, so development and production builds start by default on `Home`.
 
-In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`). Its presence is controlled by:
+In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`), offset to the left of right-hand header icons and the in-game TourControl box so all interactive buttons remain accessible. Long-pressing the badge or selecting a position in the portal cycles its corner placement. Its presence is controlled by:
 
 1. `EXPO_PUBLIC_ENABLE_DEV_PORTAL` in `.env` or `.env.local` (set to `true` or `false`).
 2. `__DEV__` React Native global flag (fallback when the env variable is omitted).
@@ -219,8 +221,10 @@ The root `Stack.Navigator` contains:
 5. `LobbyScreen`
 6. `GameScreen`
 7. `CharacterSelection`
+8. `AccountScreen`
+9. `SettingsScreen`
 
-Every stack header is hidden; each screen supplies its own header or controls.
+Every stack header is hidden; each screen supplies its own header or controls. The application root is wrapped in `GestureHandlerRootView` to coordinate gesture recognizers across React Navigation, and screens with full-length vertical scrolling (`LobbyScreen`, `AccountScreen`, `SettingsScreen`) set `gestureEnabled: false` to ensure swipe recognizers do not conflict with or block scrollable content.
 
 ---
 
@@ -355,8 +359,8 @@ Purpose: entry point for normal sessions.
 - Shows the tagline “Take a roadtrip and drink your way to victory!”
 - `CREATE GAME` navigates to `CreateGameScreen`.
 - `JOIN GAME` navigates to `JoinGameScreen`.
-- The content scrolls when necessary and the globe/wordmark scales to the available phone height instead of relying on a fixed-size layout.
-- Profile and settings icons are decorative at present.
+- The content scrolls when necessary and the globe/wordmark scales to the available viewport height instead of relying on a fixed-size layout. Web uses explicit, compact vertical spacing so wide desktop viewports do not stretch the controls apart.
+- Profile and settings header buttons navigate to `AccountScreen` and `SettingsScreen` with tactile press animations and vector SVG iconography.
 
 ### `CreateGameScreen`
 
@@ -418,6 +422,7 @@ Purpose: show synchronized teams and allow the host to start.
 - Native swipe-back is disabled on the lobby. For hosts, the visible back control opens the explicit edit-settings route; the completed username/creation flow is no longer retained beneath the lobby.
 - Team panels scroll independently of the fixed room header and lower controls, keeping large rosters usable on shorter phones.
 - The optional local-player field moves above the keyboard and blocks empty or duplicate submissions.
+- The host-only local-player control uses a compact labeled name field and teal add action with clear disabled/pressed feedback.
 - The `RULES` button opens a concise overview of the current turn and completion rules.
 
 ### `CharacterSelection`
@@ -450,7 +455,30 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Limits roll and challenge controls to the active team's leader and restart to the host; other devices render the same action in spectator mode.
 - Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
-- The native HUD and turn control respect landscape safe-area insets, while long challenge tickets become scrollable and use a compact layout on short landscape viewports.
+- The native HUD and turn control respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
+
+### `AccountScreen`
+
+Purpose: manage local player identity, party badges, preferred vehicle models, lifetime statistics, and anonymous device state.
+
+- Renders a retro-arcade styled profile card where players set their default username (persisted in AsyncStorage) and party title/badge (Party Legend, Road Captain, Shotgun King, Navigator, Mixologist, High Roller, Daredevil, Chill Tourist).
+- When a username is saved, `HostName` and `JoinGameScreen` auto-populate the field so players do not have to re-type their names every game session.
+- Allows browsing and selecting preferred vehicles from `MODEL_OPTIONS`.
+- Tracks and displays lifetime career statistics: tours completed, challenges won, sips logged, and total dice rolled.
+- Displays the active anonymous `deviceID` used by Firebase for room re-entry and turn management, with a quick action to regenerate device identity when testing fresh installations.
+- Supports resetting statistics and clearing local account data.
+
+### `SettingsScreen`
+
+Purpose: configure audio, haptic, drinking rules, and 3D board preferences, plus access the game guide.
+
+- Audio & Haptics: toggle Sound Effects (SFX), Ambient Music, and Haptic Feedback.
+- Party & Drinking Rules: switch between "Classic Tipsy" (alcoholic party mode with sips and drinks) and "Sips & Dares" (driver and non-drinker friendly mode with soft drinks or party dares).
+- Challenge Timer: switch between "Relaxed" (untimed) and "Speed Run" (45-second timer).
+- Gameplay & 3D Board: toggle Fast Dice Animations (quick settle without waiting for complete physics bounce), Camera Follow Vehicle (smooth cinematic 3D camera tracking of the active vehicle), and Auto-Advance Turn.
+- How To Play Quick Guide: interactive accordion covering dice & turns, destination challenges, the mid-air kickflip pass, and tour completion.
+- About TipsyTraveller: version info (1.0.0), platform stack (Expo SDK 57, React Three Fiber, Firebase), and credits.
+- Revert all settings back to default values with one tap.
 
 ---
 
@@ -726,20 +754,23 @@ Challenges are static records in `constants/challenges.js`, grouped as a pool of
 - Failure penalty
 - Accent color
 
-`getChallengeForStop` also merges per-stop presentation data from `STOP_VISUALS` in the same file: a two-letter country `code`, the destination `city`, a `landmark` key, the country `flag` as weighted color segments, and the `stop` index. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds). The challenge fallback has no city, landmark, or flag, and the popup omits those parts.
+`getChallengeForStop` also merges per-stop presentation data from `STOP_VISUALS` in the same file: a two-letter country `code`, the destination `city`, a `landmark` key, and the `stop`/`stopIndex`. The flag strip reads its colors from `COUNTRY_FLAGS`/`getCountryFlag` by country name. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds). The challenge fallback has no city, landmark, or flag, and the popup omits those parts.
 
 The popup is a React Native overlay styled as a two-part travel ticket. The navy stub on the left carries a thin vertical country-flag strip on its left edge, the "Country Challenge" label, the city landmark (`components/CityLandmark.js`, flat pixel silhouettes drawn with `react-native-svg`), country name, city name, team badge, and the Next Turn button. The cream body on the right carries the mission code (`MISSION FR-01`), optional timer chip, title, prompt, and a penalty row with a red tag plus the penalty sentence. A dashed perforation separates the two parts. Landmarks currently exist for Paris, Madrid, Lisbon, Sevilla, Rome, Berlin, and Brussels; add a new key in `CityLandmark.js` and `STOP_VISUALS` to introduce another city.
 
+The ticket is the front face of a two-sided card. The back face (`CardBack`) is a `#FAF3E0` frame with a `#FFF1CD` inner panel, the app logo (`assets/icons/splash-icon-light.png`) in a circular halo, the `TIPSY TRAVELLER` wordmark, and a `COUNTRY CHALLENGE` badge.
+
 ### Animation system
 
-Four `Animated.Value` objects drive:
+Five `Animated.Value` objects drive the card, all with the native driver:
 
-- Spring entrance with translation, scaling, and rotation.
-- Continuous pulse on the Next Turn button, timer chip, and the accent beam behind the ticket.
-- Horizontal shimmer across the ticket.
-- Slow floating of the ticket and its accent-colored backing card.
+1. **Marker arc fly-out (`fly`)**: Projects the landed `ROUTE[stopIndex]` 3D marker coordinate to 2D screen space (`getMarkerScreenOffset`) and flies the card along a parabolic arc (`860ms`, `scale: 0.06 -> 1`, with 3D `rotateX`/`rotateZ` banking) to the center of the screen with the back face toward the viewer, while the backdrop dim fades in. Uses an Easy Ease bezier (`Easing.bezier(0.42, 0, 0.58, 1)`).
+2. **Card flip (`flip`)**: After a 120 ms hold, rotates the card 180 degrees around the Y axis (`780ms`, `perspective: 1300`), swapping from the back face to the ticket at the edge-on midpoint.
+3. **Pulse (`pulse`)**: Continuous loop on the Next Turn button, the timer chip, and the accent beam behind the ticket.
+4. **Shimmer (`shimmer`)**: Continuous horizontal light sweep across the ticket.
+5. **Float (`float`)**: Continuous slow floating of the ticket and its accent-colored backing card.
 
-All animations use the native driver. Loops are stopped during cleanup.
+Loops are stopped during cleanup.
 
 ### Completion semantics
 
@@ -968,6 +999,10 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 `teamMembers` maps the local AsyncStorage device ID to its team/leader role, and
 `gameData` supplies host identity, room settings, and vehicle models.
 
+### Header / DevPortal → AccountScreen & SettingsScreen
+
+Header buttons across setup screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`, `CharacterSelection`) and the DevPortal screen switcher navigate to `AccountScreen` and `SettingsScreen` without required parameters. Both screens mount a `<Header showBackButton title="..." onBackPress={() => navigation.navigate('Home')} />` control and a navigation `beforeRemove` listener that always return players directly to `Home`. Tapping between `AccountScreen` and `SettingsScreen` via the header icon buttons uses route replacement (`replace`) to prevent nested back stacks.
+
 ---
 
 ## 14. Assets and visual design
@@ -987,12 +1022,14 @@ Completing this edit flow returns to the same mounted `LobbyScreen` for the same
 | `assets/models/location.glb` | Country pin geometry |
 | `assets/models/*.glb` | Selectable team vehicles |
 
-The shared home/setup globe renderer sizes the Lottie artboard with its source
+The shared home/setup globe layout sizes the Lottie artboard with its source
 aspect ratio and compensates for the source artwork being authored left of the
 composition's center. It also crops the animation upward so the globe clears
-the separately rendered wordmark. This keeps the visible globe, rather than
-only its transparent Lottie canvas, aligned consistently on iOS, Android, and
-web.
+the separately rendered wordmark. Native uses `lottie-react-native`; web uses
+the installed `DotLottieReact` renderer directly so the configured frame segment
+autoplays and loops reliably. Both renderers share the same sizing and cropping
+layout, keeping the visible globe, rather than only its transparent Lottie
+canvas, aligned consistently on iOS, Android, and web.
 
 ### Metro asset support
 
@@ -1248,7 +1285,7 @@ camera motion, GLTF appearance, and final 3D performance.
 ### UI and code quality
 
 1. The direct-to-game development shortcut is manual and requires editing `START_ON_DEV_GAME_SCREEN`; there is no in-app or environment-based toggle.
-2. Profile/settings buttons and lobby rules are placeholders.
+2. Lobby rules remain a concise modal summary; full interactive guides and preference management are available in `SettingsScreen`.
 3. Several imports, state values, and components are unused.
 4. `LoadingComponent` references an undefined `animation` ref and uses a non-relative asset path; it is currently unused.
 5. `ModelTestPanel` exists but is not mounted.
@@ -1355,7 +1392,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `app/app/app.js` | Font loading and stack navigator |
 | `app/app/devGameRoute.js` | Direct-to-game development flag and mock route parameters |
 
-### Setup and lobby screens
+### Setup, account, and lobby screens
 
 | File | Responsibility |
 |---|---|
@@ -1369,6 +1406,8 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `app/Lobby/components/TeamContainer.js` | Team roster panel |
 | `app/Lobby/components/PlayerBox.js` | Player chip/removal UI |
 | `app/CharacterSelection/CharachterSelection.js` | Leader detection, vehicle preview, and selection |
+| `app/Account/Account.js` | Local player profile, badges, stats, and device ID management |
+| `app/Settings/Settings.js` | Audio/haptic switches, drinking modes, timer pace, 3D options, and guide |
 
 ### Game controller and 3D components
 
@@ -1388,7 +1427,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/TourControl.js` | Roll/restart control panel |
-| `components/ChallengePopup.js` | Animated ticket-style challenge overlay |
+| `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |
 | `components/ModelTestPanel.js` | Unused development model switcher |
 
@@ -1406,11 +1445,12 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `constants/boardAssets.js` | Map and marker GLB sources plus `preloadBoardAssets()` |
 | `constants/challenges.js` | Country challenge content |
 
-### Shared UI
+### Shared UI and local storage
 
 | File/group | Responsibility |
 |---|---|
-| `shared/components/Header` | Back/profile/settings header |
+| `shared/components/Header` | Back/profile/settings header with vector icons and tactile press states |
+| `shared/components/Header/HeaderIcons` | Vector SVG Account and Settings icon components |
 | `shared/components/BackButton` | Navigation back action |
 | `shared/components/Button` | Standard pill-shaped action button |
 | `shared/components/InputField` | General text input |
@@ -1418,6 +1458,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `shared/components/LowerButtonContainer` | Paired lower navigation buttons |
 | `shared/components/MainAnimation` | Globe Lottie and app title |
 | `shared/components/LoadingComponent` | Currently unused loading animation |
+| `shared/storage/userSettings.js` | AsyncStorage persistence for player profile, badges, stats, and settings |
 | `shared/styles/SafeAreaView` | Android safe-area adjustment |
 
 ### Developer tools

@@ -1,15 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { devEventBus } from './devEventBus';
 
 export default function DevPortalButton({ onPress, visible = true }) {
   const [corner, setCorner] = useState('top-right');
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+
   let insets = { top: 0, bottom: 0, left: 0, right: 0 };
   try {
     insets = useSafeAreaInsets() || insets;
@@ -17,17 +23,38 @@ export default function DevPortalButton({ onPress, visible = true }) {
     // Fallback if safe-area context is temporarily not ready
   }
 
+  useEffect(() => {
+    AsyncStorage.getItem('dev_portal_button_corner')
+      .then((saved) => {
+        if (saved) setCorner(saved);
+      })
+      .catch(() => {});
+
+    const unsub = devEventBus.on('dev:setButtonCorner', (newCorner) => {
+      if (newCorner) {
+        setCorner(newCorner);
+        AsyncStorage.setItem('dev_portal_button_corner', newCorner).catch(() => {});
+      }
+    });
+
+    return () => unsub?.();
+  }, []);
+
   if (!visible) return null;
 
   const topPos = Math.max(insets?.top || 0, 10) + 8;
   const bottomPos = Math.max(insets?.bottom || 0, 10) + 8;
-  const leftPos = Math.max(insets?.left || 0, 10) + 10;
-  const rightPos = Math.max(insets?.right || 0, 10) + 10;
+  const leftPos = Math.max(insets?.left || 0, 10) + 70;
+  // Offset to the left so it does not cover:
+  // - Account and Settings buttons (Header) in portrait (~124px offset)
+  // - TourControl ('Roll Dice') box in landscape on GameScreen (~175px offset)
+  const rightOffset = isLandscape ? 175 : 124;
+  const rightPos = Math.max(insets?.right || 0, 10) + rightOffset;
 
   const positionStyle = {
     'top-right': { top: topPos, right: rightPos },
-    'bottom-right': { bottom: bottomPos, right: rightPos },
-    'bottom-left': { bottom: bottomPos, left: leftPos },
+    'bottom-right': { bottom: bottomPos, right: Math.max(insets?.right || 0, 10) + 10 },
+    'bottom-left': { bottom: bottomPos, left: Math.max(insets?.left || 0, 10) + 10 },
     'top-left': { top: topPos, left: leftPos },
   }[corner] || { top: topPos, right: rightPos };
 
@@ -38,7 +65,9 @@ export default function DevPortalButton({ onPress, visible = true }) {
       'bottom-left': 'top-left',
       'top-left': 'top-right',
     };
-    setCorner((prev) => cycle[prev] || 'top-right');
+    const nextCorner = cycle[corner] || 'top-right';
+    setCorner(nextCorner);
+    AsyncStorage.setItem('dev_portal_button_corner', nextCorner).catch(() => {});
   };
 
   return (

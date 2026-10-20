@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 //SCREENS
 import Home from '../home/home';
@@ -12,6 +13,8 @@ import Lobby from '../Lobby/Lobby';
 import HostName from "../HostName/HostName";
 import GameScreen from "../GameScreen/GameScreen";
 import CharacterSelection from "../CharacterSelection/CharachterSelection";
+import Account from '../Account/Account';
+import Settings from '../Settings/Settings';
 import { DEV_GAME_ROUTE_PARAMS, START_ON_DEV_GAME_SCREEN } from "./devGameRoute";
 import DevPortal from '../shared/dev/DevPortal';
 import { navigationRef } from '../shared/dev/devNavigation';
@@ -26,49 +29,67 @@ export default function App() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer ref={navigationRef}>
-        <Stack.Navigator initialRouteName={START_ON_DEV_GAME_SCREEN ? "GameScreen" : "Home"}>
-        <Stack.Screen
-          name="Home"
-          component={ Home }
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="CreateGameScreen"
-          component={ SelectionPages }
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="HostName"
-            component={ HostName }
+    <GestureHandlerRootView style={{ flex: 1, height: '100%' }}>
+      <SafeAreaProvider style={{ flex: 1, height: '100%' }}>
+        <NavigationContainer ref={navigationRef}>
+          <Stack.Navigator
+            initialRouteName={START_ON_DEV_GAME_SCREEN ? "GameScreen" : "Home"}
+            screenOptions={{
+              headerShown: false,
+              cardStyle: { flex: 1, overflow: 'hidden' },
+            }}
+          >
+          <Stack.Screen
+            name="Home"
+            component={ Home }
             options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="JoinGameScreen"
-          component={ JoinGame }
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name='LobbyScreen'
-          component={ Lobby }
-          options={{ headerShown: false, gestureEnabled: false }}
-        />
-        <Stack.Screen
-          name='GameScreen'
-          component={ GameScreen }
-          initialParams={START_ON_DEV_GAME_SCREEN ? DEV_GAME_ROUTE_PARAMS : undefined}
-          options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CreateGameScreen"
+            component={ SelectionPages }
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="HostName"
+              component={ HostName }
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="JoinGameScreen"
+            component={ JoinGame }
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name='LobbyScreen'
+            component={ Lobby }
+            options={{ headerShown: false, gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name='GameScreen'
+            component={ GameScreen }
+            initialParams={START_ON_DEV_GAME_SCREEN ? DEV_GAME_ROUTE_PARAMS : undefined}
+            options={{ headerShown: false }}
 
-        />
-        <Stack.Screen
-          name='CharacterSelection'
-          component={ CharacterSelection }
-          options={{ headerShown: false }}
-        />
-        </Stack.Navigator>
-      </NavigationContainer>
-      <DevPortal />
-    </SafeAreaProvider>
+          />
+          <Stack.Screen
+            name='CharacterSelection'
+            component={ CharacterSelection }
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name='AccountScreen'
+            component={ Account }
+            options={{ headerShown: false, gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name='SettingsScreen'
+            component={ Settings }
+            options={{ headerShown: false, gestureEnabled: false }}
+          />
+          </Stack.Navigator>
+        </NavigationContainer>
+        <DevPortal />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

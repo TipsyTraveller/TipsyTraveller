@@ -124,7 +124,7 @@ date only after reconciling the relevant sections with the implementation.
   unless the user explicitly requests that action.
 - Keep each task scoped to the requested outcome and summarize changed files,
   behavioral impact, verification evidence, and remaining risks.
-- For every feature that you are asked to implement or change make a new working branch.
+- For every feature that you are asked to implement or change make a new working branch. Use a simplistic name with no codex in front or feature just a simple text or feature nr for rexample
 
 
 ## COMMITS
