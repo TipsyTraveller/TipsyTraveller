@@ -4,6 +4,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import ChallengePopup from './components/ChallengePopup';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
+import RaceProgressTracker from './components/RaceProgressTracker';
 import TourControl from './components/TourControl';
 import { getChallengeForStop, getChallengeIdForStop } from './constants/challenges';
 import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
@@ -443,6 +444,15 @@ const GameScreen = ({ route }) => {
         remainingMoves={remainingMoves}
         state={state}
         toName={toName}
+      />
+      <RaceProgressTracker
+        activeTeamId={activePiece?.id}
+        gamePieces={gamePieces}
+        movingPieceId={movingPieceId}
+        passedLeg={passedLeg}
+        routeModel={routeModel}
+        state={state}
+        teamProgress={teamProgress}
       />
       <TourControl
         activeTeamLabel={activePiece?.label}

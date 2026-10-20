@@ -103,6 +103,7 @@ This document distinguishes between the visible product concept and what the cur
 - Duration-driven routes: short rooms snapshot 4 ordered route points, medium rooms snapshot 6, and long rooms use every authored point.
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
+- Bottom-centered race progress tracker with every team's vehicle position and the finish line.
 - Active-game re-entry through the room PIN with canonical state restoration.
 - Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
 - Dedicated Game Settings screen (`SettingsScreen`) with audio/haptics toggles, party drinking modes (classic vs sips & dares), challenge timer pace, 3D board options, and interactive rules guide.
@@ -330,6 +331,7 @@ The game screen deliberately overlays ordinary React Native views above the GL c
 GameScreen root View
 ├── GameScene (full-screen GL Canvas)
 ├── GameHud (React Native absolute overlay)
+├── RaceProgressTracker (React Native absolute overlay)
 ├── TourControl (React Native absolute overlay)
 └── ChallengePopup (React Native modal-style absolute overlay)
 ```
@@ -462,6 +464,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
 - The native HUD and turn control respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
+- Centers a safe-area-aware mini race tracker along the bottom. It maps each team's current stop to the route's arc-length progress, vertically staggers co-located vehicle icons, and marks the finish with a checkered flag.
 
 ### `AccountScreen`
 
@@ -1253,7 +1256,8 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 8. Confirm the appropriate challenge appears.
 9. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
 10. Use the HUD roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
-11. Restore `START_ON_DEV_GAME_SCREEN` to `false` after the focused board test.
+11. Confirm the bottom-center race tracker shows every team's vehicle, advances the moving team as it crosses stops, and keeps the finish flag visible without covering the turn controls.
+12. Restore `START_ON_DEV_GAME_SCREEN` to `false` after the focused board test.
 
 ### Smoke test: full multiplayer flow
 
@@ -1460,6 +1464,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
+| `components/RaceProgressTracker.js` | Bottom-centered team route progress and finish-line overlay |
 | `components/TourControl.js` | Roll/restart control panel |
 | `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
