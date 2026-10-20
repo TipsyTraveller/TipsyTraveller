@@ -8,7 +8,6 @@ import DottedRouteLine from './DottedRouteLine';
 import GamePieces from './GamePieces';
 import MapPlane, { OCEAN_COLOR } from './MapPlane';
 import { MAP_CY, MAP_Z } from '../constants/mapCoordinates';
-import { MARKERS, ROUTE } from '../constants/route';
 
 const MapFallback = () => (
   <mesh position={[0, MAP_CY, MAP_Z]}>
@@ -17,11 +16,11 @@ const MapFallback = () => (
   </mesh>
 );
 
-const GamePiecesFallback = ({ gamePieces, teamProgress }) => (
+const GamePiecesFallback = ({ gamePieces, routeModel, teamProgress }) => (
   <>
     {gamePieces.map((piece, index) => {
       const currentLeg = teamProgress[piece.id]?.currentLeg || 0;
-      const position = ROUTE[currentLeg] || ROUTE[0];
+      const position = routeModel.route[currentLeg] || routeModel.route[0];
 
       return (
         <mesh
@@ -36,15 +35,15 @@ const GamePiecesFallback = ({ gamePieces, teamProgress }) => (
   </>
 );
 
-const CountryMarkersFallback = ({ currentLeg, targetLeg }) => {
+const CountryMarkersFallback = ({ currentLeg, routeModel, targetLeg }) => {
   const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
     ? targetLeg
     : currentLeg + 1;
-  const activeMarker = destinationLeg % MARKERS.length;
+  const activeMarker = Math.min(destinationLeg, routeModel.markers.length - 1);
 
   return (
     <>
-      {MARKERS.map((position, index) => (
+      {routeModel.markers.map((position, index) => (
         <group key={`${position.x}-${position.y}-${index}`} position={[position.x, position.y, MAP_Z + 0.09]}>
           <mesh>
             <circleGeometry args={[index === activeMarker ? 0.1 : 0.075, 16]} />
@@ -79,11 +78,14 @@ const GameScene = memo(({
   onDriveStart,
   onLegPass,
   onMoveComplete,
+  onMapPointSelected,
   pathRevealDuration,
+  placementActive,
   pieceRefs,
   rollAction,
   targetRef,
   teamProgress,
+  routeModel,
   vehicleInMotion,
 }) => (
   <Canvas
@@ -103,7 +105,7 @@ const GameScene = memo(({
     <directionalLight position={[-6, 5, 4]} intensity={0.32} color="#8fd8ff" />
 
     <Suspense fallback={<MapFallback />}>
-      <MapPlane />
+      <MapPlane placementActive={placementActive} onMapPointSelected={onMapPointSelected} />
     </Suspense>
     <DottedRouteLine
       activeCarProgressRef={activeCarProgressRef}
@@ -112,8 +114,9 @@ const GameScene = memo(({
       fromLeg={moveFromLeg}
       pathRevealDuration={pathRevealDuration}
       toLeg={moveTargetLeg}
+      routeModel={routeModel}
     />
-    <Suspense fallback={<GamePiecesFallback gamePieces={gamePieces} teamProgress={teamProgress} />}>
+    <Suspense fallback={<GamePiecesFallback gamePieces={gamePieces} routeModel={routeModel} teamProgress={teamProgress} />}>
       <GamePieces
         activeCarProgressRef={activeCarProgressRef}
         driving={driving}
@@ -127,11 +130,12 @@ const GameScene = memo(({
         pathRevealDuration={pathRevealDuration}
         pieceRefs={pieceRefs}
         teamProgress={teamProgress}
+        routeModel={routeModel}
         vehicleInMotion={vehicleInMotion}
       />
     </Suspense>
-    <Suspense fallback={<CountryMarkersFallback currentLeg={currentLeg} targetLeg={moveTargetLeg} />}>
-      <CountryMarkers currentLeg={currentLeg} targetLeg={moveTargetLeg} />
+    <Suspense fallback={<CountryMarkersFallback currentLeg={currentLeg} routeModel={routeModel} targetLeg={moveTargetLeg} />}>
+      <CountryMarkers currentLeg={currentLeg} routeModel={routeModel} targetLeg={moveTargetLeg} />
     </Suspense>
     <CameraController mode={cameraMode} targetRef={targetRef} />
     <BoardDice

@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import { DONE_LOOK, DONE_POS } from '../constants/camera';
 import { getCountryFlag } from '../constants/challenges';
-import { ROUTE } from '../constants/route';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
 const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
@@ -22,8 +21,8 @@ const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
 const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 const projectedPoint = new THREE.Vector3();
 
-const getMarkerScreenOffset = (stopIndex, width, height) => {
-  const stopPosition = ROUTE[stopIndex] || ROUTE[1] || ROUTE[0];
+const getMarkerScreenOffset = (routeModel, stopIndex, width, height) => {
+  const stopPosition = routeModel.route[stopIndex] || routeModel.route[1] || routeModel.route[0];
   if (!stopPosition || !width || !height) {
     return { x: 0, y: 0 };
   }
@@ -143,7 +142,7 @@ const CardBack = ({ compact, style }) => (
   </Animated.View>
 );
 
-const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete }) => {
+const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete, routeModel }) => {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const compact = height < 430;
@@ -186,7 +185,7 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
   if (!visible || !challenge) return null;
 
   const accentColor = challenge.accent || '#1BA39C';
-  const markerOffset = getMarkerScreenOffset(challenge.stopIndex, width, height);
+  const markerOffset = getMarkerScreenOffset(routeModel, challenge.stopIndex, width, height);
   const launchTiltDeg = markerOffset.x >= 0 ? '16deg' : '-16deg';
   const midArcY = markerOffset.y * 0.35 - 48;
 

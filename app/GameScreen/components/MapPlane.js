@@ -73,7 +73,7 @@ const prepareVectorMap = (scene) => {
 let firstRenderAt = null;
 let hasLoggedReady = false;
 
-const MapPlane = memo(() => {
+const MapPlane = memo(({ onMapPointSelected, placementActive = false }) => {
   if (firstRenderAt === null) {
     firstRenderAt = perfNow();
     perfLog('map: first render attempt (GLB requested)');
@@ -125,6 +125,18 @@ const MapPlane = memo(() => {
         position={[VECTOR_OFFSET_X, VECTOR_OFFSET_Y, MAP_Z + 0.003]}
         scale={[VECTOR_SCALE_X, VECTOR_SCALE_Y, 1]}
       />
+      {placementActive && (
+        <mesh
+          position={[0, MAP_CY, MAP_Z + 0.09]}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            onMapPointSelected?.(event.point);
+          }}
+        >
+          <planeGeometry args={[MAP_W, MAP_H]} />
+          <meshBasicMaterial transparent opacity={0.001} depthWrite={false} />
+        </mesh>
+      )}
     </group>
   );
 });
