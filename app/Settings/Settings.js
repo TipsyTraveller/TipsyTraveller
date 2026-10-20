@@ -25,7 +25,16 @@ export default function Settings({ navigation }) {
 
   useEffect(() => {
     loadCurrentSettings();
-  }, []);
+
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        e.preventDefault();
+        navigation.navigate('Home');
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadCurrentSettings = async () => {
     const loaded = await getSettings();
@@ -69,6 +78,7 @@ export default function Settings({ navigation }) {
         showBackButton
         title="GAME SETTINGS"
         activeScreen="settings"
+        onBackPress={() => navigation.navigate('Home')}
       />
 
       <ScrollView

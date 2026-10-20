@@ -37,7 +37,16 @@ export default function Account({ navigation }) {
 
   useEffect(() => {
     loadAccountData();
-  }, []);
+
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        e.preventDefault();
+        navigation.navigate('Home');
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadAccountData = async () => {
     try {
@@ -151,6 +160,7 @@ export default function Account({ navigation }) {
         showBackButton
         title="PLAYER ACCOUNT"
         activeScreen="account"
+        onBackPress={() => navigation.navigate('Home')}
       />
 
       <KeyboardAvoidingView

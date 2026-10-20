@@ -21,14 +21,18 @@ export default function Header({
 
   const handleAccountPress = () => {
     if (activeScreen === 'account') return;
-    if (nav?.navigate) {
+    if (activeScreen === 'settings') {
+      nav.replace('AccountScreen');
+    } else if (nav?.navigate) {
       nav.navigate('AccountScreen');
     }
   };
 
   const handleSettingsPress = () => {
     if (activeScreen === 'settings') return;
-    if (nav?.navigate) {
+    if (activeScreen === 'account') {
+      nav.replace('SettingsScreen');
+    } else if (nav?.navigate) {
       nav.navigate('SettingsScreen');
     }
   };
@@ -60,7 +64,7 @@ export default function Header({
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Player Account and Profile"
-            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={[
               styles.iconButton,
               activeScreen === 'account' && styles.iconButtonActive,
@@ -69,11 +73,11 @@ export default function Header({
             onPress={handleAccountPress}
             onPressIn={() => setAccountPressed(true)}
             onPressOut={() => setAccountPressed(false)}
-            activeOpacity={0.85}
+            activeOpacity={0.75}
           >
             <AccountIcon
-              size={20}
-              color={activeScreen === 'account' ? '#2C3E50' : '#2C3E50'}
+              size={24}
+              color="#2C3E50"
             />
           </TouchableOpacity>
         )}
@@ -82,7 +86,7 @@ export default function Header({
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Game Settings"
-            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={[
               styles.iconButton,
               activeScreen === 'settings' && styles.iconButtonActive,
@@ -91,11 +95,11 @@ export default function Header({
             onPress={handleSettingsPress}
             onPressIn={() => setSettingsPressed(true)}
             onPressOut={() => setSettingsPressed(false)}
-            activeOpacity={0.85}
+            activeOpacity={0.75}
           >
             <SettingsIcon
-              size={20}
-              color={activeScreen === 'settings' ? '#2C3E50' : '#2C3E50'}
+              size={24}
+              color="#2C3E50"
             />
           </TouchableOpacity>
         )}
@@ -110,7 +114,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     width: '100%',
-    minHeight: 52,
+    minHeight: 48,
     paddingHorizontal: 16,
     paddingVertical: 4,
     zIndex: 10,
@@ -132,49 +136,37 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
-    fontSize: 13,
+    fontSize: 12.5,
     textAlign: 'center',
     letterSpacing: 0.5,
   },
   icons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2.5,
-    borderColor: '#2C3E50',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
-      ios: {
-        shadowColor: '#2C3E50',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 3,
-      },
       web: {
         cursor: 'pointer',
-        boxShadow: '0px 2px 4px rgba(44, 62, 80, 0.18)',
         userSelect: 'none',
-        transition: 'transform 0.1s ease',
+        transition: 'transform 0.12s ease, background-color 0.12s ease',
       },
     }),
   },
   iconButtonActive: {
-    backgroundColor: '#FFD700',
+    backgroundColor: '#FFF1CD',
+    borderWidth: 1.5,
     borderColor: '#2C3E50',
-    transform: [{ scale: 1.05 }],
   },
   iconButtonPressed: {
-    backgroundColor: '#FFF1CD',
-    transform: [{ scale: 0.92 }],
+    backgroundColor: 'rgba(44, 62, 80, 0.1)',
+    transform: [{ scale: 0.9 }],
   },
 });
