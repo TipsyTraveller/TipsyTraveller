@@ -259,25 +259,49 @@ const createRoundedRectangleGeometry = (width, height, radius) => {
 const LABEL_GEOMETRY = buildLabelGeometry(LABEL_TEXT);
 const LABEL_BACKGROUND_GEOMETRY = createRoundedRectangleGeometry(1.26, 0.26, 0.04);
 
-const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#fff1cd', side: THREE.DoubleSide });
+const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({
+  color: '#fff1cd',
+  transparent: false,
+  depthTest: true,
+  depthWrite: true,
+  side: THREE.DoubleSide,
+});
+
+const LABEL_SHADOW_MATERIAL = new THREE.MeshBasicMaterial({
+  color: '#0e1822',
+  transparent: true,
+  opacity: 0.75,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+
 const LABEL_BACKGROUND_MATERIAL = new THREE.MeshBasicMaterial({
   color: '#1BA39C',
   opacity: 0.35,
   transparent: true,
+  depthWrite: false,
   side: THREE.DoubleSide,
 });
 
 const ThrowMeLabel = ({ labelRef }) => (
   <group ref={labelRef}>
     <mesh
-      position={[0, 0, -0.001]}
+      position={[0, 0, -0.008]}
       geometry={LABEL_BACKGROUND_GEOMETRY}
       material={LABEL_BACKGROUND_MATERIAL}
+      renderOrder={1}
     />
     <mesh
-      position={[0, 0, 0.001]}
+      position={[0.008, -0.008, 0.004]}
+      geometry={LABEL_GEOMETRY}
+      material={LABEL_SHADOW_MATERIAL}
+      renderOrder={2}
+    />
+    <mesh
+      position={[0, 0, 0.008]}
       geometry={LABEL_GEOMETRY}
       material={LABEL_TEXT_MATERIAL}
+      renderOrder={3}
     />
   </group>
 );
