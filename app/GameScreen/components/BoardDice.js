@@ -235,23 +235,52 @@ const buildLabelGeometry = (text) => {
   return geometry;
 };
 
+const createPillGeometry = (width, height, radius) => {
+  const shape = new THREE.Shape();
+  const x = -width / 2;
+  const y = -height / 2;
+  const r = Math.min(radius, width / 2, height / 2);
+
+  shape.moveTo(x + r, y);
+  shape.lineTo(x + width - r, y);
+  shape.absarc(x + width - r, y + r, r, -Math.PI / 2, 0, false);
+  shape.lineTo(x + width, y + height - r);
+  shape.absarc(x + width - r, y + height - r, r, 0, Math.PI / 2, false);
+  shape.lineTo(x + r, y + height);
+  shape.absarc(x + r, y + height - r, r, Math.PI / 2, Math.PI, false);
+  shape.lineTo(x, y + r);
+  shape.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false);
+
+  const geometry = new THREE.ShapeGeometry(shape, 16);
+  geometry.computeBoundingSphere();
+  return geometry;
+};
+
 const LABEL_GEOMETRY = buildLabelGeometry(LABEL_TEXT);
-const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#fff1cd', side: THREE.DoubleSide });
-const LABEL_SHADOW_MATERIAL = new THREE.MeshBasicMaterial({
-  color: '#111822',
-  opacity: 0.65,
-  side: THREE.DoubleSide,
-  transparent: true,
-});
+const LABEL_PILL_BORDER_GEOMETRY = createPillGeometry(1.32, 0.30, 0.15);
+const LABEL_PILL_GEOMETRY = createPillGeometry(1.28, 0.26, 0.13);
+
+const LABEL_TEXT_MATERIAL = new THREE.MeshBasicMaterial({ color: '#111111', side: THREE.DoubleSide });
+const LABEL_PILL_MATERIAL = new THREE.MeshBasicMaterial({ color: '#1BA39C', side: THREE.DoubleSide });
+const LABEL_BORDER_MATERIAL = new THREE.MeshBasicMaterial({ color: '#2C3E50', side: THREE.DoubleSide });
 
 const ThrowMeLabel = ({ labelRef }) => (
   <group ref={labelRef}>
     <mesh
-      position={[0.012, -0.012, -0.002]}
-      geometry={LABEL_GEOMETRY}
-      material={LABEL_SHADOW_MATERIAL}
+      position={[0, 0, -0.002]}
+      geometry={LABEL_PILL_BORDER_GEOMETRY}
+      material={LABEL_BORDER_MATERIAL}
     />
-    <mesh geometry={LABEL_GEOMETRY} material={LABEL_TEXT_MATERIAL} />
+    <mesh
+      position={[0, 0, -0.001]}
+      geometry={LABEL_PILL_GEOMETRY}
+      material={LABEL_PILL_MATERIAL}
+    />
+    <mesh
+      position={[0, 0, 0.001]}
+      geometry={LABEL_GEOMETRY}
+      material={LABEL_TEXT_MATERIAL}
+    />
   </group>
 );
 
