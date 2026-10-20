@@ -277,16 +277,8 @@ export default function Lobby ({ navigation, route }) {
             </ScrollView>
 
             {host && readyToAdd && (
-                    <View style={style.addPlayerCard}>
-                        <View style={style.addPlayerHeader}>
-                            <View style={style.addPlayerCopy}>
-                                <Text style={style.addPlayerTitle}>ADD A LOCAL PLAYER</Text>
-                                <Text style={style.addPlayerHint}>For friends sharing this device</Text>
-                            </View>
-                            <View style={style.hostBadge}>
-                                <Text style={style.hostBadgeText}>HOST</Text>
-                            </View>
-                        </View>
+                    <View style={style.addPlayerSection}>
+                        <Text style={style.addPlayerLabel}>ADD PLAYER</Text>
                         <View style={style.inputContainer}>
                             <InputField
                                 placeholder="PLAYER NAME"
@@ -310,7 +302,6 @@ export default function Lobby ({ navigation, route }) {
                                 ]}
                             >
                                 <Text style={style.addButtonText}>{isAddingPlayer ? 'ADDING' : 'ADD'}</Text>
-                                {!isAddingPlayer && <Text style={style.plusIcon}>+</Text>}
                             </Pressable>
                         </View>
                     </View>
@@ -369,55 +360,15 @@ const style = StyleSheet.create({
         paddingTop: 12,
         paddingBottom: 8,
     },
-    addPlayerCard: {
+    addPlayerSection: {
         width: "100%",
-        backgroundColor: "#FFF1CD",
-        borderColor: "#2C3E50",
-        borderWidth: 3,
-        borderRadius: 20,
-        padding: 14,
         marginBottom: 16,
-        shadowColor: "#2C3E50",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.16,
-        shadowRadius: 0,
-        elevation: 3,
     },
-    addPlayerHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 12,
-        gap: 10,
-    },
-    addPlayerCopy: {
-        flex: 1,
-    },
-    addPlayerTitle: {
+    addPlayerLabel: {
         color: "#2C3E50",
         fontFamily: "dogicapixelbold",
-        fontSize: 13,
-        lineHeight: 18,
-    },
-    addPlayerHint: {
-        color: "#52616F",
-        fontFamily: "dogicapixel",
-        fontSize: 9,
-        lineHeight: 14,
-        marginTop: 3,
-    },
-    hostBadge: {
-        backgroundColor: "#D7F1EB",
-        borderColor: "#1BA39C",
-        borderWidth: 2,
-        borderRadius: 999,
-        paddingHorizontal: 9,
-        paddingVertical: 6,
-    },
-    hostBadgeText: {
-        color: "#126F6A",
-        fontFamily: "dogicapixelbold",
-        fontSize: 8,
+        fontSize: 11,
+        marginBottom: 8,
     },
     inputContainer: {
         flexDirection: "row",
@@ -439,17 +390,15 @@ const style = StyleSheet.create({
         textAlign: "left",
     },
     addButton: {
-        minWidth: 96,
+        minWidth: 82,
         minHeight: 54,
-        paddingHorizontal: 14,
+        paddingHorizontal: 12,
         backgroundColor: "#1BA39C",
         borderColor: "#2C3E50",
         borderWidth: 2,
         borderRadius: 12,
-        flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        gap: 8,
     },
     addButtonDisabled: {
         opacity: 0.42,
@@ -462,12 +411,6 @@ const style = StyleSheet.create({
         color: "#FFFFFF",
         fontFamily: "dogicapixelbold",
         fontSize: 12,
-    },
-    plusIcon: {
-        color: "#FFFFFF",
-        fontFamily: "dogicapixelbold",
-        fontSize: 20,
-        lineHeight: 22,
     },
     waitingForPlayersContainer: {
         paddingBottom: 25,
