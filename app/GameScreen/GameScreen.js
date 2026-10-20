@@ -5,7 +5,6 @@ import ChallengePopup from './components/ChallengePopup';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
-import TourControl from './components/TourControl';
 import { getChallengeForStop, getChallengeIdForStop } from './constants/challenges';
 import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
@@ -447,22 +446,17 @@ const GameScreen = ({ route }) => {
       />
       <RaceProgressTracker
         activeTeamId={activePiece?.id}
-        gamePieces={gamePieces}
-        movingPieceId={movingPieceId}
-        passedLeg={passedLeg}
-        routeModel={routeModel}
-        state={state}
-        teamProgress={teamProgress}
-      />
-      <TourControl
-        activeTeamLabel={activePiece?.label}
         canRestart={!multiplayerEnabled || multiplayer.isHost}
         canRoll={canRoll}
+        gamePieces={gamePieces}
         isConnected={!multiplayerEnabled || multiplayer.isConnected}
-        lastRoll={lastRoll}
+        movingPieceId={movingPieceId}
         onRestart={handleRestart}
         onRoll={() => requestRoll()}
+        passedLeg={passedLeg}
+        routeModel={routeModel}
         state={multiplayerEnabled && multiplayer.isLoading ? 'loading' : state}
+        teamProgress={teamProgress}
       />
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}

@@ -96,14 +96,14 @@ This document distinguishes between the visible product concept and what the cur
 - Independent team-leader choices with shared readiness and synchronized entry into the game.
 - Landscape 3D board.
 - Interactive 3D die with pickup, drag, throw, bounce, and result animation.
-- Alternative HUD button for immediately generating a roll.
+- Compact tracker button for immediately generating a roll.
 - Animated vehicle movement along a curved route.
 - Animated country markers and camera following.
 - Configurable location challenge cards.
 - Duration-driven routes: short rooms snapshot 4 ordered route points, medium rooms snapshot 6, and long rooms use every authored point.
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
-- Bottom-centered race progress tracker with every team's vehicle position and the finish line.
+- Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll/restart action.
 - Active-game re-entry through the room PIN with canonical state restoration.
 - Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
 - Dedicated Game Settings screen (`SettingsScreen`) with audio/haptics toggles, party drinking modes (classic vs sips & dares), challenge timer pace, 3D board options, and interactive rules guide.
@@ -120,7 +120,7 @@ This document distinguishes between the visible product concept and what the cur
 
 `app/app/devGameRoute.js` contains `START_ON_DEV_GAME_SCREEN = false`, so development and production builds start by default on `Home`.
 
-In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`), offset to the left of right-hand header icons and the in-game TourControl box so all interactive buttons remain accessible. Long-pressing the badge or selecting a position in the portal cycles its corner placement. Its presence is controlled by:
+In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`), offset to the left of right-hand header icons and the in-game race tracker so all interactive buttons remain accessible. Long-pressing the badge or selecting a position in the portal cycles its corner placement. Its presence is controlled by:
 
 1. `EXPO_PUBLIC_ENABLE_DEV_PORTAL` in `.env` or `.env.local` (set to `true` or `false`).
 2. `__DEV__` React Native global flag (fallback when the env variable is omitted).
@@ -254,7 +254,7 @@ stateDiagram-v2
 
 | State | Meaning | Input allowed |
 |---|---|---|
-| `waiting` | Active team may roll | 3D die and HUD roll button enabled |
+| `waiting` | Active team may roll | 3D die and tracker roll button enabled |
 | `rolling` | 3D die is animating | Additional rolls blocked |
 | `moving` | Active vehicle is travelling | Roll controls blocked |
 | `challenge` | Landing challenge is visible | Only challenge completion advances play |
@@ -332,7 +332,6 @@ GameScreen root View
 ├── GameScene (full-screen GL Canvas)
 ├── GameHud (React Native absolute overlay)
 ├── RaceProgressTracker (React Native absolute overlay)
-├── TourControl (React Native absolute overlay)
 └── ChallengePopup (React Native modal-style absolute overlay)
 ```
 
@@ -463,8 +462,8 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Limits roll and challenge controls to the active team's leader and restart to the host; other devices render the same action in spectator mode.
 - Keeps development mock games local so the Dev Portal does not require Firebase.
 - Unlocks orientation on unmount.
-- The native HUD and turn control respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
-- Centers a safe-area-aware mini race tracker along the bottom. It maps each team's current stop to the route's arc-length progress, vertically staggers co-located vehicle icons, and marks the finish with a checkered flag.
+- The native HUD and race tracker respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
+- Places a narrow, safe-area-aware mini race tracker down the right edge. It maps each team's current stop to the route's arc-length progress, horizontally staggers co-located vehicle icons, marks the finish with a checkered flag, highlights the active team, and incorporates the compact roll/restart action.
 
 ### `AccountScreen`
 
@@ -698,11 +697,11 @@ The die keeps its high-frequency animation state in refs rather than React state
 10. `onRollComplete(result)` tells `GameScreen` to lay out the animated path and move the vehicle.
 11. The physical die flies toward the screen at a restrained scale, rotates the rolled face toward the camera, holds briefly, and fades out in place over 1.2 seconds.
 
-The throw lasts 1.75 seconds; the first 42% is airborne. During the fade, only the rolled face remains rendered so pips from the other transparent faces cannot bleed through as a false second result. Physical-die rolls delay vehicle motion until the 1.2-second result animation has faded out. The die remains hidden during movement and challenges, then reappears at its idle position when rolling is enabled for the next turn. The HUD roll shortcut has no result animation and keeps the normal route-reveal timing.
+The throw lasts 1.75 seconds; the first 42% is airborne. During the fade, only the rolled face remains rendered so pips from the other transparent faces cannot bleed through as a false second result. Physical-die rolls delay vehicle motion until the 1.2-second result animation has faded out. The die remains hidden during movement and challenges, then reappears at its idle position when rolling is enabled for the next turn. The tracker roll shortcut has no result animation and keeps the normal route-reveal timing.
 
-### HUD roll shortcut
+### Tracker roll shortcut
 
-The `Roll Dice` button in `TourControl` calls `GameScreen.handleRoll()` directly. It generates the same random range and triggers the animated route path and vehicle movement without animating the 3D die. This is useful as a fallback when pointer interaction is inconvenient.
+The compact `ROLL` button at the bottom of `RaceProgressTracker` calls `GameScreen.requestRoll()` directly. It generates the same random range and triggers the animated route path and vehicle movement without animating the 3D die. In the completed state the same button becomes the host-only `RESTART` action. This preserves a touch fallback without a separate turn panel.
 
 ---
 
@@ -1255,8 +1254,8 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 7. Confirm the camera stays in overview during the path reveal, follows during vehicle movement, and returns to overview afterward.
 8. Confirm the appropriate challenge appears.
 9. Press `DONE / NEXT TURN` and confirm Team 2 becomes active.
-10. Use the HUD roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
-11. Confirm the bottom-center race tracker shows every team's vehicle, advances the moving team as it crosses stops, and keeps the finish flag visible without covering the turn controls.
+10. Use the tracker roll button and confirm it lays out the animated route path and moves without a 3D die throw animation.
+11. Confirm the narrow right-side race tracker shows every team's vehicle, advances the moving team upward as it crosses stops, keeps the finish flag visible, and exposes the compact roll/restart action without a separate turn box.
 12. Restore `START_ON_DEV_GAME_SCREEN` to `false` after the focused board test.
 
 ### Smoke test: full multiplayer flow
@@ -1464,8 +1463,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
-| `components/RaceProgressTracker.js` | Bottom-centered team route progress and finish-line overlay |
-| `components/TourControl.js` | Roll/restart control panel |
+| `components/RaceProgressTracker.js` | Compact right-side team route progress, finish-line, and roll/restart overlay |
 | `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
 | `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |
