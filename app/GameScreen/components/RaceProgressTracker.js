@@ -85,7 +85,6 @@ const RaceProgressTracker = ({
     >
       <View style={styles.panel}>
         <View style={styles.finishHeader} pointerEvents="none">
-          <Text style={styles.finishLabel}>FINISH</Text>
           <FinishFlag />
         </View>
 
@@ -161,19 +160,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 241, 205, 0.92)',
   },
   finishHeader: {
-    height: 24,
+    height: 18,
     alignItems: 'center',
-  },
-  finishLabel: {
-    color: '#D71920',
-    fontFamily: 'dogicapixelbold',
-    fontSize: 5,
-    letterSpacing: 0.2,
   },
   finishFlag: {
     width: 18,
     height: 17,
-    marginTop: 1,
   },
   flagPole: {
     position: 'absolute',
