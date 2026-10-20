@@ -15,6 +15,10 @@ const markerMaterial = (color) => new THREE.MeshStandardMaterial({
 const ACTIVE_MARKER_MATERIAL = markerMaterial(0xffd700);
 const INACTIVE_MARKER_MATERIAL = markerMaterial(0xe53935);
 
+// Marker scaling for mobile readability
+const ACTIVE_MARKER_SCALE = 0.175;
+const INACTIVE_MARKER_SCALE = 0.14;
+
 const CountryMarker = ({ position, active }) => {
   const markerRef = useRef();
   const activeRingRef = useRef();
@@ -55,7 +59,7 @@ const CountryMarker = ({ position, active }) => {
     <group
       ref={markerRef}
       position={[position.x, position.y, MAP_Z + 0.08]}
-      scale={active ? 0.12 : 0.095}
+      scale={active ? ACTIVE_MARKER_SCALE : INACTIVE_MARKER_SCALE}
     >
       <mesh position={[0, 0, -0.065]}>
         <circleGeometry args={[active ? 0.54 : 0.44, 28]} />
