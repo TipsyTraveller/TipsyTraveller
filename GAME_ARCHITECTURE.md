@@ -175,7 +175,7 @@ The board route is an ordered collection of destination coordinates joined by tr
 
 Stop index `0` is the initial position. Every following index represents another destination along the route. Intermediate stops may resolve to a challenge, while the final stop completes that team’s journey. The exact number of stops and their names are content choices and can change without altering the basic turn state machine.
 
-The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and serves the new Europe catalogue instead; the next Dev Portal content edit persists the migrated catalogue. Existing room snapshots keep their original stops, and their former Western Europe board coordinates are remapped into the widened Europe viewport when loaded.
+The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and serves the new Europe catalogue instead; the next Dev Portal content edit persists the migrated catalogue. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
 
 ### Roll behavior
 
@@ -569,10 +569,13 @@ z = map Z + clearance
 ```
 
 The viewport spans Iceland through Kazakhstan and the Caucasus, and from the
-Nordic countries through Cyprus. Bundled country locations start from capital
-longitude/latitude values converted through a calibration for the source SVG;
-the resulting positions use the same board-coordinate shape as authored
-Firebase points.
+Nordic countries through Cyprus. Because the source artwork does not expose a
+reliable geographic projection, every bundled country pin is manually authored
+in source-SVG coordinates against the rendered country outlines. The bundled
+stops carry a `positionVersion`; known catalogue entries with older or missing
+versions are upgraded in memory to the current positions while preserving their
+order, names, and challenge content. The resulting positions use the same
+board-coordinate shape as authored Firebase points.
 
 ### Map plane
 
