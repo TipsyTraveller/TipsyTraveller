@@ -7,7 +7,7 @@ import {
   updateCountryStop,
 } from '../../GameScreen/services/countryStopsService';
 import { devEventBus } from './devEventBus';
-import { startInstantGameScreen } from './devNavigation';
+import { getCurrentRouteInfo, startInstantGameScreen } from './devNavigation';
 
 export default function CountryStopsTab({ onClose }) {
   const [stops, setStops] = useState([]);
@@ -20,11 +20,26 @@ export default function CountryStopsTab({ onClose }) {
   useEffect(() => subscribeCountryStops(setStops, (nextError) => setError(nextError.message)), []);
 
   const beginPlacement = async (request) => {
+    const latestStop = request.stop
+      ? stops.find((item) => item.id === request.stop.id) || request.stop
+      : null;
+    const nextRequest = latestStop ? { ...request, stop: latestStop } : request;
     onClose();
-    await startInstantGameScreen({ duration: 'long', routeStops: stops });
-    setTimeout(() => {
-      devEventBus.emit('dev:beginCountryPlacement', { ...request, countryStops: stops });
-    }, 250);
+
+    const routeInfo = getCurrentRouteInfo();
+    const activeGameId = routeInfo?.params?.gameID;
+    const isAlreadyInDevGame = routeInfo?.name === 'GameScreen'
+      && (routeInfo?.params?.isDevGame || !activeGameId || activeGameId === 'DEV-INSTANT' || activeGameId === 'DEV-MOCK');
+
+    if (!isAlreadyInDevGame) {
+      await startInstantGameScreen({ duration: 'long', routeStops: stops });
+      setTimeout(() => {
+        devEventBus.emit('dev:beginCountryPlacement', { ...nextRequest, countryStops: stops });
+      }, 250);
+      return;
+    }
+
+    devEventBus.emit('dev:beginCountryPlacement', { ...nextRequest, countryStops: stops });
   };
 
   const confirmRemove = (stop) => Alert.alert(

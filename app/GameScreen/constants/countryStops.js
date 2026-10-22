@@ -123,23 +123,39 @@ const remapLegacyPosition = ({ x, y }) => {
 export const normalizeCountryStops = (value) => {
   const source = toList(value);
   const stops = source.length >= 2 ? source : DEFAULT_COUNTRY_STOPS;
-  return stops.map((stop, index) => ({
-    id: String(stop.id || `stop-${index}`),
-    name: String(stop.name || `Stop ${index + 1}`),
-    code: stop.code ? String(stop.code).toUpperCase().slice(0, 3) : undefined,
-    city: stop.city ? String(stop.city) : undefined,
-    landmark: stop.landmark ? String(stop.landmark) : undefined,
-    order: Number.isFinite(Number(stop.order)) ? Number(stop.order) : index,
-    position: { x: Number(stop.position?.x) || 0, y: Number(stop.position?.y) || 0 },
-    positionVersion: Number(stop.positionVersion) || undefined,
-    accent: stop.accent || '#1ba39c',
-    challenges: toList(stop.challenges).map((challenge, challengeIndex) => ({
-      id: String(challenge.id || `challenge-${challengeIndex}`),
-      title: String(challenge.title || 'Border Check'),
-      prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
-      penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
-    })),
-  })).sort((left, right) => left.order - right.order)
+  return stops.map((stop, index) => {
+    const normalized = {
+      id: String(stop.id || `stop-${index}`),
+      name: String(stop.name || `Stop ${index + 1}`),
+      order: Number.isFinite(Number(stop.order)) ? Number(stop.order) : index,
+      position: { x: Number(stop.position?.x) || 0, y: Number(stop.position?.y) || 0 },
+      accent: stop.accent || '#1ba39c',
+      challenges: toList(stop.challenges).map((challenge, challengeIndex) => ({
+        id: String(challenge.id || `challenge-${challengeIndex}`),
+        title: String(challenge.title || 'Border Check'),
+        prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
+        penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
+      })),
+    };
+
+    if (stop.code) {
+      normalized.code = String(stop.code).toUpperCase().slice(0, 3);
+    }
+    if (stop.city) {
+      normalized.city = String(stop.city);
+    }
+    if (stop.landmark) {
+      normalized.landmark = String(stop.landmark);
+    }
+    if (Number.isFinite(Number(stop.positionVersion))) {
+      normalized.positionVersion = Number(stop.positionVersion);
+    }
+    if (Number.isFinite(Number(stop.updatedAt))) {
+      normalized.updatedAt = Number(stop.updatedAt);
+    }
+
+    return normalized;
+  }).sort((left, right) => left.order - right.order)
     .map((stop, index) => ({ ...stop, order: index }));
 };
 
