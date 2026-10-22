@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
-import { DONE_LOOK, DONE_POS } from '../constants/camera';
+import { OVERVIEW_LEAD, OVERVIEW_OFFSET } from '../constants/camera';
 import { getChallengeTimer, getCountryFlag, getPenaltyTag } from '../constants/challenges';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
@@ -24,6 +24,7 @@ const EASY_EASE = Easing.bezier(0.42, 0, 0.58, 1);
 
 const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 const projectedPoint = new THREE.Vector3();
+const projectionLookAt = new THREE.Vector3();
 
 const getMarkerScreenOffset = (routeModel, stopIndex, width, height) => {
   const stopPosition = routeModel.route[stopIndex] || routeModel.route[1] || routeModel.route[0];
@@ -32,8 +33,9 @@ const getMarkerScreenOffset = (routeModel, stopIndex, width, height) => {
   }
 
   projectionCamera.aspect = width / height;
-  projectionCamera.position.copy(DONE_POS);
-  projectionCamera.lookAt(DONE_LOOK);
+  projectionLookAt.copy(stopPosition).add(OVERVIEW_LEAD);
+  projectionCamera.position.copy(projectionLookAt).add(OVERVIEW_OFFSET);
+  projectionCamera.lookAt(projectionLookAt);
   projectionCamera.updateProjectionMatrix();
   projectionCamera.updateMatrixWorld(true);
 
