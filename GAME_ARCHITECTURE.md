@@ -690,6 +690,8 @@ The die keeps its high-frequency animation state in refs rather than React state
 | `result` | Flies the die toward the camera with the rolled face forward, then fades it out |
 | `hidden` | Keeps the die off the board during movement and challenges until rolling is enabled again |
 
+The idle die is positioned on the camera's center ray at a fixed viewing distance. Its drag bounds and board landing area move with that screen-relative anchor, so regional overview panning does not leave the die floating over an unrelated part of the map or outside the visible play area.
+
 ### Interaction sequence
 
 1. Pointer down on the die calls `beginPickup`.
