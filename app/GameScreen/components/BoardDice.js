@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber/native';
+import { useFrame, useThree } from '@react-three/fiber/native';
 import { RoundedBox } from '@react-three/drei/native';
 import * as THREE from 'three';
 import { DICE_BOUNDS, DICE_RESULT_DURATION } from '../constants/diceBounds';
@@ -11,14 +11,15 @@ const DICE_Z = MAP_Z + MAP_RELIEF_DEPTH + HALF_SIZE + 0.025;
 const LAND_POSITION = new THREE.Vector3(-0.15, -0.65, DICE_Z);
 const IDLE_CENTER = new THREE.Vector3(-0.5, -3.55, 0);
 const IDLE_Z = 2.0;
+const IDLE_SCREEN_DISTANCE = 4;
 const IDLE_BOB_HEIGHT = 0.065;
-const HOLD_Z = 2.15;
-const HOLD_PLANE = new THREE.Plane(new THREE.Vector3(0, 0, 1), -HOLD_Z);
+const HOLD_Z_OFFSET = 0.15;
+const HOLD_PLANE = new THREE.Plane(new THREE.Vector3(0, 0, 1));
 const HOLD_BOUNDS = {
-  minX: -2.2,
-  maxX: 1.8,
-  minY: -4.4,
-  maxY: -1.4,
+  minX: -1.7,
+  maxX: 2.3,
+  minY: -0.85,
+  maxY: 2.15,
 };
 const THROW_DURATION = 1.75;
 const AIRBORNE_END = 0.42;
@@ -105,9 +106,17 @@ const nearestEquivalentEuler = (targetRotation, referenceRotation) => new THREE.
   nearestEquivalentAngle(targetRotation[1], referenceRotation.y),
   nearestEquivalentAngle(targetRotation[2], referenceRotation.z)
 );
-const clampToMap = (point) => new THREE.Vector3(
-  THREE.MathUtils.clamp(point.x, DICE_BOUNDS.minX + HALF_SIZE, DICE_BOUNDS.maxX - HALF_SIZE),
-  THREE.MathUtils.clamp(point.y, DICE_BOUNDS.minY + HALF_SIZE, DICE_BOUNDS.maxY - HALF_SIZE),
+const clampToMap = (point, offset) => new THREE.Vector3(
+  THREE.MathUtils.clamp(
+    point.x,
+    DICE_BOUNDS.minX + HALF_SIZE + offset.x,
+    DICE_BOUNDS.maxX - HALF_SIZE + offset.x
+  ),
+  THREE.MathUtils.clamp(
+    point.y,
+    DICE_BOUNDS.minY + HALF_SIZE + offset.y,
+    DICE_BOUNDS.maxY - HALF_SIZE + offset.y
+  ),
   point.z
 );
 
@@ -116,26 +125,30 @@ const PLANE_POINT = new THREE.Vector3();
 const HOLD_POINT = new THREE.Vector3();
 const DRAG_DELTA = new THREE.Vector3();
 const IDLE_TARGET = new THREE.Vector3();
+const IDLE_OFFSET = new THREE.Vector3();
+const LAND_TARGET = new THREE.Vector3();
 const LABEL_CAMERA_UP = new THREE.Vector3();
 const LABEL_OFFSET_Y = 0.58;
 
-const clampToHoldPlane = (point, target) => target.set(
-  THREE.MathUtils.clamp(point.x, HOLD_BOUNDS.minX, HOLD_BOUNDS.maxX),
-  THREE.MathUtils.clamp(point.y, HOLD_BOUNDS.minY, HOLD_BOUNDS.maxY),
-  HOLD_Z
+const clampToHoldPlane = (point, target, center) => target.set(
+  THREE.MathUtils.clamp(point.x, center.x + HOLD_BOUNDS.minX, center.x + HOLD_BOUNDS.maxX),
+  THREE.MathUtils.clamp(point.y, center.y + HOLD_BOUNDS.minY, center.y + HOLD_BOUNDS.maxY),
+  center.z + HOLD_Z_OFFSET
 );
 
 // Returns a shared scratch vector; clone or copy it before storing it.
-const getHoldPlanePoint = (event, fallback) => {
+const getHoldPlanePoint = (event, fallback, center) => {
+  HOLD_PLANE.constant = -(center.z + HOLD_Z_OFFSET);
+
   if (event?.ray?.intersectPlane(HOLD_PLANE, PLANE_POINT)) {
-    return clampToHoldPlane(PLANE_POINT, HOLD_POINT);
+    return clampToHoldPlane(PLANE_POINT, HOLD_POINT, center);
   }
 
   if (event?.point) {
-    return clampToHoldPlane(event.point, HOLD_POINT);
+    return clampToHoldPlane(event.point, HOLD_POINT, center);
   }
 
-  return HOLD_POINT.copy(fallback).setZ(HOLD_Z);
+  return HOLD_POINT.copy(fallback).setZ(center.z + HOLD_Z_OFFSET);
 };
 
 // Dice pips share one geometry and material across all faces.
@@ -285,6 +298,7 @@ const ThrowMeLabel = ({ labelRef }) => (
 );
 
 const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollAction }) => {
+  const { camera } = useThree();
   const diceRef = useRef();
   const faceRefs = useRef({});
   const labelRef = useRef();
@@ -292,7 +306,7 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
     mode: 'idle',
     startTime: 0,
     idleBasePosition: IDLE_POSITION.clone(),
-    holdTarget: LAND_POSITION.clone().setZ(HOLD_Z),
+    holdTarget: LAND_POSITION.clone().setZ(IDLE_POSITION.z + HOLD_Z_OFFSET),
     startPosition: LAND_POSITION.clone(),
     impactPosition: LAND_POSITION.clone(),
     endPosition: LAND_POSITION.clone(),
@@ -422,7 +436,11 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
     });
     setVisibleFaces();
 
-    const holdTarget = getHoldPlanePoint(event, diceRef.current.position).clone();
+    const holdTarget = getHoldPlanePoint(
+      event,
+      diceRef.current.position,
+      stateRef.current.idleBasePosition
+    ).clone();
 
     stateRef.current = {
       ...stateRef.current,
@@ -437,7 +455,11 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
   const updateHeldPosition = (event) => {
     if (stateRef.current.mode !== 'held') return;
 
-    const nextDragPoint = getHoldPlanePoint(event, stateRef.current.holdTarget);
+    const nextDragPoint = getHoldPlanePoint(
+      event,
+      stateRef.current.holdTarget,
+      stateRef.current.idleBasePosition
+    );
     const dragDelta = DRAG_DELTA.copy(nextDragPoint).sub(stateRef.current.lastDragPoint);
 
     if (dragDelta.lengthSq() > 0.0001) {
@@ -468,20 +490,24 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
     }
 
     const throwStrength = THREE.MathUtils.clamp(stateRef.current.dragVelocity.length() * 7, 0, 1);
-    const holdOffsetX = stateRef.current.holdTarget.x - IDLE_CENTER.x;
-    const holdOffsetY = stateRef.current.holdTarget.y - IDLE_CENTER.y;
+    const holdOffsetX = stateRef.current.holdTarget.x - stateRef.current.idleBasePosition.x;
+    const holdOffsetY = stateRef.current.holdTarget.y - stateRef.current.idleBasePosition.y;
+    const idleOffset = IDLE_OFFSET.copy(stateRef.current.idleBasePosition).sub(IDLE_POSITION);
+    const landPosition = LAND_TARGET.copy(LAND_POSITION);
+    landPosition.x += idleOffset.x;
+    landPosition.y += idleOffset.y;
     const throwBoost = 0.25 + throwStrength * 0.35;
     const impactPosition = clampToMap(new THREE.Vector3(
-      LAND_POSITION.x + holdOffsetX * 1.2 + throwDirection.x * throwBoost,
-      LAND_POSITION.y + holdOffsetY * 1.2 + throwDirection.y * throwBoost,
+      landPosition.x + holdOffsetX * 1.2 + throwDirection.x * throwBoost,
+      landPosition.y + holdOffsetY * 1.2 + throwDirection.y * throwBoost,
       DICE_Z
-    ));
+    ), idleOffset);
     const rollDistance = 0.42 + throwStrength * 0.24 + Math.random() * 0.1;
     const endPosition = clampToMap(new THREE.Vector3(
       impactPosition.x + throwDirection.x * rollDistance,
       impactPosition.y + throwDirection.y * rollDistance,
       DICE_Z
-    ));
+    ), idleOffset);
     const spinRotation = new THREE.Euler(
       diceRef.current.rotation.x + Math.PI * 2.35,
       diceRef.current.rotation.y + Math.PI * 2.75,
@@ -589,17 +615,21 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
 
     if (stateRef.current.mode === 'idle') {
       const bob = Math.sin(clock.elapsedTime * 2.2) * IDLE_BOB_HEIGHT;
-      const targetPosition = IDLE_TARGET.copy(stateRef.current.idleBasePosition);
+      const targetPosition = IDLE_TARGET
+        .set(0, 0, -IDLE_SCREEN_DISTANCE)
+        .applyQuaternion(camera.quaternion)
+        .add(camera.position);
 
-      targetPosition.z += bob;
-      diceRef.current.position.lerp(targetPosition, Math.min(delta * 5, 1));
+      stateRef.current.idleBasePosition.copy(targetPosition);
+      LABEL_CAMERA_UP.set(0, 1, 0).applyQuaternion(camera.quaternion);
+      targetPosition.addScaledVector(LABEL_CAMERA_UP, bob);
+      diceRef.current.position.copy(targetPosition);
       diceRef.current.rotation.x += delta * 0.45;
       diceRef.current.rotation.y += delta * 0.7;
       diceRef.current.rotation.z += delta * 0.25;
 
       if (labelRef.current) {
         labelRef.current.visible = enabled;
-        LABEL_CAMERA_UP.set(0, 1, 0).applyQuaternion(camera.quaternion);
         labelRef.current.position
           .copy(diceRef.current.position)
           .addScaledVector(LABEL_CAMERA_UP, LABEL_OFFSET_Y);

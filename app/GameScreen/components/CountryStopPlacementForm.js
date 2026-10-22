@@ -21,13 +21,32 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
 
   if (!position) {
     return (
-      <View style={styles.banner}>
-        <Text style={styles.bannerText}>
-          {mode === 'move' ? `CLICK THE MAP TO MOVE ${stop?.name?.toUpperCase()}` : 'CLICK THE MAP TO PLACE THE NEW STOP'}
-        </Text>
-        <TouchableOpacity onPress={onCancel} style={styles.cancelCompact}>
-          <Text style={styles.buttonText}>CANCEL</Text>
-        </TouchableOpacity>
+      <View style={styles.bannerContainer}>
+        <View style={[styles.banner, mode === 'move' && styles.bannerMove]}>
+          <View style={styles.bannerContent}>
+            <View style={styles.bannerHeaderRow}>
+              <View style={[styles.beaconDot, mode === 'move' && styles.beaconDotMove]} />
+              <Text style={[styles.bannerText, mode === 'move' && styles.bannerTextMove]}>
+                {mode === 'move'
+                  ? `MOVING: ${stop?.name?.toUpperCase()}`
+                  : 'CLICK THE MAP TO PLACE NEW STOP'}
+              </Text>
+            </View>
+            {mode === 'move' ? (
+              <Text style={styles.bannerSubtext}>
+                Connected pin is bouncing in cyan with a name badge. Click map to set new position.
+              </Text>
+            ) : null}
+            {mode === 'move' && stop?.position ? (
+              <Text style={styles.coordinatesText}>
+                CURRENT PIN: X {stop.position.x.toFixed(2)}, Y {stop.position.y.toFixed(2)}
+              </Text>
+            ) : null}
+          </View>
+          <TouchableOpacity onPress={onCancel} style={styles.cancelCompact}>
+            <Text style={styles.buttonText}>CANCEL</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -78,9 +97,75 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
 }
 
 const styles = StyleSheet.create({
-  banner: { position: 'absolute', top: 18, alignSelf: 'center', zIndex: 100000, backgroundColor: '#131c24', borderColor: '#ffd700', borderWidth: 2, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 16 },
-  bannerText: { color: '#ffd700', fontFamily: 'dogicapixelbold', fontSize: 10 },
-  cancelCompact: { backgroundColor: '#c0392b', borderRadius: 5, padding: 8 },
+  bannerContainer: {
+    position: 'absolute',
+    top: 14,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 100000,
+    pointerEvents: 'box-none',
+  },
+  banner: {
+    backgroundColor: '#131c24',
+    borderColor: '#ffd700',
+    borderWidth: 2,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  bannerMove: {
+    borderColor: '#00e5ff',
+    shadowColor: '#00e5ff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  bannerContent: {
+    gap: 3,
+  },
+  bannerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  beaconDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ffd700',
+  },
+  beaconDotMove: {
+    backgroundColor: '#00e5ff',
+  },
+  bannerText: {
+    color: '#ffd700',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 9.5,
+  },
+  bannerTextMove: {
+    color: '#00e5ff',
+  },
+  bannerSubtext: {
+    color: '#a0aec0',
+    fontFamily: 'dogicapixel',
+    fontSize: 7.5,
+  },
+  coordinatesText: {
+    color: '#ffd700',
+    fontFamily: 'dogicapixel',
+    fontSize: 7.5,
+  },
+  cancelCompact: {
+    backgroundColor: '#c0392b',
+    borderRadius: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 100000, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center' },
   card: { width: '92%', maxWidth: 520, backgroundColor: '#1a2530', borderWidth: 2, borderColor: '#ffd700', borderRadius: 12, padding: 18 },
   heading: { color: '#ffd700', fontFamily: 'dogicapixelbold', fontSize: 13, marginBottom: 6 },
