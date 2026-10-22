@@ -141,7 +141,15 @@ const GameScene = memo(({
     <Suspense fallback={<CountryMarkersFallback currentLeg={currentLeg} routeModel={routeModel} targetLeg={moveTargetLeg} />}>
       <CountryMarkers currentLeg={currentLeg} routeModel={routeModel} targetLeg={moveTargetLeg} />
     </Suspense>
-    <CameraController mode={cameraMode} targetRef={targetRef} />
+    <CameraController
+      mode={cameraMode}
+      overviewTargetPosition={routeModel.route[Math.min(
+        driving && moveTargetLeg > currentLeg ? moveTargetLeg : currentLeg + 1,
+        routeModel.finalStopIndex
+      )]}
+      pieceRefs={pieceRefs}
+      targetRef={targetRef}
+    />
     <BoardDice
       enabled={diceEnabled}
       onRollComplete={onDiceRoll}

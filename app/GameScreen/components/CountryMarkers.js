@@ -19,7 +19,7 @@ const INACTIVE_MARKER_MATERIAL = markerMaterial(0xe53935);
 const ACTIVE_MARKER_SCALE = 0.175;
 const INACTIVE_MARKER_SCALE = 0.14;
 
-const CountryMarker = ({ position, active }) => {
+const CountryMarker = ({ position, active, compact }) => {
   const markerRef = useRef();
   const activeRingRef = useRef();
   const { scene } = useGLTF(MARKER_MODEL_SOURCE);
@@ -59,7 +59,7 @@ const CountryMarker = ({ position, active }) => {
     <group
       ref={markerRef}
       position={[position.x, position.y, MAP_Z + 0.08]}
-      scale={active ? ACTIVE_MARKER_SCALE : INACTIVE_MARKER_SCALE}
+      scale={(active ? ACTIVE_MARKER_SCALE : INACTIVE_MARKER_SCALE) * (compact ? 0.68 : 1)}
     >
       <mesh position={[0, 0, -0.065]}>
         <circleGeometry args={[active ? 0.54 : 0.44, 28]} />
@@ -87,6 +87,7 @@ const CountryMarkers = memo(({ currentLeg, routeModel, targetLeg }) => {
     ? targetLeg
     : currentLeg + 1;
   const activeMarker = Math.min(destinationLeg, routeModel.markers.length - 1);
+  const compact = routeModel.markers.length > 20;
 
   return (
     <>
@@ -95,6 +96,7 @@ const CountryMarkers = memo(({ currentLeg, routeModel, targetLeg }) => {
           key={`${position.x}-${position.y}-${index}`}
           position={position}
           active={index === activeMarker}
+          compact={compact}
         />
       ))}
     </>

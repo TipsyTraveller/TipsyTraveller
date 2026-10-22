@@ -9,13 +9,14 @@ export const MAP_RELIEF_DEPTH = 0.055;
 export const MAP_SOURCE_W = 1096;
 export const MAP_SOURCE_H = 780;
 
-// Western Europe bounds in the original world-map SVG. Route points stay in
-// that source coordinate system so a future route can widen the viewport.
+// Europe bounds in the original world-map SVG. The crop includes Iceland in
+// the west, Cyprus in the south, and the European/transcontinental route stops
+// through Russia, Kazakhstan, and the Caucasus in the east.
 export const MAP_VIEWPORT = {
-  minU: 445 / MAP_SOURCE_W,
-  maxU: 620 / MAP_SOURCE_W,
-  minV: 248 / MAP_SOURCE_H,
-  maxV: 379 / MAP_SOURCE_H,
+  minU: 440 / MAP_SOURCE_W,
+  maxU: 730 / MAP_SOURCE_W,
+  minV: 190 / MAP_SOURCE_H,
+  maxV: 408 / MAP_SOURCE_H,
 };
 
 export const MAP_VIEWPORT_WIDTH = MAP_VIEWPORT.maxU - MAP_VIEWPORT.minU;

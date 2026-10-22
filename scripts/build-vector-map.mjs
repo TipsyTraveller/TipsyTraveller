@@ -31,10 +31,10 @@ const RELIEF_DEPTH = 0.055;
 const BORDER_MARGIN = 28;
 const CURVE_DIVISIONS = 5;
 const BORDER_BOUNDS = {
-  minX: 445 - BORDER_MARGIN,
-  maxX: 620 + BORDER_MARGIN,
-  minY: 248 - BORDER_MARGIN,
-  maxY: 379 + BORDER_MARGIN,
+  minX: 440 - BORDER_MARGIN,
+  maxX: 730 + BORDER_MARGIN,
+  minY: 190 - BORDER_MARGIN,
+  maxY: 408 + BORDER_MARGIN,
 };
 
 globalThis.DOMParser = DOMParser;

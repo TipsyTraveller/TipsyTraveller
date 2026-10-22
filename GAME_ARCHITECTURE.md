@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 20 October 2026.
+> Last reviewed against the source code: 22 October 2026.
 
 ## Table of contents
 
@@ -101,6 +101,7 @@ This document distinguishes between the visible product concept and what the cur
 - Animated country markers and camera following.
 - Configurable location challenge cards.
 - Duration-driven routes: short rooms snapshot 4 ordered route points, medium rooms snapshot 6, and long rooms use every authored point.
+- The bundled long-route catalogue contains one stop for each of 51 European countries under an inclusive convention: sovereign states wholly or partly in Europe plus Kosovo. Each bundled stop has a country code, representative city, flag palette, and at least one original challenge.
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Active-game re-entry through the room PIN with canonical state restoration.
@@ -128,7 +129,7 @@ The Dev Portal provides four cross-platform capability suites plus one web-only 
 
 - **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
 - **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
-- **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, triggering country challenge cards (stops 1 through 7) directly, and resetting board state.
+- **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, triggering every challenge card in the active route directly, and resetting board state.
 - **Countries (web only)**: Lists the Firebase-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. The tab and placement UI are not exposed on iOS or Android.
 - **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
 
@@ -174,7 +175,7 @@ The board route is an ordered collection of destination coordinates joined by tr
 
 Stop index `0` is the initial position. Every following index represents another destination along the route. Intermediate stops may resolve to a challenge, while the final stop completes that team’s journey. The exact number of stops and their names are content choices and can change without altering the basic turn state machine.
 
-The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a full-length backwards-compatible fallback for rooms created before snapshots existed, while `constants/route.js` builds the runtime Three.js route model from the snapshot.
+The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and serves the new Europe catalogue instead; the next Dev Portal content edit persists the migrated catalogue. Existing room snapshots keep their original stops, and their former Western Europe board coordinates are remapped into the widened Europe viewport when loaded.
 
 ### Roll behavior
 
@@ -558,7 +559,7 @@ The map is treated as a 20-by-15 Three.js plane:
 
 Route coordinates are authored in the coordinate space of the original world
 map SVG. `svgPoint(x, y)` normalizes those source coordinates, `MAP_VIEWPORT`
-selects the Western Europe area used by the current route, and `uv(u, v)`
+selects the Europe area used by the current route, and `uv(u, v)`
 converts normalized coordinates into board coordinates:
 
 ```text
@@ -567,9 +568,11 @@ y = ((viewport center V - v) ÷ viewport height) × map height + map center Y
 z = map Z + clearance
 ```
 
-This enlarges the active Belgium–Portugal–Italy region without rewriting route
-data. A future wider route can change the viewport or restore the full-world
-framing while keeping the same source coordinates.
+The viewport spans Iceland through Kazakhstan and the Caucasus, and from the
+Nordic countries through Cyprus. Bundled country locations start from capital
+longitude/latitude values converted through a calibration for the source SVG;
+the resulting positions use the same board-coordinate shape as authored
+Firebase points.
 
 ### Map plane
 
@@ -581,7 +584,7 @@ framing while keeping the same source coordinates.
 
 The board no longer renders a raster map underneath the vector geometry. The
 GLB is scaled to the current `MAP_VIEWPORT` without rectangular clipping,
-keeping the active Western Europe route large while allowing the surrounding
+keeping the active Europe route large while allowing the surrounding
 ocean to continue naturally. The top land surface uses an unlit, non-tone-mapped cream material
 (`#FFF1CD`), keeping its warm palette color stable instead of being bleached
 toward white by ACES Filmic tone mapping or darkened by scene lighting. The
@@ -592,13 +595,13 @@ match.
 Because `assets/map.svg` stores long country paths using 1-decimal-place relative
 commands that accumulate slight drift along long perimeters (and caused the
 separate `st1` Eurasia silhouette to drift up to `1.5` SVG units relative to
-the `st2..st9` country paths in Western Europe), `scripts/build-vector-map.mjs`
+the `st2..st9` country paths in Europe), `scripts/build-vector-map.mjs`
 welds reversed twin curves between adjacent countries back to canonical shared
 knot positions before building all three meshes (`RaisedLand`, `LandTop`, and
 `CountryBorders`) from the exact same country shapes. Shared internal border
 segments are deduplicated while coastal and island outlines are preserved, so
 every country border and coastline edge has a clean line that aligns with the
-3D land surface. Border geometry is limited to the active Western Europe
+3D land surface. Border geometry is limited to the active Europe
 viewport to keep the mobile asset smaller. The GLB is prebuilt so Expo Go does
 not need to parse, triangulate, extrude, or weld the large SVG at runtime.
 The animated route path renders above the raised land and border geometry.
@@ -612,8 +615,9 @@ generated file is then run through `gltf-transform quantize`
 decoder; Draco and Meshopt were deliberately not used because they depend on
 WASM or a CDN download that is unverified on Hermes/Expo GL. The command is
 documented at the top of `scripts/build-vector-map.mjs`. Result: the GLB went
-from 10.3 MB to 1.8 MB and the board from about 224k to about 146k triangles per
-frame, measured on web only. The look was compared on web; verify on iOS and
+from 10.3 MB to about 1.9 MB and the board from about 224k to about 146k triangles per
+frame, measured on web before the Europe viewport expansion. The wider border
+crop adds line segments but does not add land triangles. The look was compared on web; verify on iOS and
 Android that quantized attributes render correctly.
 
 ### Route curve
@@ -650,7 +654,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 
 The camera has two modes:
 
-- `done`: smoothly returns to a fixed board overview (and stays in overview during the initial route-path reveal after a roll).
+- `done`: smoothly frames every team vehicle together with the active team's next destination (or rolled destination during the initial path reveal). The regional overview uses a moderate base zoom, widens only as the teams spread apart, and pans east with route progress instead of shrinking the entire Europe map into frame.
 - `follow`: follows the active vehicle from a wider fixed offset once the vehicle begins driving along the revealed path, keeping the car and nearby route context visible without filling the frame.
 
 Position and look-at target are interpolated every frame using exponential damping (`1 - Math.exp(-damping * delta)`), preventing frame-rate-dependent jumps.
@@ -763,7 +767,7 @@ Challenges are stored as a pool on each authored country stop. Each has:
 
 `constants/challenges.js` retains country flag presentation and backwards-compatible fallback challenges. In multiplayer, movement completion deterministically chooses a challenge from the landed stop using the action ID and stores both `challengeStop` and `challengeId` in the canonical gameplay record, so every client renders the same prompt.
 
-For the challenge ticket, `getChallengeForStop` also merges per-stop presentation data from `STOP_VISUALS`, keyed by default stop id: a two-letter country `code`, the destination `city`, and a `landmark` key for `CityLandmark`. Stops without an entry (for example custom stops) render without a landmark. The flag strip reads its colors from `COUNTRY_FLAGS`/`getCountryFlag` by country name. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds).
+For the challenge ticket, `getChallengeForStop` reads the two-letter country `code`, representative `city`, and optional `landmark` from the stop snapshot, falling back to `STOP_VISUALS` for legacy default stop IDs. Stops without a landmark render a flexible spacer instead. The flag strip reads its colors from `COUNTRY_FLAGS`/`getCountryFlag` by country name; the bundled 51-country catalogue has a palette for every country. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds).
 
 
 The popup is a React Native overlay styled as a two-part travel ticket. The navy stub on the left carries a thin vertical country-flag strip on its left edge, the "Country Challenge" label, the city landmark (`components/CityLandmark.js`, flat pixel silhouettes drawn with `react-native-svg`), country name, city name, team badge, and the Next Turn button. The cream body on the right carries the mission code (`MISSION FR-01`), optional timer chip, title, prompt, and a penalty row with a red tag plus the penalty sentence. A dashed perforation separates the two parts. On a phone (shorter screen side under 600 px) the ticket is exactly 75% of the screen width and 85% of its height (capped by the safe area). On larger screens it keeps the same landscape rectangle, the phone's aspect ratio (75% x 85% of an 844 x 390 screen, about 1.9:1), scaled to fit inside the same 75% x 85% box and at most 520 px tall. When the ticket is 280 px tall or more, the title and prompt use larger type, and the landmark is sized from the ticket height and centered in the stub. Landmarks currently exist for Paris, Madrid, Lisbon, Sevilla, Rome, Berlin, and Brussels; add a new key in `CityLandmark.js` and `STOP_VISUALS` to introduce another city.
@@ -1060,7 +1064,8 @@ Header buttons across setup screens (`Home`, `CreateGameScreen`, `HostName`, `Jo
 | `assets/icons/` | App and splash icons |
 | `assets/images/` | Beer difficulty graphics and UI icons |
 | `assets/map.svg` | Editable vector source for the country geometry (unused raster map exports were removed; see git history) |
-| `assets/models/world-map-vector.glb` | Prebuilt extruded world silhouette and Western Europe country borders |
+| `assets/models/world-map-vector.glb` | Prebuilt extruded world silhouette and Europe country borders |
+| `DRINKING_GAME_CHALLENGE_RESEARCH.md` | Public app-mechanic research and an original, safety-filtered challenge bank |
 | `scripts/build-vector-map.mjs` | Regenerates the runtime GLB from `assets/map.svg` |
 | `assets/models/location.glb` | Country pin geometry |
 | `assets/models/*.glb` | Selectable team vehicles |
@@ -1090,10 +1095,10 @@ runtime board asset.
 
 ### Mobile map budget
 
-The current board loads the approximately 4.5 MB vector-derived GLB rather than a
+The current board loads the approximately 1.9 MB quantized vector-derived GLB rather than a
 large raster map texture. The asset includes indexed extruded coastline geometry
-and deduplicated Western Europe shared-border lines. The renderer frames the
-Western Europe viewport at runtime, so zoomed views remain crisp without
+and deduplicated Europe shared-border lines. The renderer frames the
+Europe viewport at runtime, so zoomed views remain crisp without
 loading the `7016 × 4961` source export or duplicating route coordinates for a
 cropped asset. Antialiasing and a device-pixel ratio up to 1.5 are also enabled
 in Expo Go development sessions.
@@ -1349,6 +1354,7 @@ camera motion, GLTF appearance, and final 3D performance.
 4. Replacing materials may discard advanced GLTF material properties.
 5. The challenge animation, marker animation, dice animation, camera movement, and cars all run concurrently.
 6. `world-map-vector.glb` is generated from `map.svg`; run `npm run build:map` after changing the SVG or the generator settings, then quantize it (see the header of `scripts/build-vector-map.mjs`).
+7. The 51-stop long route renders 51 marker instances. Their shared materials and reduced dense-route scale limit overhead, but draw-call and physical-device performance still require profiling on representative iOS and Android hardware.
 
 ### Native/release readiness
 

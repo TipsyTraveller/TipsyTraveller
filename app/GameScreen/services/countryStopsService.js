@@ -1,8 +1,18 @@
 import { get, onValue, ref, runTransaction, set } from 'firebase/database';
 import { db } from '../../../firebaseConfig';
-import { DEFAULT_COUNTRY_STOPS, getStopsForDuration, normalizeCountryStops } from '../constants/countryStops';
+import {
+  DEFAULT_COUNTRY_STOPS,
+  getStopsForDuration,
+  isLegacyCountryCatalogue,
+  normalizeCountryStops,
+} from '../constants/countryStops';
 
 const CONTENT_PATH = 'gameContent/countryStops';
+const resolveAuthoredStops = (value) => (
+  isLegacyCountryCatalogue(value)
+    ? normalizeCountryStops(DEFAULT_COUNTRY_STOPS)
+    : normalizeCountryStops(value)
+);
 const serializeStops = (stops) => Object.fromEntries(
   normalizeCountryStops(stops).map((stop) => [stop.id, stop])
 );
@@ -10,7 +20,7 @@ const serializeStops = (stops) => Object.fromEntries(
 export const getCountryStops = async () => {
   try {
     const snapshot = await get(ref(db, CONTENT_PATH));
-    return snapshot.exists() ? normalizeCountryStops(snapshot.val()) : normalizeCountryStops(DEFAULT_COUNTRY_STOPS);
+    return snapshot.exists() ? resolveAuthoredStops(snapshot.val()) : normalizeCountryStops(DEFAULT_COUNTRY_STOPS);
   } catch (error) {
     console.warn('Unable to load authored country stops; using bundled defaults.', error);
     return normalizeCountryStops(DEFAULT_COUNTRY_STOPS);
@@ -19,7 +29,7 @@ export const getCountryStops = async () => {
 
 export const subscribeCountryStops = (callback, onError) => onValue(
   ref(db, CONTENT_PATH),
-  (snapshot) => callback(snapshot.exists() ? normalizeCountryStops(snapshot.val()) : normalizeCountryStops(DEFAULT_COUNTRY_STOPS)),
+  (snapshot) => callback(snapshot.exists() ? resolveAuthoredStops(snapshot.val()) : normalizeCountryStops(DEFAULT_COUNTRY_STOPS)),
   onError
 );
 
@@ -34,7 +44,7 @@ export const addCountryStop = async ({ accent, challenges, name, position }) => 
   const id = `stop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const nextStop = { id, name, accent, challenges, position };
   await runTransaction(ref(db, CONTENT_PATH), (current) => {
-    const stops = normalizeCountryStops(current);
+    const stops = resolveAuthoredStops(current);
     return serializeStops([...stops, { ...nextStop, order: stops.length }]);
   });
   return nextStop;
@@ -42,14 +52,14 @@ export const addCountryStop = async ({ accent, challenges, name, position }) => 
 
 export const updateCountryStop = async (stopId, changes) => {
   await runTransaction(ref(db, CONTENT_PATH), (current) => {
-    const stops = normalizeCountryStops(current);
+    const stops = resolveAuthoredStops(current);
     return serializeStops(stops.map((stop) => stop.id === stopId ? { ...stop, ...changes, id: stop.id } : stop));
   });
 };
 
 export const removeCountryStop = async (stopId) => {
   await runTransaction(ref(db, CONTENT_PATH), (current) => {
-    const stops = normalizeCountryStops(current);
+    const stops = resolveAuthoredStops(current);
     if (stops.length <= 2) return undefined;
     return serializeStops(stops.filter((stop) => stop.id !== stopId));
   });
@@ -57,7 +67,7 @@ export const removeCountryStop = async (stopId) => {
 
 export const reorderCountryStop = async (stopId, direction) => {
   await runTransaction(ref(db, CONTENT_PATH), (current) => {
-    const stops = normalizeCountryStops(current);
+    const stops = resolveAuthoredStops(current);
     const fromIndex = stops.findIndex((stop) => stop.id === stopId);
     const toIndex = fromIndex + direction;
     if (fromIndex < 0 || toIndex < 0 || toIndex >= stops.length) return undefined;
