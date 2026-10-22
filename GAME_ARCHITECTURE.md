@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 22 October 2026.
+> Last reviewed against the source code: 23 October 2026.
 
 ## Table of contents
 
@@ -660,7 +660,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 
 The camera has two modes:
 
-- `done`: smoothly frames every team vehicle together with the active team's next destination (or rolled destination during the initial path reveal). The regional overview uses a moderate base zoom, widens only as the teams spread apart, and pans east with route progress instead of shrinking the entire Europe map into frame.
+- `done`: smoothly frames every team vehicle together with the active team's next destination (or rolled destination during the initial path reveal). The regional overview uses a closer phone-friendly base zoom (`OVERVIEW_BASE_SCALE = 0.58`, `OVERVIEW_MAX_SCALE = 0.82`), widens gently as teams spread apart across the continent, and includes intelligent western ocean avoidance: when stops/vehicles are located in western Europe (Iceland, Ireland, UK, Portugal, Spain), the camera shifts look-at eastward so western destinations are framed comfortably near the left edge of the display with a natural coastal margin (`DESIRED_WEST_MARGIN = 0.85`) instead of centering directly on them into the Atlantic Ocean, keeping the European continent prominently visible across the phone display.
 - `follow`: follows the active vehicle from a wider fixed offset once the vehicle begins driving along the revealed path, keeping the car and nearby route context visible without filling the frame.
 
 Position and look-at target are interpolated every frame using exponential damping (`1 - Math.exp(-damping * delta)`), preventing frame-rate-dependent jumps.
@@ -746,8 +746,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - Disables frustum culling on child meshes.
 - Replaces materials with team-colored paint, dark parts, glass, or lights for the classic-style model.
 - For `preserveMaterials` models, web keeps a cloned PBR material while native Expo GL uses a lightweight unlit material backed by the already-loaded shared texture. Both paths set sRGB color space and disable `flipY`.
-- Computes a bounding box to center the model, align its lowest point to the ground, and normalize its footprint before applying a common preview or board scale.
-- Uses a smaller board-only scale than the selection preview so vehicles stay proportional to the route while driving.
+- Uses a smaller board-only scale (`BOARD_SCALE = 0.38`) than the selection preview (`PREVIEW_SCALE = 1.45`), keeping vehicles proportional to country markers, stops, and route curves without dominating smaller European territories. Parked cars use proportionate lateral spacing (`0.22`), and intermediate kickflip jumps use scaled height (`0.52`) and radius (`0.55`).
 - Disposes the materials it created when the prepared clone is replaced or unmounted (and, on web only, the cloned textures). Geometry and native textures belong to the cached GLTF and are never disposed here.
 
 ### Motion

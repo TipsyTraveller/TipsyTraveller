@@ -25,9 +25,9 @@ const GamePiecesFallback = ({ gamePieces, routeModel, teamProgress }) => (
       return (
         <mesh
           key={piece.id}
-          position={[position.x + index * 0.16, position.y - index * 0.12, MAP_Z + 0.16]}
+          position={[position.x + index * 0.12, position.y - index * 0.09, MAP_Z + 0.12]}
         >
-          <boxGeometry args={[0.3, 0.2, 0.16]} />
+          <boxGeometry args={[0.22, 0.14, 0.11]} />
           <meshStandardMaterial color={piece.color} roughness={0.5} />
         </mesh>
       );

@@ -5,12 +5,16 @@ export const DONE_POS = new THREE.Vector3(-0.55, -6.6, 4.6);
 export const DONE_LOOK = new THREE.Vector3(0, -0.2, MAP_Z);
 export const FOLLOW_OFFSET = DONE_POS.clone().sub(DONE_LOOK).multiplyScalar(0.38);
 
-const OVERVIEW_BASE_SCALE = 0.78;
-const OVERVIEW_MAX_SCALE = 0.98;
-const OVERVIEW_SPREAD_SCALE = 0.045;
+const OVERVIEW_BASE_SCALE = 0.58;
+const OVERVIEW_MAX_SCALE = 0.82;
+const OVERVIEW_SPREAD_SCALE = 0.035;
+const WEST_OCEAN_THRESHOLD = -4.0;
+const DESIRED_WEST_MARGIN = 0.85;
+const HALF_FOV_TAN = Math.tan(THREE.MathUtils.degToRad(25));
 const overviewBaseOffset = DONE_POS.clone().sub(DONE_LOOK);
 
 export const setOverviewCameraPose = ({
+  aspect = 2.0,
   cameraPosition,
   lookAt,
   pieceRefs,
@@ -37,13 +41,32 @@ export const setOverviewCameraPose = ({
 
   if (!pointCount) return false;
 
-  lookAt.set((minX + maxX) / 2, (minY + maxY) / 2, z);
   const spread = Math.max(maxX - minX, maxY - minY);
   const scale = THREE.MathUtils.clamp(
     OVERVIEW_BASE_SCALE + spread * OVERVIEW_SPREAD_SCALE,
     OVERVIEW_BASE_SCALE,
     OVERVIEW_MAX_SCALE
   );
+
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  let lookAtX = centerX;
+
+  if (minX < WEST_OCEAN_THRESHOLD) {
+    const viewHalfHeight = overviewBaseOffset.z * scale * HALF_FOV_TAN;
+    const viewHalfWidth = viewHalfHeight * aspect;
+    const naturalLeftEdge = centerX - viewHalfWidth;
+    const oceanMargin = minX - naturalLeftEdge;
+
+    if (oceanMargin > DESIRED_WEST_MARGIN) {
+      const excessOcean = oceanMargin - DESIRED_WEST_MARGIN;
+      const maxShift = Math.max(0, viewHalfWidth - DESIRED_WEST_MARGIN - (maxX - centerX));
+      const shift = Math.min(excessOcean, maxShift);
+      lookAtX = centerX + shift;
+    }
+  }
+
+  lookAt.set(lookAtX, centerY, z);
   cameraPosition.copy(overviewBaseOffset).multiplyScalar(scale).add(lookAt);
   return true;
 };

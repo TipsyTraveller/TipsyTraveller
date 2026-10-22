@@ -12,7 +12,7 @@ const FOLLOW_DAMPING = 4.5;
 const OVERVIEW_DAMPING = 3.2;
 
 const CameraController = ({ mode, overviewTargetPosition, pieceRefs, targetRef }) => {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const lookAt = useRef(DONE_LOOK.clone());
   const desiredCameraPosition = useMemo(() => new THREE.Vector3(), []);
   const desiredLookAt = useMemo(() => new THREE.Vector3(), []);
@@ -29,6 +29,7 @@ const CameraController = ({ mode, overviewTargetPosition, pieceRefs, targetRef }
       camera.position.lerp(desiredCameraPosition, alpha);
       lookAt.current.lerp(targetPosition, alpha);
     } else if (setOverviewCameraPose({
+      aspect: size?.width && size?.height ? size.width / size.height : camera.aspect,
       cameraPosition: desiredCameraPosition,
       lookAt: desiredLookAt,
       pieceRefs,
