@@ -457,6 +457,10 @@ const GameScreen = ({ route }) => {
   const canRoll = state === 'waiting'
     && !activeProgress.isDone
     && (!multiplayerEnabled || (multiplayer.canControlTurn && multiplayer.isConnected));
+  const movingStop = placementRequest?.mode === 'move' ? placementRequest.stop : null;
+  const movingStopIndex = movingStop
+    ? routeStops.findIndex((stop) => stop.id === movingStop.id)
+    : -1;
 
   return (
     <View style={styles.container}>
@@ -473,6 +477,8 @@ const GameScreen = ({ route }) => {
         moveFromLeg={moveStartLeg}
         moveStartDelay={moveStartDelay}
         moveTargetLeg={moveTargetLeg ?? currentLeg}
+        movingMarkerIndex={movingStopIndex}
+        movingMarkerStop={movingStop}
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
         onDiceRollStart={stableDiceRollStart}

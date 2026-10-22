@@ -35,26 +35,32 @@ const GamePiecesFallback = ({ gamePieces, routeModel, teamProgress }) => (
   </>
 );
 
-const CountryMarkersFallback = ({ currentLeg, routeModel, targetLeg }) => {
+const CountryMarkersFallback = ({ currentLeg, movingMarkerIndex = -1, routeModel, targetLeg }) => {
+  const isMovePlacement = movingMarkerIndex >= 0;
   const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
     ? targetLeg
     : currentLeg + 1;
-  const activeMarker = Math.min(destinationLeg, routeModel.markers.length - 1);
+  const activeMarker = isMovePlacement
+    ? -1
+    : Math.min(destinationLeg, routeModel.markers.length - 1);
 
   return (
     <>
-      {routeModel.markers.map((position, index) => (
-        <group key={`${position.x}-${position.y}-${index}`} position={[position.x, position.y, MAP_Z + 0.09]}>
-          <mesh>
-            <circleGeometry args={[index === activeMarker ? 0.145 : 0.11, 16]} />
-            <meshBasicMaterial color={index === activeMarker ? '#FFD700' : '#E53935'} />
-          </mesh>
-          <mesh position={[0, 0, -0.003]}>
-            <ringGeometry args={[index === activeMarker ? 0.16 : 0.12, index === activeMarker ? 0.22 : 0.17, 16]} />
-            <meshBasicMaterial color="#1BA39C" />
-          </mesh>
-        </group>
-      ))}
+      {routeModel.markers.map((position, index) => {
+        const isMoving = isMovePlacement && index === movingMarkerIndex;
+        return (
+          <group key={`${position.x}-${position.y}-${index}`} position={[position.x, position.y, MAP_Z + 0.09]}>
+            <mesh>
+              <circleGeometry args={[isMoving ? 0.22 : (index === activeMarker ? 0.145 : 0.11), 16]} />
+              <meshBasicMaterial color={isMoving ? '#00E5FF' : (index === activeMarker ? '#FFD700' : '#E53935')} />
+            </mesh>
+            <mesh position={[0, 0, -0.003]}>
+              <ringGeometry args={[isMoving ? 0.24 : (index === activeMarker ? 0.16 : 0.12), isMoving ? 0.34 : (index === activeMarker ? 0.22 : 0.17), 16]} />
+              <meshBasicMaterial color={isMoving ? '#00E5FF' : '#1BA39C'} />
+            </mesh>
+          </group>
+        );
+      })}
     </>
   );
 };
@@ -72,6 +78,8 @@ const GameScene = memo(({
   moveFromLeg,
   moveStartDelay,
   moveTargetLeg,
+  movingMarkerIndex = -1,
+  movingMarkerStop = null,
   movingPieceId,
   moveTargets,
   onDiceRoll,
@@ -138,16 +146,35 @@ const GameScene = memo(({
         vehicleInMotion={vehicleInMotion}
       />
     </Suspense>
-    <Suspense fallback={<CountryMarkersFallback currentLeg={currentLeg} routeModel={routeModel} targetLeg={moveTargetLeg} />}>
-      <CountryMarkers currentLeg={currentLeg} routeModel={routeModel} targetLeg={moveTargetLeg} />
+    <Suspense fallback={
+      <CountryMarkersFallback
+        currentLeg={currentLeg}
+        movingMarkerIndex={movingMarkerIndex}
+        routeModel={routeModel}
+        targetLeg={moveTargetLeg}
+      />
+    }>
+      <CountryMarkers
+        currentLeg={currentLeg}
+        movingMarkerIndex={movingMarkerIndex}
+        movingMarkerStop={movingMarkerStop}
+        onMapPointSelected={onMapPointSelected}
+        placementActive={placementActive}
+        routeModel={routeModel}
+        targetLeg={moveTargetLeg}
+      />
     </Suspense>
     <CameraController
       mode={cameraMode}
-      overviewTargetPosition={routeModel.route[Math.min(
-        driving && moveTargetLeg > currentLeg ? moveTargetLeg : currentLeg + 1,
-        routeModel.finalStopIndex
-      )]}
-      pieceRefs={pieceRefs}
+      overviewTargetPosition={
+        movingMarkerIndex >= 0 && routeModel.route[movingMarkerIndex]
+          ? routeModel.route[movingMarkerIndex]
+          : routeModel.route[Math.min(
+              driving && moveTargetLeg > currentLeg ? moveTargetLeg : currentLeg + 1,
+              routeModel.finalStopIndex
+            )]
+      }
+      pieceRefs={movingMarkerIndex >= 0 ? null : pieceRefs}
       targetRef={targetRef}
     />
     <BoardDice
