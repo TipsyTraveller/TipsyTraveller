@@ -4,7 +4,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import ChallengePopup from './components/ChallengePopup';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
-import TourControl from './components/TourControl';
+import RaceProgressTracker from './components/RaceProgressTracker';
 import { getChallengeForStop, getChallengeIdForStop } from './constants/challenges';
 import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
@@ -493,22 +493,24 @@ const GameScreen = ({ route }) => {
 
       <GameHud
         activeTeamLabel={activePiece?.label}
+        canRestart={!multiplayerEnabled || multiplayer.isHost}
         fromName={fromName}
         lastRoll={lastRoll}
+        onRestart={handleRestart}
         progress={progress}
         remainingMoves={remainingMoves}
         state={state}
         toName={toName}
       />
-      <TourControl
-        activeTeamLabel={activePiece?.label}
-        canRestart={!multiplayerEnabled || multiplayer.isHost}
+      <RaceProgressTracker
+        activeTeamId={activePiece?.id}
         canRoll={canRoll}
+        gamePieces={gamePieces}
         isConnected={!multiplayerEnabled || multiplayer.isConnected}
-        lastRoll={lastRoll}
-        onRestart={handleRestart}
         onRoll={() => requestRoll()}
-        state={multiplayerEnabled && multiplayer.isLoading ? 'loading' : state}
+        routeModel={routeModel}
+        teamProgress={teamProgress}
+        visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading)}
       />
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}

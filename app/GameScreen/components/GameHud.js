@@ -1,7 +1,17 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const GameHud = ({ activeTeamLabel, fromName, lastRoll, progress, remainingMoves, state, toName }) => {
+const GameHud = ({
+  activeTeamLabel,
+  canRestart,
+  fromName,
+  lastRoll,
+  onRestart,
+  progress,
+  remainingMoves,
+  state,
+  toName,
+}) => {
   const insets = useSafeAreaInsets();
 
   return (
@@ -19,8 +29,23 @@ const GameHud = ({ activeTeamLabel, fromName, lastRoll, progress, remainingMoves
     )}
 
     {state === 'done' && (
-      <View style={[styles.doneOverlay, { top: insets.top + 8 }]} pointerEvents="none">
+      <View
+        style={[styles.doneOverlay, { top: insets.top + 8 }]}
+        pointerEvents={canRestart ? 'auto' : 'none'}
+      >
         <Text style={styles.doneText}>Tour complete!</Text>
+        {canRestart ? (
+          <TouchableOpacity
+            accessibilityLabel="Restart game"
+            accessibilityRole="button"
+            onPress={onRestart}
+            style={styles.restartButton}
+          >
+            <Text style={styles.restartText}>Restart</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.hostRestartText}>Host restarts</Text>
+        )}
       </View>
     )}
   </>
@@ -59,6 +84,30 @@ const styles = StyleSheet.create({
     borderColor: '#FFD700',
   },
   doneText: { color: '#111111', fontSize: 16, fontFamily: 'dogicapixelbold' },
+  restartButton: {
+    marginTop: 8,
+    minHeight: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#111111',
+    borderRadius: 7,
+    backgroundColor: '#1BA39C',
+  },
+  restartText: {
+    color: '#FFFFFF',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 9,
+    textTransform: 'uppercase',
+  },
+  hostRestartText: {
+    marginTop: 7,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixel',
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
 });
 
 export default GameHud;

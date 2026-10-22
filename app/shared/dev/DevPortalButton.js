@@ -47,8 +47,8 @@ export default function DevPortalButton({ onPress, visible = true }) {
   const leftPos = Math.max(insets?.left || 0, 10) + 70;
   // Offset to the left so it does not cover:
   // - Account and Settings buttons (Header) in portrait (~124px offset)
-  // - TourControl ('Roll Dice') box in landscape on GameScreen (~175px offset)
-  const rightOffset = isLandscape ? 175 : 124;
+  // - Compact race tracker in landscape on GameScreen (~72px offset)
+  const rightOffset = isLandscape ? 72 : 124;
   const rightPos = Math.max(insets?.right || 0, 10) + rightOffset;
 
   const positionStyle = {
