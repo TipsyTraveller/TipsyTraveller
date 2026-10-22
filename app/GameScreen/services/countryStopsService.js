@@ -1,6 +1,7 @@
 import { get, onValue, ref, runTransaction, set } from 'firebase/database';
 import { db } from '../../../firebaseConfig';
 import {
+  applyCurrentDefaultPositions,
   DEFAULT_COUNTRY_STOPS,
   getStopsForDuration,
   isLegacyCountryCatalogue,
@@ -11,7 +12,7 @@ const CONTENT_PATH = 'gameContent/countryStops';
 const resolveAuthoredStops = (value) => (
   isLegacyCountryCatalogue(value)
     ? normalizeCountryStops(DEFAULT_COUNTRY_STOPS)
-    : normalizeCountryStops(value)
+    : applyCurrentDefaultPositions(value)
 );
 const serializeStops = (stops) => Object.fromEntries(
   normalizeCountryStops(stops).map((stop) => [stop.id, stop])
