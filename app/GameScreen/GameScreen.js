@@ -61,6 +61,7 @@ const GameScreen = ({ route }) => {
   const [devRouteStops, setDevRouteStops] = useState(null);
   const [placementRequest, setPlacementRequest] = useState(null);
   const [placementPosition, setPlacementPosition] = useState(null);
+  const [isDevDrive, setIsDevDrive] = useState(false);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const routeStops = useMemo(
@@ -121,6 +122,7 @@ const GameScreen = ({ route }) => {
     setIsCarDriving(false);
     setMoveTargets({});
     setCurrentChallenge(null);
+    setIsDevDrive(false);
     setTeamProgress(createInitialTeamProgress(baseGamePieces));
   }, [baseGamePieces, multiplayerEnabled]);
 
@@ -207,6 +209,7 @@ const GameScreen = ({ route }) => {
     setIsCarDriving(false);
     setMoveTargets({});
     setCurrentChallenge(null);
+    setIsDevDrive(false);
     setTeamProgress(createInitialTeamProgress(gamePieces));
   };
 
@@ -289,6 +292,11 @@ const GameScreen = ({ route }) => {
   };
 
   const handleMoveComplete = (pieceId, landedLeg) => {
+    const activeDevDrive = isDevDrive;
+    if (isDevDrive) {
+      setIsDevDrive(false);
+    }
+
     const hasFinishedRoute = landedLeg >= routeModel.finalStopIndex;
     const nextTeamProgress = {
       ...teamProgress,
@@ -310,7 +318,7 @@ const GameScreen = ({ route }) => {
     }
 
     const nextActiveTeamIndex = getNextActiveTeamIndex(gamePieces, nextTeamProgress, activeTeamIndex);
-    if (hasFinishedRoute) {
+    if (hasFinishedRoute && !activeDevDrive) {
       if (nextActiveTeamIndex === null) {
         setState('done');
         return;
@@ -329,6 +337,56 @@ const GameScreen = ({ route }) => {
     setState('challenge');
   };
 
+  const startDevDriveToStop = (stopIndex) => {
+    if (multiplayerEnabled) return;
+
+    const currentActivePiece = gamePieces[activeTeamIndex] || gamePieces[0];
+    if (!currentActivePiece) return;
+
+    const targetLeg = Math.min(Math.max(1, stopIndex), routeModel.finalStopIndex);
+    const currentProgress = teamProgress[currentActivePiece.id] || { currentLeg: 0, isDone: false };
+    const currentLeg = currentProgress.currentLeg ?? 0;
+
+    const startLeg = currentLeg < targetLeg ? currentLeg : Math.max(0, targetLeg - 1);
+
+    if (startLeg === targetLeg) {
+      setIsDevDrive(false);
+      setCurrentChallenge(getChallengeForStop(
+        targetLeg,
+        routeStops,
+        getChallengeIdForStop(routeStops[targetLeg], Math.random()),
+      ));
+      setState('challenge');
+      return;
+    }
+
+    setIsDevDrive(true);
+
+    setTeamProgress((previous) => ({
+      ...previous,
+      [currentActivePiece.id]: {
+        currentLeg: startLeg,
+        isDone: false,
+      },
+    }));
+
+    activeCarProgressRef.current = routeModel.stopProgress[startLeg] ?? 0;
+    setLastRoll(targetLeg - startLeg);
+    setMoveStartLeg(startLeg);
+    setPassedLeg(startLeg);
+    setIsCarDriving(false);
+    setRemainingMoves(targetLeg - startLeg);
+    setMovingPieceId(currentActivePiece.id);
+    setMoveStartDelay(0);
+    setMoveTargets((previousTargets) => ({
+      ...previousTargets,
+      [currentActivePiece.id]: targetLeg,
+    }));
+    setCurrentChallenge(null);
+    setState('moving');
+  };
+
+  const stableDevDriveToStop = useLatestCallback(startDevDriveToStop);
   const requestRollRef = useRef(requestRoll);
   requestRollRef.current = requestRoll;
   const handleRestartRef = useRef(handleRestart);
@@ -340,12 +398,7 @@ const GameScreen = ({ route }) => {
     });
     const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex }) => {
       if (multiplayerEnabled) return;
-      setCurrentChallenge(getChallengeForStop(
-        stopIndex,
-        routeStops,
-        getChallengeIdForStop(routeStops[stopIndex], Math.random()),
-      ));
-      setState('challenge');
+      stableDevDriveToStop(stopIndex);
     });
     const unsubPlacement = devEventBus.on('dev:beginCountryPlacement', (request) => {
       if (Platform.OS !== 'web' || multiplayerEnabled) return;
@@ -360,7 +413,7 @@ const GameScreen = ({ route }) => {
       unsubPlacement();
       unsubRestart();
     };
-  }, [multiplayerEnabled, routeStops]);
+  }, [multiplayerEnabled, routeStops, stableDevDriveToStop]);
 
   const handleMapPointSelected = async (point) => {
     if (!placementRequest) return;
@@ -387,9 +440,11 @@ const GameScreen = ({ route }) => {
   const moveTargetLeg = state === 'moving'
     ? (moveTargets[activePiece?.id] ?? currentLeg)
     : null;
-  const pathRevealDuration = getPathRevealDuration(
-    moveTargetLeg !== null ? Math.max(0, moveTargetLeg - moveStartLeg) : 0
-  );
+  const pathRevealDuration = isDevDrive
+    ? 0.25
+    : getPathRevealDuration(
+        moveTargetLeg !== null ? Math.max(0, moveTargetLeg - moveStartLeg) : 0
+      );
   const cameraMode = state === 'moving' && isCarDriving ? 'follow' : 'done';
   const targetRef = pieceRefs.current[focusedPiece?.id];
   const hudCurrentLeg = state === 'moving' ? passedLeg : currentLeg;
