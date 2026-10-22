@@ -127,13 +127,17 @@ const MapPlane = memo(({ onMapPointSelected, placementActive = false }) => {
       />
       {placementActive && (
         <mesh
-          position={[0, MAP_CY, MAP_Z + 0.09]}
+          position={[0, MAP_CY, MAP_Z + 0.08]}
           onPointerDown={(event) => {
             event.stopPropagation();
             onMapPointSelected?.(event.point);
           }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onMapPointSelected?.(event.point);
+          }}
         >
-          <planeGeometry args={[MAP_W, MAP_H]} />
+          <planeGeometry args={[MAP_W * 2, MAP_H * 2]} />
           <meshBasicMaterial transparent opacity={0.001} depthWrite={false} />
         </mesh>
       )}

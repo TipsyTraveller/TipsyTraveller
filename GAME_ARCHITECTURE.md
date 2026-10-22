@@ -131,7 +131,7 @@ The Dev Portal provides four cross-platform capability suites plus one web-only 
 - **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
 - **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
 - **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, driving the active turn's team directly to any country stop on the active route followed by opening its challenge card, and resetting board state.
-- **Countries (web only)**: Lists the Firebase-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. When moving a point, the camera centers on the target country, the marker bounces in glowing cyan with an animated beacon wave, vertical beam, and floating billboard name badge, other pins are dimmed, and hovering over any pin surfaces its country name. The tab and placement UI are not exposed on iOS or Android.
+- **Countries (web only)**: Lists the Firebase-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. When moving a point, the camera centers on the target country, the marker bounces in glowing cyan with an animated beacon wave, vertical beam, and floating billboard name badge, other pins are dimmed, hovering over any pin surfaces its country name, and the 3D dice is hidden so the board and country targets remain fully visible and clickable. Pressing anywhere on the map immediately updates the marker's position optimistically and persists the coordinates to Firebase Realtime Database. The tab and placement UI are not exposed on iOS or Android.
 - **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
 
 The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK`. Instant GameScreen shortcuts load the current Firebase-authored catalogue and use the full long-duration route by default, so newly added or reordered stops remain visible after a browser refresh. If the catalogue cannot be read, the content service falls back to bundled defaults. The Dev Portal's Board tools likewise show the authored catalogue when no active room snapshot is available; live multiplayer rooms retain their immutable room route snapshot.
@@ -690,7 +690,7 @@ The die keeps its high-frequency animation state in refs rather than React state
 | `result` | Flies the die toward the camera with the rolled face forward, then fades it out |
 | `hidden` | Keeps the die off the board during movement and challenges until rolling is enabled again |
 
-The idle die is positioned on the camera's center ray at a fixed viewing distance. Its drag bounds and board landing area move with that screen-relative anchor, so regional overview panning does not leave the die floating over an unrelated part of the map or outside the visible play area.
+The idle die is positioned on the camera's center ray at a fixed viewing distance. Its drag bounds and board landing area move with that screen-relative anchor, so regional overview panning does not leave the die floating over an unrelated part of the map or outside the visible play area. `BoardDice` also accepts a `visible` prop (default `true`); when `visible` is false (such as during authoring placement mode or stop editing forms), the die mesh, badge label, and interaction planes are hidden and do not intercept pointer events.
 
 ### Interaction sequence
 
@@ -1479,7 +1479,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
-| `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation |
+| `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation, with `visible` prop to hide during authoring/placement |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/RaceProgressTracker.js` | Waiting-phase right-side team route progress, finish-line, and roll overlay |

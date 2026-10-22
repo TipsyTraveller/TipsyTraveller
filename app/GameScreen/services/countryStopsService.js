@@ -2,6 +2,7 @@ import { get, onValue, ref, runTransaction, set } from 'firebase/database';
 import { db } from '../../../firebaseConfig';
 import {
   applyCurrentDefaultPositions,
+  COUNTRY_POSITION_VERSION,
   DEFAULT_COUNTRY_STOPS,
   getStopsForDuration,
   isLegacyCountryCatalogue,
@@ -43,7 +44,7 @@ export const saveCountryStops = async (stops) => {
 
 export const addCountryStop = async ({ accent, challenges, name, position }) => {
   const id = `stop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  const nextStop = { id, name, accent, challenges, position };
+  const nextStop = { id, name, accent, challenges, position, positionVersion: COUNTRY_POSITION_VERSION };
   await runTransaction(ref(db, CONTENT_PATH), (current) => {
     const stops = resolveAuthoredStops(current);
     return serializeStops([...stops, { ...nextStop, order: stops.length }]);

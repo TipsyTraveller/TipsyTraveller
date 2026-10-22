@@ -72,6 +72,7 @@ const GameScene = memo(({
   canvasStyle,
   currentLeg,
   diceEnabled,
+  diceVisible = true,
   driving,
   lowPower,
   gamePieces,
@@ -158,8 +159,6 @@ const GameScene = memo(({
         currentLeg={currentLeg}
         movingMarkerIndex={movingMarkerIndex}
         movingMarkerStop={movingMarkerStop}
-        onMapPointSelected={onMapPointSelected}
-        placementActive={placementActive}
         routeModel={routeModel}
         targetLeg={moveTargetLeg}
       />
@@ -182,6 +181,7 @@ const GameScene = memo(({
       onRollComplete={onDiceRoll}
       onRollStart={onDiceRollStart}
       rollAction={rollAction}
+      visible={diceVisible}
     />
   </Canvas>
 ));

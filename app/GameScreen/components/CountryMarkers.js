@@ -70,8 +70,6 @@ const CountryMarker = ({
   countryName,
   isDimmed = false,
   isMoving = false,
-  isPlacementActive = false,
-  onMapPointSelected,
   position,
   stopNumber,
 }) => {
@@ -167,12 +165,6 @@ const CountryMarker = ({
           setHovered(false);
         }
       }}
-      onPointerDown={(e) => {
-        if (isPlacementActive && onMapPointSelected) {
-          e.stopPropagation();
-          onMapPointSelected(e.point);
-        }
-      }}
     >
       <mesh position={[0, 0, -0.065]}>
         <circleGeometry args={[isMoving ? 0.7 : (active ? 0.54 : 0.44), 28]} />
@@ -226,8 +218,6 @@ const CountryMarkers = memo(({
   currentLeg,
   movingMarkerIndex = -1,
   movingMarkerStop = null,
-  onMapPointSelected,
-  placementActive = false,
   routeModel,
   targetLeg,
 }) => {
@@ -257,8 +247,6 @@ const CountryMarkers = memo(({
             countryName={countryName}
             isDimmed={isDimmed}
             isMoving={isMoving}
-            isPlacementActive={placementActive}
-            onMapPointSelected={onMapPointSelected}
             position={position}
             stopNumber={stopNumber}
           />

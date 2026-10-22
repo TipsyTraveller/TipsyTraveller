@@ -12,7 +12,7 @@ import { getDefaultModelOption, getModelOption } from './constants/modelOptions'
 import { devEventBus } from '../shared/dev/devEventBus';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
 import { getPathRevealDuration, createRouteModel } from './constants/route';
-import { resolveGameRouteStops } from './constants/countryStops';
+import { COUNTRY_POSITION_VERSION, resolveGameRouteStops } from './constants/countryStops';
 import { updateCountryStop } from './services/countryStopsService';
 import CountryStopPlacementForm from './components/CountryStopPlacementForm';
 
@@ -416,14 +416,27 @@ const GameScreen = ({ route }) => {
   }, [multiplayerEnabled, routeStops, stableDevDriveToStop]);
 
   const handleMapPointSelected = async (point) => {
-    if (!placementRequest) return;
-    const position = { x: point.x, y: point.y };
+    if (!placementRequest || !point) return;
+    const position = {
+      x: Number(point.x.toFixed(2)),
+      y: Number(point.y.toFixed(2)),
+    };
     if (placementRequest.mode === 'move' && placementRequest.stop?.id) {
-      await updateCountryStop(placementRequest.stop.id, { position });
-      setDevRouteStops((current) => current?.map((stop) => (
-        stop.id === placementRequest.stop.id ? { ...stop, position } : stop
-      )) || current);
+      const stopId = placementRequest.stop.id;
+      setDevRouteStops((current) => {
+        const baseStops = current?.length >= 2 ? current : routeStops;
+        return baseStops.map((stop) => (
+          stop.id === stopId
+            ? { ...stop, position, positionVersion: COUNTRY_POSITION_VERSION }
+            : stop
+        ));
+      });
       setPlacementRequest(null);
+      try {
+        await updateCountryStop(stopId, { position, positionVersion: COUNTRY_POSITION_VERSION });
+      } catch (saveError) {
+        console.warn('Unable to persist updated country stop position:', saveError);
+      }
       return;
     }
     setPlacementPosition(position);
@@ -471,6 +484,7 @@ const GameScreen = ({ route }) => {
         canvasStyle={styles.canvas}
         currentLeg={currentLeg}
         diceEnabled={canRoll && !placementRequest}
+        diceVisible={!placementRequest}
         driving={state === 'moving'}
         lowPower={state === 'challenge'}
         gamePieces={gamePieces}
