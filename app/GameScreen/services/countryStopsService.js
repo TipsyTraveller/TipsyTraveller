@@ -23,6 +23,7 @@ const COUNTRIES_COLLECTION = 'countries';
 const CHALLENGES_COLLECTION = 'challenges';
 const LEGACY_RTDB_CONTENT_PATH = 'gameContent/countryStops';
 const LOCAL_STORAGE_KEY = 'tipsy_authored_country_stops_v2';
+const REMOVED_IDS_STORAGE_KEY = 'tipsy_removed_country_stop_ids_v1';
 
 const stripUndefined = (value) => {
   if (Array.isArray(value)) {
@@ -38,6 +39,27 @@ const stripUndefined = (value) => {
   return value;
 };
 
+const readRemovedStopIds = () => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return new Set();
+    const raw = window.localStorage.getItem(REMOVED_IDS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+const writeRemovedStopIds = (idSet) => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(REMOVED_IDS_STORAGE_KEY, JSON.stringify([...idSet]));
+  } catch {
+    // Ignore storage quota or private-mode errors
+  }
+};
+
 const readLocalCache = () => {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -47,7 +69,9 @@ const readLocalCache = () => {
     if (!Array.isArray(parsed) || parsed.length < 2 || isLegacyCountryCatalogue(parsed)) {
       return null;
     }
-    return applyCurrentDefaultPositions(parsed);
+    const removed = readRemovedStopIds();
+    const filtered = parsed.filter((stop) => !removed.has(stop?.id));
+    return filtered.length >= 2 ? applyCurrentDefaultPositions(filtered) : null;
   } catch {
     return null;
   }
@@ -62,8 +86,8 @@ const writeLocalCache = (stops) => {
   }
 };
 
+let removedStopIds = readRemovedStopIds();
 let cachedStops = readLocalCache();
-let removedStopIds = new Set();
 let seedingPromise = null;
 const subscribers = new Set();
 
@@ -171,7 +195,12 @@ const seedFirestoreCatalogueIfNeeded = async () => {
           // Ignore legacy RTDB read failure during seed
         }
       }
-      const stopsToSeed = normalizeCountryStops(initialStops || DEFAULT_COUNTRY_STOPS);
+      const rawSeedSource = (initialStops || DEFAULT_COUNTRY_STOPS).filter(
+        (stop) => !removedStopIds.has(stop?.id)
+      );
+      const stopsToSeed = normalizeCountryStops(
+        rawSeedSource.length >= 2 ? rawSeedSource : DEFAULT_COUNTRY_STOPS
+      );
       const updatedAt = Date.now();
       const batch = writeBatch(firestore);
 
@@ -308,6 +337,7 @@ export const addCountryStop = async ({ accent, challenges, name, position }) => 
   const id = `stop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const updatedAt = Date.now();
   removedStopIds.delete(id);
+  writeRemovedStopIds(removedStopIds);
 
   const baseStops = cachedStops || normalizeCountryStops(DEFAULT_COUNTRY_STOPS);
   const nextStop = {
@@ -371,6 +401,7 @@ export const removeCountryStop = async (stopId) => {
   if (baseStops.length <= 2) return;
 
   removedStopIds.add(stopId);
+  writeRemovedStopIds(removedStopIds);
   const removedStop = baseStops.find((stop) => stop.id === stopId);
   const remaining = baseStops
     .filter((stop) => stop.id !== stopId)
@@ -385,7 +416,7 @@ export const removeCountryStop = async (stopId) => {
       batch.delete(doc(firestore, CHALLENGES_COLLECTION, challengeDocId));
     });
     updatedCatalogue.forEach((stop) => {
-      batch.set(doc(firestore, COUNTRIES_COLLECTION, stop.id), { order: stop.order, updatedAt }, { merge: true });
+      batch.set(doc(firestore, COUNTRIES_COLLECTION, stop.id), serializeStopDoc(stop, updatedAt), { merge: true });
     });
     await batch.commit();
   } catch (firestoreError) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import {
   removeCountryStop,
   reorderCountryStop,
@@ -17,7 +17,13 @@ export default function CountryStopsTab({ onClose }) {
   const [penalty, setPenalty] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => subscribeCountryStops(setStops, (nextError) => setError(nextError.message)), []);
+  useEffect(() => subscribeCountryStops(
+    (nextStops) => {
+      setStops(nextStops);
+      setError('');
+    },
+    (nextError) => setError(nextError.message)
+  ), []);
 
   const beginPlacement = async (request) => {
     const latestStop = request.stop
@@ -42,14 +48,13 @@ export default function CountryStopsTab({ onClose }) {
     devEventBus.emit('dev:beginCountryPlacement', { ...nextRequest, countryStops: stops });
   };
 
-  const confirmRemove = (stop) => Alert.alert(
-    'Remove country stop?',
-    `${stop.name} will be removed from future routes. Existing room snapshots are unchanged.`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => removeCountryStop(stop.id) },
-    ]
-  );
+  const confirmRemove = async (stop) => {
+    try {
+      await removeCountryStop(stop.id);
+    } catch (removeError) {
+      setError(removeError?.message || 'Unable to remove country stop.');
+    }
+  };
 
   const addChallenge = async (stop) => {
     if (!title.trim() || !prompt.trim()) return;
