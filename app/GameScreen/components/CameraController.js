@@ -5,14 +5,13 @@ import {
   DONE_LOOK,
   DONE_POS,
   FOLLOW_OFFSET,
-  OVERVIEW_LEAD,
-  OVERVIEW_OFFSET,
+  setOverviewCameraPose,
 } from '../constants/camera';
 
 const FOLLOW_DAMPING = 4.5;
 const OVERVIEW_DAMPING = 3.2;
 
-const CameraController = ({ mode, targetRef }) => {
+const CameraController = ({ mode, overviewTargetPosition, pieceRefs, targetRef }) => {
   const { camera } = useThree();
   const lookAt = useRef(DONE_LOOK.clone());
   const desiredCameraPosition = useMemo(() => new THREE.Vector3(), []);
@@ -29,10 +28,12 @@ const CameraController = ({ mode, targetRef }) => {
 
       camera.position.lerp(desiredCameraPosition, alpha);
       lookAt.current.lerp(targetPosition, alpha);
-    } else if (targetRef?.current) {
-      desiredLookAt.copy(targetRef.current.position).add(OVERVIEW_LEAD);
-      desiredCameraPosition.copy(desiredLookAt).add(OVERVIEW_OFFSET);
-
+    } else if (setOverviewCameraPose({
+      cameraPosition: desiredCameraPosition,
+      lookAt: desiredLookAt,
+      pieceRefs,
+      targetPosition: overviewTargetPosition,
+    })) {
       camera.position.lerp(desiredCameraPosition, alpha);
       lookAt.current.lerp(desiredLookAt, alpha);
     } else {

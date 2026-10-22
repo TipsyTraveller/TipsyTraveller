@@ -461,6 +461,7 @@ const GameScreen = ({ route }) => {
         teamLabel={activePiece?.label}
         visible={state === 'challenge'}
         onComplete={handleChallengeComplete}
+        pieceRefs={pieceRefs.current}
         routeModel={routeModel}
       />
       {placementRequest && (

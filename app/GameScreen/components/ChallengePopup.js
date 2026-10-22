@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
-import { OVERVIEW_LEAD, OVERVIEW_OFFSET } from '../constants/camera';
+import { setOverviewCameraPose } from '../constants/camera';
 import { getChallengeTimer, getCountryFlag, getPenaltyTag } from '../constants/challenges';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
@@ -26,15 +26,19 @@ const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 const projectedPoint = new THREE.Vector3();
 const projectionLookAt = new THREE.Vector3();
 
-const getMarkerScreenOffset = (routeModel, stopIndex, width, height) => {
+const getMarkerScreenOffset = (routeModel, stopIndex, pieceRefs, width, height) => {
   const stopPosition = routeModel.route[stopIndex] || routeModel.route[1] || routeModel.route[0];
   if (!stopPosition || !width || !height) {
     return { x: 0, y: 0 };
   }
 
   projectionCamera.aspect = width / height;
-  projectionLookAt.copy(stopPosition).add(OVERVIEW_LEAD);
-  projectionCamera.position.copy(projectionLookAt).add(OVERVIEW_OFFSET);
+  setOverviewCameraPose({
+    cameraPosition: projectionCamera.position,
+    lookAt: projectionLookAt,
+    pieceRefs,
+    targetPosition: stopPosition,
+  });
   projectionCamera.lookAt(projectionLookAt);
   projectionCamera.updateProjectionMatrix();
   projectionCamera.updateMatrixWorld(true);
@@ -110,7 +114,15 @@ const CardBack = ({ compact, style }) => (
   </Animated.View>
 );
 
-const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onComplete, routeModel }) => {
+const ChallengePopup = ({
+  canComplete = true,
+  challenge,
+  onComplete,
+  pieceRefs,
+  routeModel,
+  teamLabel,
+  visible,
+}) => {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const compact = height < 430;
@@ -192,7 +204,13 @@ const ChallengePopup = ({ canComplete = true, challenge, teamLabel, visible, onC
 
   if (!visible || !challenge) return null;
 
-  const markerOffset = getMarkerScreenOffset(routeModel, challenge.stopIndex, width, height);
+  const markerOffset = getMarkerScreenOffset(
+    routeModel,
+    challenge.stopIndex,
+    pieceRefs,
+    width,
+    height
+  );
   const launchTiltDeg = markerOffset.x >= 0 ? '16deg' : '-16deg';
   const midArcY = markerOffset.y * 0.35 - 48;
 

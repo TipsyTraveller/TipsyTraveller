@@ -654,7 +654,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 
 The camera has two modes:
 
-- `done`: smoothly returns to a closer regional overview centered just ahead of the focused vehicle (and stays in overview during the initial route-path reveal after a roll). The overview pans with the focused vehicle, so later eastern stops move into view instead of shrinking the entire Europe map into frame.
+- `done`: smoothly frames every team vehicle together with the active team's next destination (or rolled destination during the initial path reveal). The regional overview uses a moderate base zoom, widens only as the teams spread apart, and pans east with route progress instead of shrinking the entire Europe map into frame.
 - `follow`: follows the active vehicle from a wider fixed offset once the vehicle begins driving along the revealed path, keeping the car and nearby route context visible without filling the frame.
 
 Position and look-at target are interpolated every frame using exponential damping (`1 - Math.exp(-damping * delta)`), preventing frame-rate-dependent jumps.
