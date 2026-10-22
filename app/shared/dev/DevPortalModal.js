@@ -221,10 +221,21 @@ export default function DevPortalModal({ visible, onClose }) {
     onClose();
   };
 
-  const handleTestChallenge = (stopIndex) => {
-    devEventBus.emit('dev:testChallenge', { stopIndex });
-    showStatus(`Opened challenge for stop ${stopIndex}`);
+  const handleTestChallenge = async (stopIndex) => {
+    const routeInfo = getCurrentRouteInfo();
+    const isGameScreen = routeInfo?.name === 'GameScreen';
+    const stopName = activeRouteStops[stopIndex]?.name || `stop ${stopIndex}`;
+    showStatus(`Driving active team to ${stopName}...`);
     onClose();
+
+    if (!isGameScreen) {
+      await startInstantGameScreen({ teamCount: 2, duration: 'long' });
+      setTimeout(() => {
+        devEventBus.emit('dev:testChallenge', { stopIndex });
+      }, 400);
+    } else {
+      devEventBus.emit('dev:testChallenge', { stopIndex });
+    }
   };
 
   const handleRestartBoard = () => {
@@ -547,9 +558,9 @@ export default function DevPortalModal({ visible, onClose }) {
                   ))}
                 </View>
 
-                <Text style={styles.sectionHeading}>Test Challenge Cards</Text>
+                <Text style={styles.sectionHeading}>Drive To Country & Challenge</Text>
                 <Text style={styles.sectionDescription}>
-                  Instantly open country challenges to preview layout and typography.
+                  Drive active team to destination and open its country challenge.
                 </Text>
                 <View style={styles.challengeGrid}>
                   {activeRouteStops.slice(1).map((stop, index) => {

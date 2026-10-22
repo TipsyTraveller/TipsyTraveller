@@ -129,7 +129,7 @@ The Dev Portal provides four cross-platform capability suites plus one web-only 
 
 - **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
 - **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
-- **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, triggering every challenge card in the active route directly, and resetting board state.
+- **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, driving the active turn's team directly to any country stop on the active route followed by opening its challenge card, and resetting board state.
 - **Countries (web only)**: Lists the Firebase-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. The tab and placement UI are not exposed on iOS or Android.
 - **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
 
@@ -175,7 +175,7 @@ The board route is an ordered collection of destination coordinates joined by tr
 
 Stop index `0` is the initial position. Every following index represents another destination along the route. Intermediate stops may resolve to a challenge, while the final stop completes that team’s journey. The exact number of stops and their names are content choices and can change without altering the basic turn state machine.
 
-The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and serves the new Europe catalogue instead; the next Dev Portal content edit persists the migrated catalogue. Existing room snapshots keep their original stops, and their former Western Europe board coordinates are remapped into the widened Europe viewport when loaded.
+The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and serves the new Europe catalogue instead; the next Dev Portal content edit persists the migrated catalogue. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
 
 ### Roll behavior
 
@@ -569,10 +569,13 @@ z = map Z + clearance
 ```
 
 The viewport spans Iceland through Kazakhstan and the Caucasus, and from the
-Nordic countries through Cyprus. Bundled country locations start from capital
-longitude/latitude values converted through a calibration for the source SVG;
-the resulting positions use the same board-coordinate shape as authored
-Firebase points.
+Nordic countries through Cyprus. Because the source artwork does not expose a
+reliable geographic projection, every bundled country pin is manually authored
+in source-SVG coordinates against the rendered country outlines. The bundled
+stops carry a `positionVersion`; known catalogue entries with older or missing
+versions are upgraded in memory to the current positions while preserving their
+order, names, and challenge content. The resulting positions use the same
+board-coordinate shape as authored Firebase points.
 
 ### Map plane
 

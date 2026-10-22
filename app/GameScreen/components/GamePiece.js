@@ -199,24 +199,43 @@ const GamePiece = memo(({
     drivingRef.current = driving;
 
     if (driving) {
+      const legDistance = routeModel.stopDistances[currentLeg] || 0;
+      const legProgress = THREE.MathUtils.clamp(legDistance / routeModel.length, 0, 1);
+      distanceRef.current = legDistance;
       departureParkingOffsetRef.current = parkingOffsetRef.current;
       delayElapsedRef.current = 0;
       hasStartedDrivingRef.current = false;
       waitingForNextLegRef.current = false;
       lastReportedLegRef.current = currentLeg;
 
+      if (pieceRef.current) {
+        applyCarTransform({
+          pieceRef,
+          bodyRef,
+          progress: legProgress,
+          targetPoint: carPosRef.current,
+          moving: false,
+          distance: legDistance,
+          parkingOffset,
+          parkingOffsetRef,
+          passedVehicleDistances,
+          passJumpTransform: passJumpTransformRef.current,
+          clockTime: 0,
+          delta: 0.016,
+          rotationRef,
+          routeModel,
+          snapRotation: true,
+        });
+      }
+
       if (activeCarProgressRef) {
-        activeCarProgressRef.current = THREE.MathUtils.clamp(
-          distanceRef.current / routeModel.length,
-          0,
-          1
-        );
+        activeCarProgressRef.current = legProgress;
       }
     } else {
       delayElapsedRef.current = 0;
       hasStartedDrivingRef.current = false;
     }
-  }, [activeCarProgressRef, currentLeg, driving, routeModel]);
+  }, [activeCarProgressRef, currentLeg, driving, parkingOffset, passedVehicleDistances, pieceRef, routeModel]);
 
   useEffect(() => {
     targetLegRef.current = targetLeg;
