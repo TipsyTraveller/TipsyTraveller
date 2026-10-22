@@ -68,7 +68,8 @@ Firebase Realtime Database provides room creation, joining, team rosters, lobby 
 | Native architecture | React Native New Architecture enabled |
 | Navigation | React Navigation stack |
 | 3D rendering | Three.js, React Three Fiber, Drei, Expo GL |
-| Realtime backend | Firebase Realtime Database |
+| Realtime backend | Firebase Realtime Database (live rooms, lobbies, turns) |
+| Content database | Cloud Firestore (`countries` and `challenges` collections) |
 | Local identity | AsyncStorage |
 | Animation | React Native Animated and Lottie |
 | Orientation | Expo Screen Orientation |
@@ -102,7 +103,7 @@ This document distinguishes between the visible product concept and what the cur
 - Configurable location challenge cards.
 - Duration-driven routes: short rooms snapshot 4 ordered route points, medium rooms snapshot 6, and long rooms use every authored point.
 - The bundled long-route catalogue contains one stop for each of 51 European countries under an inclusive convention: sovereign states wholly or partly in Europe plus Kosovo. Each bundled stop has a country code, representative city, flag palette, and at least one original challenge.
-- Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools.
+- Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools backed by Cloud Firestore (`countries` and `challenges` collections) with local cache and Realtime Database fallback.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll action while waiting for a throw.
 - Active-game re-entry through the room PIN with canonical state restoration.
@@ -131,7 +132,7 @@ The Dev Portal provides four cross-platform capability suites plus one web-only 
 - **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
 - **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
 - **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, driving the active turn's team directly to any country stop on the active route followed by opening its challenge card, and resetting board state.
-- **Countries (web only)**: Lists the Firebase-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. When moving a point, the camera centers on the target country, the marker bounces in glowing cyan with an animated beacon wave, vertical beam, and floating billboard name badge, other pins are dimmed, and hovering over any pin surfaces its country name. The tab and placement UI are not exposed on iOS or Android.
+- **Countries (web only)**: Lists the Firestore-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. When moving a point, the camera centers on the target country, the marker bounces in glowing cyan with an animated beacon wave, vertical beam, and floating billboard name badge, other pins are dimmed, hovering over any pin surfaces its country name, and the 3D dice is hidden so the board and country targets remain fully visible and clickable. Pressing anywhere on the map immediately updates the marker's position optimistically and persists the coordinates as a single-document update to Cloud Firestore (`countries/{stopId}`) alongside the local cache and Realtime Database fallback. The tab and placement UI are not exposed on iOS or Android.
 - **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
 
 The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK`. Instant GameScreen shortcuts load the current Firebase-authored catalogue and use the full long-duration route by default, so newly added or reordered stops remain visible after a browser refresh. If the catalogue cannot be read, the content service falls back to bundled defaults. The Dev Portal's Board tools likewise show the authored catalogue when no active room snapshot is available; live multiplayer rooms retain their immutable room route snapshot.
@@ -176,7 +177,7 @@ The board route is an ordered collection of destination coordinates joined by tr
 
 Stop index `0` is the initial position. Every following index represents another destination along the route. Intermediate stops may resolve to a challenge, while the final stop completes that team’s journey. The exact number of stops and their names are content choices and can change without altering the basic turn state machine.
 
-The editable master catalogue lives at Firebase `gameContent/countryStops`. Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and serves the new Europe catalogue instead; the next Dev Portal content edit persists the migrated catalogue. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
+The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and `challenges/{challengeId}`) with a mirrored fallback at Firebase Realtime Database `gameContent/countryStops` and `localStorage` (`tipsy_authored_country_stops_v2`). Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and automatically seeds or serves the 51-country Europe catalogue instead. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
 
 ### Roll behavior
 
@@ -690,7 +691,7 @@ The die keeps its high-frequency animation state in refs rather than React state
 | `result` | Flies the die toward the camera with the rolled face forward, then fades it out |
 | `hidden` | Keeps the die off the board during movement and challenges until rolling is enabled again |
 
-The idle die is positioned on the camera's center ray at a fixed viewing distance. Its drag bounds and board landing area move with that screen-relative anchor, so regional overview panning does not leave the die floating over an unrelated part of the map or outside the visible play area.
+The idle die is positioned on the camera's center ray at a fixed viewing distance. Its drag bounds and board landing area move with that screen-relative anchor, so regional overview panning does not leave the die floating over an unrelated part of the map or outside the visible play area. `BoardDice` also accepts a `visible` prop (default `true`); when `visible` is false (such as during authoring placement mode or stop editing forms), the die mesh, badge label, and interaction planes are hidden and do not intercept pointer events.
 
 ### Interaction sequence
 
@@ -803,9 +804,18 @@ The button does not record success or failure. In a multiplayer room it is enabl
 
 ## 12. Firebase and multiplayer data
 
-### Database structure
+### Hybrid database architecture
 
-The current code expects this conceptual Realtime Database shape:
+TipsyTraveller uses a hybrid Firebase data architecture exported from `firebaseConfig.js`:
+
+1. **Cloud Firestore (`firestore`)** owns structured, queryable game content:
+   - `countries/{stopId}`: Ordered country stops (`id`, `name`, `code`, `city`, `landmark`, `order`, `position`, `positionVersion`, `accent`, `challenges`, `updatedAt`). Single-document writes (`writeBatch` / `merge: true`) allow moving a single marker or updating one stop without rewriting the entire 51-country catalogue.
+   - `challenges/{challengeDocId}`: Normalized per-challenge documents (`id`, `countryId`, `countryName`, `title`, `prompt`, `penalty`, `order`, `updatedAt`) indexed by `countryId` for filtered queries (`getChallengesForCountry`).
+2. **Firebase Realtime Database (`db`)** owns live ephemeral multiplayer state (`games/{gameID}` and `players/{gameID}`) and keeps a mirrored fallback copy of `gameContent/countryStops`.
+
+If the `countries` Firestore collection is empty on load, `services/countryStopsService.js` automatically seeds the 51-country European catalogue (or migrates existing `gameContent/countryStops` edits) via a Firestore batch write. All edits also update `localStorage` (`tipsy_authored_country_stops_v2`) and per-stop `updatedAt` timestamps so optimistic local edits never snap back while a network write is in flight.
+
+The Realtime Database expects this conceptual structure:
 
 ```json
 {
@@ -1437,7 +1447,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `package.json` | Dependencies and development scripts |
 | `app.json` | Expo app metadata and plugins |
 | `eas.json` | EAS build/submit profiles |
-| `firebaseConfig.js` | Firebase initialization and database export |
+| `firebaseConfig.js` | Firebase initialization and exports for Realtime Database (`db`) and Cloud Firestore (`firestore`) |
 | `metro.config.js` | Metro asset extensions, single-copy `three` resolution, and Android request middleware |
 | `scripts/run-ios.sh` | Xcode 27/Device Hub-compatible iOS development launcher |
 
@@ -1479,7 +1489,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
-| `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation |
+| `components/BoardDice.js` | Interactive die plus local or remotely commanded camera-facing result animation, with `visible` prop to hide during authoring/placement |
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/RaceProgressTracker.js` | Waiting-phase right-side team route progress, finish-line, and roll overlay |
@@ -1502,7 +1512,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `constants/modelOptions.js` | Vehicle registry and transforms |
 | `constants/boardAssets.js` | Map and marker GLB sources plus `preloadBoardAssets()` |
 | `constants/challenges.js` | Flag presentation, challenge selection, and legacy fallback content |
-| `services/countryStopsService.js` | Firebase catalogue reads, subscriptions, ordering, mutations, and duration snapshots |
+| `services/countryStopsService.js` | Cloud Firestore (`countries` + `challenges`) catalogue reads, single-doc mutations, auto-seeding, local cache, and RTDB fallback |
 
 ### Shared UI and local storage
 

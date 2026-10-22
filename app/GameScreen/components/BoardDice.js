@@ -297,7 +297,7 @@ const ThrowMeLabel = ({ labelRef }) => (
   </group>
 );
 
-const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollAction }) => {
+const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollAction, visible = true }) => {
   const { camera } = useThree();
   const diceRef = useRef();
   const faceRefs = useRef({});
@@ -373,7 +373,7 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
   }, []);
 
   useEffect(() => {
-    if (!enabled || stateRef.current.mode !== 'hidden' || !diceRef.current) return;
+    if (!visible || !enabled || stateRef.current.mode !== 'hidden' || !diceRef.current) return;
 
     diceRef.current.visible = true;
     diceRef.current.position.copy(IDLE_POSITION);
@@ -385,7 +385,7 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
     setVisibleFaces();
     stateRef.current.idleBasePosition.copy(IDLE_POSITION);
     stateRef.current.mode = 'idle';
-  }, [enabled, idleQuaternion]);
+  }, [enabled, idleQuaternion, visible]);
 
   useEffect(() => {
     if (
@@ -424,9 +424,9 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
   }, [rollAction?.id, rollAction?.value]);
 
   const beginPickup = (event) => {
-    event.stopPropagation();
+    if (!visible || !enabled || !diceRef.current || stateRef.current.mode === 'throwing' || stateRef.current.mode === 'result') return;
 
-    if (!enabled || !diceRef.current || stateRef.current.mode === 'throwing' || stateRef.current.mode === 'result') return;
+    event.stopPropagation();
 
     resultAnimationRef.current.active = false;
     diceRef.current.visible = true;
@@ -608,6 +608,14 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
   useFrame(({ camera, clock }, delta) => {
     if (!diceRef.current) return;
 
+    if (!visible) {
+      diceRef.current.visible = false;
+      if (labelRef.current) {
+        labelRef.current.visible = false;
+      }
+      return;
+    }
+
     if (stateRef.current.mode === 'result') {
       animateResultDice(clock, camera);
       return;
@@ -733,6 +741,7 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
   return (
     <>
       <mesh
+        visible={visible}
         position={[0, MAP_CY, MAP_Z + 0.02]}
         onPointerMove={updateHeldPosition}
         onPointerUp={beginThrow}
@@ -742,6 +751,7 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
       </mesh>
       <group
         ref={diceRef}
+        visible={visible}
         position={IDLE_POSITION.toArray()}
         rotation={INITIAL_ROTATION}
         onPointerDown={beginPickup}

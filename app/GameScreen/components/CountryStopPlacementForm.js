@@ -21,8 +21,8 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
 
   if (!position) {
     return (
-      <View style={styles.bannerContainer}>
-        <View style={[styles.banner, mode === 'move' && styles.bannerMove]}>
+      <View pointerEvents="box-none" style={styles.bannerContainer}>
+        <View pointerEvents="auto" style={[styles.banner, mode === 'move' && styles.bannerMove]}>
           <View style={styles.bannerContent}>
             <View style={styles.bannerHeaderRow}>
               <View style={[styles.beaconDot, mode === 'move' && styles.beaconDotMove]} />
@@ -104,7 +104,6 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 100000,
-    pointerEvents: 'box-none',
   },
   banner: {
     backgroundColor: '#131c24',

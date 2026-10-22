@@ -12,8 +12,12 @@ import { getDefaultModelOption, getModelOption } from './constants/modelOptions'
 import { devEventBus } from '../shared/dev/devEventBus';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
 import { getPathRevealDuration, createRouteModel } from './constants/route';
-import { resolveGameRouteStops } from './constants/countryStops';
-import { updateCountryStop } from './services/countryStopsService';
+import {
+  COUNTRY_POSITION_VERSION,
+  getStopsForDuration,
+  resolveGameRouteStops,
+} from './constants/countryStops';
+import { subscribeCountryStops, updateCountryStop } from './services/countryStopsService';
 import CountryStopPlacementForm from './components/CountryStopPlacementForm';
 
 const EMPTY_GAME_DATA = {};
@@ -393,6 +397,22 @@ const GameScreen = ({ route }) => {
   handleRestartRef.current = handleRestart;
 
   useEffect(() => {
+    if (Platform.OS !== 'web' || multiplayerEnabled) return undefined;
+    return subscribeCountryStops(
+      (authoredStops) => {
+        setDevRouteStops((current) => (
+          current?.length >= 2
+            ? authoredStops
+            : getStopsForDuration(authoredStops, gameData?.duration || 'long')
+        ));
+      },
+      (error) => {
+        console.warn('Unable to subscribe to authored country stops:', error);
+      }
+    );
+  }, [gameData?.duration, multiplayerEnabled]);
+
+  useEffect(() => {
     const unsubRoll = devEventBus.on('dev:forceRoll', ({ value }) => {
       requestRollRef.current?.(value, 'shortcut');
     });
@@ -402,7 +422,19 @@ const GameScreen = ({ route }) => {
     });
     const unsubPlacement = devEventBus.on('dev:beginCountryPlacement', (request) => {
       if (Platform.OS !== 'web' || multiplayerEnabled) return;
-      setDevRouteStops(request.countryStops || null);
+      setDevRouteStops((current) => {
+        if (current?.length >= 2 && request.countryStops?.length >= 2) {
+          const currentById = new Map(current.map((stop) => [stop.id, stop]));
+          return request.countryStops.map((stop) => {
+            const existing = currentById.get(stop.id);
+            if (existing && (Number(existing.updatedAt) || 0) >= (Number(stop.updatedAt) || 0)) {
+              return existing;
+            }
+            return stop;
+          });
+        }
+        return request.countryStops || current || null;
+      });
       setPlacementRequest(request);
       setPlacementPosition(null);
     });
@@ -416,14 +448,28 @@ const GameScreen = ({ route }) => {
   }, [multiplayerEnabled, routeStops, stableDevDriveToStop]);
 
   const handleMapPointSelected = async (point) => {
-    if (!placementRequest) return;
-    const position = { x: point.x, y: point.y };
+    if (!placementRequest || !point) return;
+    const position = {
+      x: Number(point.x.toFixed(2)),
+      y: Number(point.y.toFixed(2)),
+    };
     if (placementRequest.mode === 'move' && placementRequest.stop?.id) {
-      await updateCountryStop(placementRequest.stop.id, { position });
-      setDevRouteStops((current) => current?.map((stop) => (
-        stop.id === placementRequest.stop.id ? { ...stop, position } : stop
-      )) || current);
+      const stopId = placementRequest.stop.id;
+      const updatedAt = Date.now();
+      setDevRouteStops((current) => {
+        const baseStops = current?.length >= 2 ? current : routeStops;
+        return baseStops.map((stop) => (
+          stop.id === stopId
+            ? { ...stop, position, positionVersion: COUNTRY_POSITION_VERSION, updatedAt }
+            : stop
+        ));
+      });
       setPlacementRequest(null);
+      try {
+        await updateCountryStop(stopId, { position, positionVersion: COUNTRY_POSITION_VERSION, updatedAt });
+      } catch (saveError) {
+        console.warn('Unable to persist updated country stop position:', saveError);
+      }
       return;
     }
     setPlacementPosition(position);
@@ -471,6 +517,7 @@ const GameScreen = ({ route }) => {
         canvasStyle={styles.canvas}
         currentLeg={currentLeg}
         diceEnabled={canRoll && !placementRequest}
+        diceVisible={!placementRequest}
         driving={state === 'moving'}
         lowPower={state === 'challenge'}
         gamePieces={gamePieces}
