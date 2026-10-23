@@ -172,12 +172,16 @@ const GameScene = memo(({
       />
     }>
       <CountryMarkers
+        activeCarProgressRef={activeCarProgressRef}
         currentLeg={currentLeg}
+        movementStartLeg={moveFromLeg}
+        movementTargetLeg={moveTargetLeg}
         movingMarkerIndex={movingMarkerIndex}
         movingMarkerStop={movingMarkerStop}
         occupiedMarkerIndexes={occupiedMarkerIndexes}
         routeModel={routeModel}
         targetLeg={moveTargetLeg}
+        vehicleInMotion={vehicleInMotion}
       />
     </Suspense>
     <CameraController

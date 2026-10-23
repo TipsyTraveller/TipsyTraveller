@@ -660,7 +660,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 - Active markers rotate and display a pulsing outer ring.
 - Marker geometry is centered horizontally and aligned at its bottom tip (`box.min.y`) with a Three.js bounding box so the pin stands above the map surface.
 - Sized to remain readable without covering smaller countries or nearby stops: inactive markers scale at `0.095` and active destination markers scale at `0.12`, floating with corresponding ground shadow and ring meshes.
-- Markers at occupied stops are omitted from both the GLTF render and loading fallback. The moving team's departure marker returns immediately, while a destination marker remains visible during the drive and hides once the car arrives. The Dev Portal's actively edited marker remains visible even when that stop is occupied.
+- Markers at occupied stops are omitted from both the GLTF render and loading fallback. When the last parked car leaves a stop, its marker fades in over the first 40% of that route leg (capped at `0.7` world units); the destination marker fades out across the matching final approach and is omitted once the car arrives. If another car remains parked at either stop, its marker stays hidden. Marker meshes use per-instance cloned materials so these opacity transitions do not affect other stops. The Dev Portal's actively edited marker remains visible even when that stop is occupied.
 
 ### Camera
 
@@ -1496,7 +1496,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GameScene.js` | Canvas and 3D scene composition |
 | `components/MapPlane.js` | Continuous ocean plane and raised vector-map viewport |
 | `components/DottedRouteLine.js` | Animated route path ribbon, flowing chevrons, and waypoint rings |
-| `components/CountryMarkers.js` | Destination markers (two shared materials, one clone per marker) and active-marker animation |
+| `components/CountryMarkers.js` | Destination markers (one scene and material clone per marker), occupancy fades, and active-marker animation |
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
