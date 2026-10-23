@@ -547,7 +547,7 @@ export default function DevPortalModal({ visible, onClose }) {
                   Simulate throwing an exact dice value to test leg movement and landing.
                 </Text>
                 <View style={styles.diceRow}>
-                  {[1, 2, 3, 4, 5, 6].map((num) => (
+                  {[1, 2, 3].map((num) => (
                     <TouchableOpacity
                       key={num}
                       style={styles.diceButton}

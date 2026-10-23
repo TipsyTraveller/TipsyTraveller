@@ -34,6 +34,7 @@ const getMarkerScreenOffset = (routeModel, stopIndex, pieceRefs, width, height) 
 
   projectionCamera.aspect = width / height;
   setOverviewCameraPose({
+    aspect: width / height,
     cameraPosition: projectionCamera.position,
     lookAt: projectionLookAt,
     pieceRefs,

@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { RoundedBox } from '@react-three/drei/native';
 import * as THREE from 'three';
-import { DICE_BOUNDS, DICE_RESULT_DURATION } from '../constants/diceBounds';
+import { DICE_BOUNDS, DICE_MAX_RESULT, DICE_RESULT_DURATION } from '../constants/diceBounds';
 import { MAP_CY, MAP_H, MAP_RELIEF_DEPTH, MAP_W, MAP_Z } from '../constants/mapCoordinates';
 
 const DICE_SIZE = 0.48;
@@ -96,7 +96,7 @@ const easeInOutCubic = (value) => (
     ? 4 * value * value * value
     : 1 - Math.pow(-2 * value + 2, 3) / 2
 );
-const randomFace = () => Math.floor(Math.random() * 6) + 1;
+const randomFace = () => Math.floor(Math.random() * DICE_MAX_RESULT) + 1;
 const nearestEquivalentAngle = (target, reference) => {
   const fullTurn = Math.PI * 2;
   return target + Math.round((reference - target) / fullTurn) * fullTurn;

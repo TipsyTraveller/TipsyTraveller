@@ -1,6 +1,32 @@
 import { MAP_CY, MAP_H, MAP_W, svgPoint, uv } from './mapCoordinates';
 
-export const DURATION_STOP_COUNTS = { short: 4, medium: 6, long: Infinity };
+export const DURATION_STOP_COUNTS = { short: 6, medium: 9, long: 12 };
+
+// Each corridor is ordered from Belgium toward Greece. A room picks one
+// corridor, then samples evenly distributed stops from it so routes vary while
+// remaining geographically readable instead of zigzagging randomly.
+export const ROUTE_CORRIDORS = [
+  [
+    'luxembourg', 'france', 'monaco', 'switzerland', 'liechtenstein',
+    'italy', 'san-marino', 'vatican-city', 'slovenia',
+    'croatia', 'bosnia-herzegovina', 'montenegro', 'albania', 'north-macedonia',
+  ],
+  [
+    'netherlands', 'germany', 'denmark', 'poland', 'czechia', 'austria',
+    'slovakia', 'hungary', 'romania', 'serbia', 'kosovo', 'bulgaria',
+    'north-macedonia',
+  ],
+  [
+    'netherlands', 'germany', 'denmark', 'norway', 'sweden', 'finland',
+    'estonia', 'latvia', 'lithuania', 'poland', 'ukraine', 'moldova',
+    'romania', 'bulgaria', 'turkey', 'north-macedonia',
+  ],
+  [
+    'ireland', 'united-kingdom', 'france', 'portugal', 'spain', 'andorra',
+    'monaco', 'switzerland', 'italy', 'san-marino', 'vatican-city',
+    'malta', 'albania',
+  ],
+];
 export const COUNTRY_POSITION_VERSION = 2;
 
 const position = (x, y) => {
@@ -170,11 +196,49 @@ export const applyCurrentDefaultPositions = (value) => normalizeCountryStops(val
   };
 });
 
-export const getStopsForDuration = (stops, duration = 'long') => {
+export const getStopsForDuration = (stops, duration = 'long', random = Math.random) => {
   const normalized = normalizeCountryStops(stops);
-  const requestedCount = DURATION_STOP_COUNTS[duration] ?? DURATION_STOP_COUNTS.long;
-  const count = Math.max(2, Math.min(normalized.length, requestedCount));
-  return normalized.slice(0, count).map((stop, index) => ({ ...stop, order: index }));
+  const stopCount = DURATION_STOP_COUNTS[duration] || DURATION_STOP_COUNTS.long;
+  const intermediateCount = stopCount - 2;
+  const availableIds = new Set(normalized.map(({ id }) => id));
+  const availableCorridors = ROUTE_CORRIDORS
+    .map((corridor) => corridor.filter((id) => availableIds.has(id)))
+    .filter((corridor) => corridor.length >= intermediateCount);
+  const routeCorridors = availableCorridors.length > 0 ? availableCorridors : ROUTE_CORRIDORS;
+  const corridorIndex = Math.min(
+    routeCorridors.length - 1,
+    Math.floor(random() * routeCorridors.length)
+  );
+  const corridor = routeCorridors[corridorIndex];
+  const intermediateIds = Array.from({ length: intermediateCount }, (_, index) => {
+    const segmentStart = Math.floor((index * corridor.length) / intermediateCount);
+    const segmentEnd = Math.max(
+      segmentStart,
+      Math.floor(((index + 1) * corridor.length) / intermediateCount) - 1
+    );
+    const offset = Math.floor(random() * (segmentEnd - segmentStart + 1));
+    return corridor[Math.min(segmentEnd, segmentStart + offset)];
+  });
+  const routeIds = ['belgium', ...intermediateIds, 'greece'];
+  const authoredById = new Map(normalized.map((countryStop) => [countryStop.id, countryStop]));
+
+  return routeIds.map((id, index) => ({
+    ...(authoredById.get(id) || DEFAULT_COUNTRY_STOP_BY_ID.get(id)),
+    order: index,
+  }));
+};
+
+export const mergeRouteStopsWithCatalogue = (routeStops, catalogueStops) => {
+  const route = normalizeCountryStops(routeStops);
+  const catalogueById = new Map(
+    normalizeCountryStops(catalogueStops).map((countryStop) => [countryStop.id, countryStop])
+  );
+
+  return route.map((routeStop, index) => ({
+    ...routeStop,
+    ...(catalogueById.get(routeStop.id) || {}),
+    order: index,
+  }));
 };
 
 export const resolveGameRouteStops = (gameData = {}) => (

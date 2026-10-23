@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 22 October 2026.
+> Last reviewed against the source code: 23 October 2026.
 
 ## Table of contents
 
@@ -101,10 +101,12 @@ This document distinguishes between the visible product concept and what the cur
 - Animated vehicle movement along a curved route.
 - Animated country markers and camera following.
 - Configurable location challenge cards.
-- Duration-driven routes: short rooms snapshot 4 ordered route points, medium rooms snapshot 6, and long rooms use every authored point.
+- Duration-driven routes: every room samples a fresh, geographically ordered 6, 9, or 12-stop itinerary from Belgium to Greece.
 - The bundled long-route catalogue contains one stop for each of 51 European countries under an inclusive convention: sovereign states wholly or partly in Europe plus Kosovo. Each bundled stop has a country code, representative city, flag palette, and at least one original challenge.
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools backed by Cloud Firestore (`countries` and `challenges` collections) with local cache and Realtime Database fallback.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
+- Firebase-synchronized team scores and finish positions, with a final ranked winner board.
+- A route preview card on GameScreen entry showing the selected itinerary, stop count, 1–3 roll range, and scoring rules.
 - Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll action while waiting for a throw.
 - Active-game re-entry through the room PIN with canonical state restoration.
 - Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
@@ -116,7 +118,6 @@ This document distinguishes between the visible product concept and what the cur
 
 - Difficulty is stored in Firebase but does not modify gameplay.
 - The lobby `RULES` button opens a concise rules summary.
-- The game shows “Tour complete” when all teams finish, but it does not rank teams or announce a winner.
 
 ### Development-mode behavior
 
@@ -131,11 +132,11 @@ The Dev Portal provides four cross-platform capability suites plus one web-only 
 
 - **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
 - **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
-- **Board & Game Tools**: Allows forcing exact dice roll values (1 to 6) to test specific travel legs and stop arrival animations, driving the active turn's team directly to any country stop on the active route followed by opening its challenge card, and resetting board state.
+- **Board & Game Tools**: Allows forcing exact dice roll values (1 to 3) to test specific travel legs and stop arrival animations, driving the active turn's team directly to any country stop on the active route followed by opening its challenge card, and resetting board state.
 - **Countries (web only)**: Lists the Firestore-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. When moving a point, the camera centers on the target country, the marker bounces in glowing cyan with an animated beacon wave, vertical beam, and floating billboard name badge, other pins are dimmed, hovering over any pin surfaces its country name, and the 3D dice is hidden so the board and country targets remain fully visible and clickable. Pressing anywhere on the map immediately updates the marker's position optimistically and persists the coordinates as a single-document update to Cloud Firestore (`countries/{stopId}`) alongside the local cache and Realtime Database fallback. The tab and placement UI are not exposed on iOS or Android.
 - **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
 
-The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK`. Instant GameScreen shortcuts load the current Firebase-authored catalogue and use the full long-duration route by default, so newly added or reordered stops remain visible after a browser refresh. If the catalogue cannot be read, the content service falls back to bundled defaults. The Dev Portal's Board tools likewise show the authored catalogue when no active room snapshot is available; live multiplayer rooms retain their immutable room route snapshot.
+The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK`. Instant GameScreen shortcuts load the current Firebase-authored catalogue and use the 12-stop long itinerary by default; matching authored stop edits remain visible after a browser refresh. If the catalogue cannot be read, the content service falls back to bundled defaults. The Dev Portal's country authoring tools still show the complete catalogue, while its board tools use the active duration itinerary. Live multiplayer rooms retain their immutable room route snapshot.
 
 ---
 
@@ -150,12 +151,13 @@ The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK`. Instant G
 5. The backend assigns joining devices to the least populated valid team.
 6. The host sees the realtime team roster and starts the game when the minimum number of players is present.
 7. Each team leader selects a vehicle.
-8. Teams take turns rolling a die.
+8. Teams take turns rolling a die with results from 1 through 3.
 9. A team advances by the rolled number of route stops, capped at the final stop.
 10. On a non-final landing, the active team performs the displayed country challenge.
 11. Pressing `DONE / NEXT TURN` passes play to the next unfinished team.
 12. Finished teams are skipped in later turn rotation.
-13. The game ends after every team reaches the configured final stop.
+13. Each route leg advanced earns 10 points. Finishing adds 30 points for first, 15 for second, and 5 for third.
+14. The game ends after every team reaches Greece and shows the ranked winner board.
 
 ### Team count rules
 
@@ -169,25 +171,26 @@ The host is inserted into Team 1 as its leader. In a two-team room, the first jo
 
 ### Route and stop numbering
 
-The board route is an ordered collection of destination coordinates joined by travel legs. A typical route contains:
+The board route is an ordered collection of destination coordinates joined by travel legs. Every new room starts in Belgium and finishes in Greece. Duration sets the stop count, while one of several Atlantic, Alpine, Central, or Northern European corridors and evenly distributed stops within it are selected randomly:
 
-- A starting stop.
-- One or more intermediate destinations.
-- A final stop, which may return to the starting location or end elsewhere.
+- Short: 6 stops, sampling four intermediate countries across the selected corridor.
+- Medium: 9 stops, sampling seven intermediate countries across the selected corridor.
+- Long: 12 stops, sampling ten intermediate countries across the selected corridor.
 
 Stop index `0` is the initial position. Every following index represents another destination along the route. Intermediate stops may resolve to a challenge, while the final stop completes that team’s journey. The exact number of stops and their names are content choices and can change without altering the basic turn state machine.
 
-The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and `challenges/{challengeId}`) with a mirrored fallback at Firebase Realtime Database `gameContent/countryStops` and `localStorage` (`tipsy_authored_country_stops_v2`). Creating a room copies a duration-sized ordered subset into `games/{gameID}/routeStops`; this snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the duration mapping and a 51-country full-length fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. The content service recognizes the former eight-stop bundled catalogue by its legacy IDs and automatically seeds or serves the 51-country Europe catalogue instead. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
+The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and `challenges/{challengeId}`) with a mirrored fallback at Firebase Realtime Database `gameContent/countryStops` and `localStorage` (`tipsy_authored_country_stops_v2`). Creating a room randomly samples a duration-sized corridor and copies it into `games/{gameID}/routeStops`; removed intermediate catalogue countries are excluded from selection, authored content and positions are retained, and the required Belgium/Greece endpoints have bundled fallbacks. This snapshot prevents later random calls or authoring changes from altering an active room. `constants/countryStops.js` supplies the route corridors, sampling logic, and 51-country catalogue fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
 
 ### Roll behavior
 
-- Rolls are integers from 1 through 6.
+- Rolls are integers from 1 through 3, including the physical die, tracker shortcut, synchronized action validation, and Dev Portal force-roll controls.
 - Movement cannot overshoot the finish.
 - Landing at the finish immediately marks that team done.
 - Landing before the finish opens a challenge.
 - There is no collision rule; multiple teams may occupy the same stop. Co-located vehicles park in center, left, and right slots instead of overlapping. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
 - There are no shortcuts, reverse movement, bonus rolls, or stored penalties in the current code.
 - Penalties are sips of water and are instructions only; the app does not record whether a challenge was passed or failed.
+- A team's live score is `currentLeg × 10`, plus its podium bonus after finishing. Finish order is assigned transactionally and is the competition tiebreaker represented by the bonus.
 
 ---
 
@@ -212,7 +215,7 @@ flowchart TD
     Challenge -->|Done| Next[Next unfinished team]
     Move -->|Final stop| Next
     Next -->|Teams remain| Roll
-    Next -->|All teams finished| Complete[Tour complete]
+    Next -->|All teams finished| Complete[Ranked winner board]
     Complete -->|Restart| Game
 ```
 
@@ -277,7 +280,7 @@ stateDiagram-v2
 | `isCarDriving` | Whether the path reveal has finished and the active vehicle is currently driving |
 | `moveTargets` | Map of team ID to destination leg |
 | `currentChallenge` | Challenge record for the latest non-final landing |
-| `teamProgress` | Per-team `{ currentLeg, isDone }` data |
+| `teamProgress` | Per-team `{ currentLeg, isDone, score, finishPosition }` data |
 | `pieceRefs` | React refs for each Three.js vehicle group, used by the camera |
 | `activeCarProgressRef` | React ref tracking the active vehicle's normalized curve progress so the route ribbon trims behind the car |
 
@@ -384,7 +387,7 @@ The setup globe and wordmark use a larger compact presentation, while each optio
 
 When the host returns from an existing lobby, the same setup screen is opened in edit mode with the current choices preselected. Completing the steps transactionally updates the existing `games/{gameID}` record while preserving its ID, host metadata, and `players/{gameID}` roster. A player-range reduction is rejected if the current roster would not fit or Team 3 still has members.
 
-Duration is consumed when the room route snapshot is created: short selects the first 4 ordered points, medium the first 6, and long every available point. Editing duration while the room is still in the lobby regenerates this snapshot. Difficulty remains unused. All three duration choices also reuse the beer-bottle images originally used for difficulty.
+Duration is consumed when the room route snapshot is created: short samples 6 stops, medium 9 stops, and long 12 stops from one randomly selected, geographically ordered corridor. Editing duration while the room is still in the lobby generates a fresh route snapshot. Difficulty remains unused. All three duration choices also reuse the beer-bottle images originally used for difficulty.
 
 ### `HostName`
 
@@ -463,9 +466,11 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Subscribes to the room gameplay record and renders synchronized rolls, movement targets, landings, challenges, turn switching, finish state, and restart.
 - Limits roll and challenge controls to the active team's leader and restart to the host; other devices render the same action in spectator mode.
 - Keeps development mock games local so the Dev Portal does not require Firebase.
+- Opens with a route preview that lists every stop, explains the 1–3 dice range and scoring, and lets players inspect the selected trip before the first roll.
 - Unlocks orientation on unmount.
 - The native HUD and race tracker respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
 - Shows a shadow-free, 56-pixel-wide mini race tracker only during the `waiting` phase. It sits four pixels inside the device's right safe-area inset, maps each team's current stop to the route's arc-length progress, and renders enlarged team-colored car silhouettes without icon background boxes. Co-located cars overlap slightly, while the active team's car scales up and stacks above the others. The tracker marks the finish with a checkered flag and incorporates the compact roll action. A native-driver opacity animation fades it in over 180 ms and out over 140 ms; touch and accessibility focus are disabled as soon as it begins hiding during dice animation, vehicle movement, challenges, loading, and game completion. The completed-game restart action lives in `GameHud` instead.
+- Displays the active team's score in the HUD and replaces the generic completion message with ranked team scores and a winner announcement.
 
 ### `AccountScreen`
 
@@ -660,7 +665,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 
 The camera has two modes:
 
-- `done`: smoothly frames every team vehicle together with the active team's next destination (or rolled destination during the initial path reveal). The regional overview uses a moderate base zoom, widens only as the teams spread apart, and pans east with route progress instead of shrinking the entire Europe map into frame.
+- `done`: smoothly frames every team vehicle together with the active team's next destination (or rolled destination during the initial path reveal). The regional overview uses a closer phone-friendly base zoom (`OVERVIEW_BASE_SCALE = 0.58`, `OVERVIEW_MAX_SCALE = 0.82`), widens gently as teams spread apart across the continent, and includes intelligent western ocean avoidance: when stops/vehicles are located in western Europe (Iceland, Ireland, UK, Portugal, Spain), the camera shifts look-at eastward so western destinations are framed comfortably near the left edge of the display with a natural coastal margin (`DESIRED_WEST_MARGIN = 0.85`) instead of centering directly on them into the Atlantic Ocean, keeping the European continent prominently visible across the phone display.
 - `follow`: follows the active vehicle from a wider fixed offset once the vehicle begins driving along the revealed path, keeping the car and nearby route context visible without filling the frame.
 
 Position and look-at target are interpolated every frame using exponential damping (`1 - Math.exp(-damping * delta)`), preventing frame-rate-dependent jumps.
@@ -699,7 +704,7 @@ The idle die is positioned on the camera's center ray at a fixed viewing distanc
 2. Pointer movement is projected onto a foreground hold plane at `HOLD_Z` so the held die stays directly under the pointer.
 3. The held point is clamped to `HOLD_BOUNDS` in the foreground, while landing and roll targets are clamped to `DICE_BOUNDS` on the board.
 4. Recent drag displacement is smoothed into a throw direction.
-5. Pointer up generates a random result from 1 through 6.
+5. Pointer up generates a random result from 1 through 3. The mesh still has six physical faces, but only faces 1–3 can be selected as results.
 6. Throw strength slightly modifies rolling distance.
 7. The die animates through a parabolic airborne stage.
 8. It rolls and bounces toward the final position.
@@ -746,8 +751,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - Disables frustum culling on child meshes.
 - Replaces materials with team-colored paint, dark parts, glass, or lights for the classic-style model.
 - For `preserveMaterials` models, web keeps a cloned PBR material while native Expo GL uses a lightweight unlit material backed by the already-loaded shared texture. Both paths set sRGB color space and disable `flipY`.
-- Computes a bounding box to center the model, align its lowest point to the ground, and normalize its footprint before applying a common preview or board scale.
-- Uses a smaller board-only scale than the selection preview so vehicles stay proportional to the route while driving.
+- Uses a smaller board-only scale (`BOARD_SCALE = 0.38`) than the selection preview (`PREVIEW_SCALE = 1.45`), keeping vehicles proportional to country markers, stops, and route curves without dominating smaller European territories. Parked cars use proportionate lateral spacing (`0.22`), and intermediate kickflip jumps use scaled height (`0.52`) and radius (`0.55`).
 - Disposes the materials it created when the prepared clone is replaced or unmounted (and, on web only, the cloned textures). Geometry and native textures belong to the cached GLTF and are never disposed here.
 
 ### Motion
@@ -845,15 +849,15 @@ The Realtime Database expects this conceptual structure:
         }
       ],
       "gameplay": {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "sessionId": "m8abc123-roomrun",
         "revision": 4,
         "phase": "moving",
         "activeTeamId": "team1",
         "turnNumber": 3,
         "teamProgress": {
-          "team1": { "currentLeg": 2, "isDone": false },
-          "team2": { "currentLeg": 1, "isDone": false }
+          "team1": { "currentLeg": 2, "isDone": false, "score": 20 },
+          "team2": { "currentLeg": 1, "isDone": false, "score": 10 }
         },
         "currentAction": {
           "id": "device-action-id",
@@ -960,6 +964,9 @@ Listeners are detached when the lobby unmounts.
 the shared phase and progress. A monotonically increasing revision and unique
 action ID make transitions and animations idempotent. Roll, movement-complete,
 challenge-complete, and restart writes use Realtime Database transactions.
+Movement completion also updates the active team's score. Reaching Greece
+transactionally assigns the next finish position and its podium bonus, so
+simultaneous clients cannot award two teams the same place.
 
 The active team's leader is the only client UI allowed to roll and complete a
 challenge. Every connected client may attempt the idempotent internal movement
@@ -1296,11 +1303,15 @@ Use at least two separate installations or clear/device-specific storage careful
 8. Select a model from each leader device.
 9. Inspect Firebase to confirm `teamModels` values.
 10. Confirm every client enters `GameScreen` with Team 1 active.
-11. Confirm only Team 1's leader can roll and every device shows the same result and vehicle movement.
-12. Confirm every device opens the same challenge and only the active team's leader can press `DONE / NEXT TURN`.
-13. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.
-14. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
-15. Finish the tour, restart from the host, and confirm every device resets to Team 1 at the starting stop.
+11. Confirm the route preview lists the itinerary selected by duration, begins in Belgium, ends in Greece, and matches the board markers.
+12. Create another room with the same duration and confirm its snapshot can use a different corridor and/or intermediate countries without changing the stop count.
+13. Confirm only Team 1's leader can roll, every result is between 1 and 3, and every device shows the same result and vehicle movement.
+14. Confirm each reached stop adds 10 points on every client.
+15. Confirm every device opens the same challenge and only the active team's leader can press `DONE / NEXT TURN`.
+16. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.
+17. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
+18. Finish the tour and confirm all clients show the same finish order, podium bonuses, scores, and winner.
+19. Restart from the host and confirm every device resets to Team 1 at Belgium with zero points without changing that room's snapshotted route.
 
 ### Reconnection test
 
@@ -1338,9 +1349,8 @@ camera motion, GLTF appearance, and final 3D performance.
 1. **Peer-authoritative rolls.** Transactions prevent duplicate turns, but the active leader's client still generates the random value; trusted anti-cheat rolls require backend logic.
 2. **Animation clocks are approximate.** Clients use the Firebase server-time offset and shared movement deadlines, but rendering remains local and slow/backgrounded devices may catch up by snapping to canonical state.
 3. **Difficulty is unused.** Easy/medium/hard do not alter challenges or penalties.
-4. **Duration controls only route size.** Short/medium/long change the number of snapshotted route points but do not change a target score or timer.
-5. **No winner model.** The game waits for all teams instead of ranking the first finisher.
-6. **Challenges are honor-based.** Pass/fail and penalties are not recorded.
+4. **Duration controls the itinerary only.** Short/medium/long choose different routes and stop counts but do not change challenge difficulty or a timer.
+5. **Challenges are honor-based.** Pass/fail and penalties are not recorded, so challenge outcomes do not add or remove points.
 
 ### Firebase and identity
 
@@ -1372,7 +1382,7 @@ camera motion, GLTF appearance, and final 3D performance.
 4. Replacing materials may discard advanced GLTF material properties.
 5. The challenge animation, marker animation, dice animation, camera movement, and cars all run concurrently.
 6. `world-map-vector.glb` is generated from `map.svg`; run `npm run build:map` after changing the SVG or the generator settings, then quantize it (see the header of `scripts/build-vector-map.mjs`).
-7. The 51-stop long route renders 51 marker instances. Their shared materials and reduced dense-route scale limit overhead, but draw-call and physical-device performance still require profiling on representative iOS and Android hardware.
+7. The master catalogue contains 51 stops, but an active route renders at most 12 marker instances. Physical-device performance still requires profiling on representative iOS and Android hardware.
 
 ### Native/release readiness
 
@@ -1407,7 +1417,7 @@ Keep challenge content separate from rendering and select a challenge from a cou
 
 ### Extend duration modes
 
-Duration currently snapshots the first 4 ordered points for short, the first 6 for medium, and every authored point for long. Future modes can make those counts content-configurable or add multiple laps and target scores. Preserve the room-level route snapshot so content edits never mutate an active game.
+Duration currently snapshots randomly sampled 6, 9, and 12-stop Belgium-to-Greece itineraries from data-driven corridor definitions. Future modes can make corridor definitions remotely configurable or add more route families, laps, and target scores. Preserve the room-level route snapshot so content edits and later random calls never mutate an active game.
 
 ### Improve rendering performance
 
@@ -1493,6 +1503,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/RaceProgressTracker.js` | Waiting-phase right-side team route progress, finish-line, and roll overlay |
+| `components/RoutePreview.js` | Game-entry itinerary and scoring overview |
 | `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
 | `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |
