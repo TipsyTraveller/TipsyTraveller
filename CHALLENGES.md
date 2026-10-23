@@ -41,7 +41,7 @@ When a team lands in a country, one randomly selected player explains a secret w
 - The explainer may not translate or spell the target word.
 - Only the active team may guess.
 - The challenge is excluded when the active team has fewer than two players.
-- Each of the 51 bundled countries contains exactly one copy of this challenge and four country-themed words.
+- Each of the 51 bundled countries contains exactly one copy of this challenge and six medium-to-hard country-themed words or phrases.
 
 ### Scoring
 
@@ -58,7 +58,8 @@ When a team lands in a country, one randomly selected player explains a secret w
 - **Timer:** 30 seconds, started only after the explainer presses `START`.
 - **Result:** `guessed | failed | timeout`, synchronized in `gameplay.challengeRound`.
 - **Score:** successful results transactionally increase `teamProgress[teamId].challengePoints` and the displayed total score exactly once.
-- **Content:** `app/GameScreen/constants/countryStops.js` owns the expandable word lists for the 51 bundled countries.
+- **Content:** `app/GameScreen/constants/countryStops.js` owns the versioned word lists for the 51 bundled countries. Each list avoids basic country names, capitals, and overly obvious clues.
+- **Persistence:** both `countries/{countryId}.challenges` and `challenges/{countryId}__guess-country-word` store the complete list in Cloud Firestore. Existing documents are batch-migrated when their `wordListVersion` is outdated.
 
 ---
 

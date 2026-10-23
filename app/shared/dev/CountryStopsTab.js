@@ -145,7 +145,15 @@ export default function CountryStopsTab({ onClose }) {
           )}
           {stop.challenges.map((challenge) => (
             <View key={challenge.id} style={styles.challengeRow}>
-              <View style={styles.challengeCopy}><Text style={styles.challengeTitle}>{challenge.title}</Text><Text style={styles.challengePrompt}>{challenge.prompt}</Text></View>
+              <View style={styles.challengeCopy}>
+                <Text style={styles.challengeTitle}>{challenge.title}</Text>
+                <Text style={styles.challengePrompt}>{challenge.prompt}</Text>
+                {challenge.type === 'countryWordGuess' ? (
+                  <Text style={styles.coordinates}>
+                    {`${challenge.words?.length || 0} words · list v${challenge.wordListVersion || 1}`}
+                  </Text>
+                ) : null}
+              </View>
               {challenge.type === 'countryWordGuess' ? null : (
                 <TouchableOpacity onPress={() => removeChallenge(stop, challenge.id)}><Text style={styles.deleteChallenge}>✕</Text></TouchableOpacity>
               )}
