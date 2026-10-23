@@ -187,7 +187,7 @@ The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and
 - Movement cannot overshoot the finish.
 - Landing at the finish immediately marks that team done.
 - Landing before the finish opens a challenge.
-- There is no collision rule; multiple teams may occupy the same stop. Co-located vehicles park in center, left, and right slots instead of overlapping. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
+- There is no collision rule; multiple teams may occupy the same stop. A stop's marker is hidden while one or more cars are parked on it and reappears as soon as the last car starts moving away. Co-located vehicles use center, left, and right parking slots. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
 - There are no shortcuts, reverse movement, bonus rolls, or stored penalties in the current code.
 - Penalties are sips of water and are instructions only; the app does not record whether a challenge was passed or failed.
 - A team's live score is `currentLeg × 10`, plus its podium bonus after finishing. Finish order is assigned transactionally and is the competition tiebreaker represented by the bonus.
@@ -659,7 +659,8 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 - While waiting to roll, the next stop is active; during a move, the destination stop for that roll is highlighted as active.
 - Active markers rotate and display a pulsing outer ring.
 - Marker geometry is centered horizontally and aligned at its bottom tip (`box.min.y`) with a Three.js bounding box so the pin stands above the map surface.
-- Sized for mobile phone readability: inactive markers scale at `0.14` and active destination markers scale at `0.175`, floating with corresponding ground shadow and ring meshes.
+- Sized to remain readable without covering smaller countries or nearby stops: inactive markers scale at `0.095` and active destination markers scale at `0.12`, floating with corresponding ground shadow and ring meshes.
+- Markers at occupied stops are omitted from both the GLTF render and loading fallback. When the last parked car leaves a stop, its marker fades in over the first 40% of that route leg (capped at `0.7` world units); the destination marker fades out across the matching final approach and is omitted once the car arrives. If another car remains parked at either stop, its marker stays hidden. Marker meshes use per-instance cloned materials so these opacity transitions do not affect other stops. The Dev Portal's actively edited marker remains visible even when that stop is occupied.
 
 ### Camera
 
@@ -1495,7 +1496,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/GameScene.js` | Canvas and 3D scene composition |
 | `components/MapPlane.js` | Continuous ocean plane and raised vector-map viewport |
 | `components/DottedRouteLine.js` | Animated route path ribbon, flowing chevrons, and waypoint rings |
-| `components/CountryMarkers.js` | Destination markers (two shared materials, one clone per marker) and active-marker animation |
+| `components/CountryMarkers.js` | Destination markers (one scene and material clone per marker), occupancy fades, and active-marker animation |
 | `components/GamePieces.js` | Per-team vehicle mapping |
 | `components/GamePiece.js` | GLTF preparation and route movement |
 | `components/VehicleModel.js` | Shared vehicle cloning, materials, normalization, and preview/board transforms |
