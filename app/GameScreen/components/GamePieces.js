@@ -2,11 +2,15 @@ import { memo, useRef } from 'react';
 import GamePiece from './GamePiece';
 
 const getParkingOffsetFactor = (parkingAssignments, pieceId) => {
+  const occupiedCount = parkingAssignments.filter(Boolean).length;
   const parkingIndex = parkingAssignments.indexOf(pieceId);
 
-  // Every slot stays clear of the route center, where the destination pin sits.
-  // Fixed factors also keep parked cars from changing sides as teams arrive.
-  return [1, -1, 2][parkingIndex] ?? 0;
+  if (occupiedCount <= 1 || parkingIndex < 0) return 0;
+  if (occupiedCount === 3) return [0, 1, -1][parkingIndex] ?? 0;
+  if (parkingIndex === 1) return 0.5;
+  if (parkingIndex === 2) return -0.5;
+
+  return parkingAssignments[1] ? -0.5 : 0.5;
 };
 
 const assignToOpenParkingSlot = (parkingAssignments, pieceId) => {

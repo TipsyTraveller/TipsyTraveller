@@ -1,4 +1,4 @@
-import { memo, Suspense } from 'react';
+import { memo, Suspense, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber/native';
 import { DONE_POS } from '../constants/camera';
 import CameraController from './CameraController';
@@ -35,7 +35,13 @@ const GamePiecesFallback = ({ gamePieces, routeModel, teamProgress }) => (
   </>
 );
 
-const CountryMarkersFallback = ({ currentLeg, movingMarkerIndex = -1, routeModel, targetLeg }) => {
+const CountryMarkersFallback = ({
+  currentLeg,
+  movingMarkerIndex = -1,
+  occupiedMarkerIndexes,
+  routeModel,
+  targetLeg,
+}) => {
   const isMovePlacement = movingMarkerIndex >= 0;
   const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
     ? targetLeg
@@ -48,6 +54,8 @@ const CountryMarkersFallback = ({ currentLeg, movingMarkerIndex = -1, routeModel
     <>
       {routeModel.markers.map((position, index) => {
         const isMoving = isMovePlacement && index === movingMarkerIndex;
+        if (occupiedMarkerIndexes.has(index) && !isMoving) return null;
+
         return (
           <group key={`${position.x}-${position.y}-${index}`} position={[position.x, position.y, MAP_Z + 0.09]}>
             <mesh>
@@ -97,8 +105,15 @@ const GameScene = memo(({
   teamProgress,
   routeModel,
   vehicleInMotion,
-}) => (
-  <Canvas
+}) => {
+  const occupiedMarkerIndexes = useMemo(() => new Set(
+    gamePieces
+      .filter((piece) => !(vehicleInMotion && piece.id === movingPieceId))
+      .map((piece) => teamProgress[piece.id]?.currentLeg ?? 0)
+  ), [gamePieces, movingPieceId, teamProgress, vehicleInMotion]);
+
+  return (
+    <Canvas
     style={canvasStyle}
     // Paused while a challenge card is on screen: the board is covered by the dim
     // backdrop, and a running GL loop competes with the card animation on phones.
@@ -151,6 +166,7 @@ const GameScene = memo(({
       <CountryMarkersFallback
         currentLeg={currentLeg}
         movingMarkerIndex={movingMarkerIndex}
+        occupiedMarkerIndexes={occupiedMarkerIndexes}
         routeModel={routeModel}
         targetLeg={moveTargetLeg}
       />
@@ -159,6 +175,7 @@ const GameScene = memo(({
         currentLeg={currentLeg}
         movingMarkerIndex={movingMarkerIndex}
         movingMarkerStop={movingMarkerStop}
+        occupiedMarkerIndexes={occupiedMarkerIndexes}
         routeModel={routeModel}
         targetLeg={moveTargetLeg}
       />
@@ -183,7 +200,8 @@ const GameScene = memo(({
       rollAction={rollAction}
       visible={diceVisible}
     />
-  </Canvas>
-));
+    </Canvas>
+  );
+});
 
 export default GameScene;

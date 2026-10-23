@@ -28,6 +28,7 @@ const DIMMED_MARKER_MATERIAL = new THREE.MeshStandardMaterial({
 // Keep route pins readable without covering smaller countries or nearby stops.
 const ACTIVE_MARKER_SCALE = 0.12;
 const INACTIVE_MARKER_SCALE = 0.095;
+const NO_OCCUPIED_MARKERS = new Set();
 
 const createCountryBadgeTexture = (text, isMoving) => {
   if (typeof document === 'undefined' || !text) return null;
@@ -218,6 +219,7 @@ const CountryMarkers = memo(({
   currentLeg,
   movingMarkerIndex = -1,
   movingMarkerStop = null,
+  occupiedMarkerIndexes = NO_OCCUPIED_MARKERS,
   routeModel,
   targetLeg,
 }) => {
@@ -235,6 +237,8 @@ const CountryMarkers = memo(({
       {routeModel.markers.map((position, index) => {
         const stopData = routeModel.countryStops?.[index];
         const isMoving = isMovePlacement && (index === movingMarkerIndex || (movingMarkerStop && stopData?.id === movingMarkerStop.id));
+        if (occupiedMarkerIndexes.has(index) && !isMoving) return null;
+
         const isDimmed = isMovePlacement && !isMoving;
         const countryName = stopData?.name || routeModel.stopNames?.[index] || '';
         const stopNumber = index + 1;

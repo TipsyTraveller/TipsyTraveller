@@ -187,7 +187,7 @@ The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and
 - Movement cannot overshoot the finish.
 - Landing at the finish immediately marks that team done.
 - Landing before the finish opens a challenge.
-- There is no collision rule; multiple teams may occupy the same stop. Co-located vehicles park in fixed slots beside the route-center pin instead of overlapping it or one another. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
+- There is no collision rule; multiple teams may occupy the same stop. A stop's marker is hidden while one or more cars are parked on it and reappears as soon as the last car starts moving away. Co-located vehicles use center, left, and right parking slots. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
 - There are no shortcuts, reverse movement, bonus rolls, or stored penalties in the current code.
 - Penalties are sips of water and are instructions only; the app does not record whether a challenge was passed or failed.
 - A team's live score is `currentLeg × 10`, plus its podium bonus after finishing. Finish order is assigned transactionally and is the competition tiebreaker represented by the bonus.
@@ -660,6 +660,7 @@ Instead of static dots across the entire map, `DottedRouteLine` precomputes a si
 - Active markers rotate and display a pulsing outer ring.
 - Marker geometry is centered horizontally and aligned at its bottom tip (`box.min.y`) with a Three.js bounding box so the pin stands above the map surface.
 - Sized to remain readable without covering smaller countries or nearby stops: inactive markers scale at `0.095` and active destination markers scale at `0.12`, floating with corresponding ground shadow and ring meshes.
+- Markers at occupied stops are omitted from both the GLTF render and loading fallback. The moving team's departure marker returns immediately, while a destination marker remains visible during the drive and hides once the car arrives. The Dev Portal's actively edited marker remains visible even when that stop is occupied.
 
 ### Camera
 
@@ -751,7 +752,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - Disables frustum culling on child meshes.
 - Replaces materials with team-colored paint, dark parts, glass, or lights for the classic-style model.
 - For `preserveMaterials` models, web keeps a cloned PBR material while native Expo GL uses a lightweight unlit material backed by the already-loaded shared texture. Both paths set sRGB color space and disable `flipY`.
-- Uses a smaller board-only scale (`BOARD_SCALE = 0.38`) than the selection preview (`PREVIEW_SCALE = 1.45`), keeping vehicles proportional to country markers, stops, and route curves without dominating smaller European territories. Parked cars use fixed non-zero lateral slots based on proportionate spacing (`0.22`), keeping them clear of the route-center pin; intermediate kickflip jumps use scaled height (`0.52`) and radius (`0.55`).
+- Uses a smaller board-only scale (`BOARD_SCALE = 0.38`) than the selection preview (`PREVIEW_SCALE = 1.45`), keeping vehicles proportional to country markers, stops, and route curves without dominating smaller European territories. Parked cars use proportionate lateral spacing (`0.22`), and intermediate kickflip jumps use scaled height (`0.52`) and radius (`0.55`).
 - Disposes the materials it created when the prepared clone is replaced or unmounted (and, on web only, the cloned textures). Geometry and native textures belong to the cached GLTF and are never disposed here.
 
 ### Motion
@@ -762,7 +763,7 @@ Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally 
 - Heading comes from a tight look-ahead chord tangent (`getSmoothRouteTangentAngle`) plus a 90-degree model correction, interpolated with shortest-angle exponential damping.
 - An inner body group applies the driving sine bounce so the root group tracked by the camera remains free of vertical bounce jitter.
 - Before movement begins, `GamePieces` identifies other teams parked at route stops strictly between the mover's start and destination. The inner body group first lifts the active vehicle on a high smooth arc, then performs one full longitudinal rotation while airborne and returns the vehicle upright before landing. This visual kickflip does not change route distance, stop occupancy, or camera tracking.
-- `GamePieces` groups non-moving teams by stop and retains each car's fixed parking-slot assignment until that car departs. No slot is centered on the marker: the first two cars park one spacing to either side of the route and a third uses the next open outer slot. During movement, `GamePiece` follows a lane-change trajectory from its departure position onto the route centerline, then into its predicted destination position before stopping. Stable assignments prevent cars from swapping sides or sliding through one another when another team arrives or leaves.
+- `GamePieces` groups non-moving teams by stop and retains each car's center, left, or right assignment until that car departs. Two cars form a tight pair half a spacing to either side of the route; three use center, left, and right positions. Parked cars smoothly make room while an incoming car approaches. During movement, `GamePiece` follows a lane-change trajectory from its departure position onto the route centerline, then into its predicted destination position before stopping. Stable assignments prevent cars from swapping sides or sliding through one another when another team arrives or leaves.
 - Crossed intermediate stops decrement `remainingMoves` in `GameScreen`, and when the target stop is reached, `onMoveComplete(teamId, targetLeg)` fires exactly once.
 
 ---
