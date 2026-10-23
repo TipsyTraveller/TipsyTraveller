@@ -35,11 +35,11 @@ import { resolveGameRouteStops } from '../../GameScreen/constants/countryStops';
 import { subscribeCountryStops } from '../../GameScreen/services/countryStopsService';
 
 const TABS = [
-  { id: 'screens', label: '🚀 Screens' },
-  { id: 'multiplayer', label: '👥 Bots' },
-  { id: 'board', label: '🎲 Board' },
-  ...(Platform.OS === 'web' ? [{ id: 'countries', label: '🗺 Countries' }] : []),
-  { id: 'tools', label: '⚙️ Identity' },
+  { id: 'screens', icon: '🚀', label: 'Screens' },
+  { id: 'multiplayer', icon: '👥', label: 'Bots' },
+  { id: 'board', icon: '🎲', label: 'Board' },
+  ...(Platform.OS === 'web' ? [{ id: 'countries', icon: '🗺️', label: 'Countries' }] : []),
+  { id: 'tools', icon: '⚙️', label: 'Identity' },
 ];
 
 export default function DevPortalModal({ visible, onClose }) {
@@ -50,8 +50,10 @@ export default function DevPortalModal({ visible, onClose }) {
   const [loadingAction, setLoadingAction] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [authoredRouteStops, setAuthoredRouteStops] = useState([]);
+  const [confirmingStorageClear, setConfirmingStorageClear] = useState(false);
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isCompact = width < 560;
 
   useEffect(() => {
     if (visible) {
@@ -251,11 +253,16 @@ export default function DevPortalModal({ visible, onClose }) {
     showStatus('Generated new device ID!');
   };
 
-  const handleClearStorage = async () => {
+  const clearStorage = async () => {
     await AsyncStorage.clear();
     const newId = await regenerateDeviceId();
     setDeviceId(newId);
+    setConfirmingStorageClear(false);
     showStatus('AsyncStorage cleared!');
+  };
+
+  const handleClearStorage = () => {
+    setConfirmingStorageClear(true);
   };
 
   const handleChangeCorner = (newCorner) => {
@@ -280,17 +287,35 @@ export default function DevPortalModal({ visible, onClose }) {
         activeOpacity={1}
         onPress={onClose}
       />
-      <View style={[styles.modalCard, isLandscape && styles.modalCardLandscape]}>
+      <View style={[
+        styles.modalCard,
+        isLandscape && styles.modalCardLandscape,
+        isCompact && styles.modalCardCompact,
+      ]}>
           {/* Header */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.headerTitle}>🛠️ DEV PORTAL</Text>
-              <Text style={styles.headerSubtitle}>
-                Screen: <Text style={styles.highlightText}>{currentRouteName}</Text>
-                {gamePin ? `  |  Room: ${gamePin}` : ''}
-              </Text>
+            <View style={styles.headerCopy}>
+              <Text style={styles.eyebrow}>DEVELOPMENT TOOLS</Text>
+              <Text style={styles.headerTitle}>Tipsy Traveller Lab</Text>
+              <View style={styles.contextRow}>
+                <View style={styles.contextChip}>
+                  <Text style={styles.contextLabel}>SCREEN</Text>
+                  <Text style={styles.contextValue} numberOfLines={1}>{currentRouteName}</Text>
+                </View>
+                {Boolean(gamePin) && (
+                  <View style={styles.contextChip}>
+                    <Text style={styles.contextLabel}>ROOM</Text>
+                    <Text style={styles.contextValue}>{gamePin}</Text>
+                  </View>
+                )}
+              </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close Dev Portal"
+            >
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -303,13 +328,17 @@ export default function DevPortalModal({ visible, onClose }) {
           )}
 
           {/* Tabs */}
-          <View style={styles.tabBar}>
+          <View style={styles.tabBar} accessibilityRole="tablist">
             {TABS.map((tab) => (
               <TouchableOpacity
                 key={tab.id}
                 onPress={() => setActiveTab(tab.id)}
                 style={[styles.tabButton, activeTab === tab.id && styles.tabButtonActive]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: activeTab === tab.id }}
+                accessibilityLabel={`${tab.label} tools`}
               >
+                <Text style={styles.tabIcon}>{tab.icon}</Text>
                 <Text
                   style={[
                     styles.tabButtonText,
@@ -614,12 +643,35 @@ export default function DevPortalModal({ visible, onClose }) {
                   Simulates opening the app on a fresh device without reinstalling.
                 </Text>
 
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.dangerButton]}
-                  onPress={handleClearStorage}
-                >
-                  <Text style={styles.actionButtonText}>🗑️ Clear All AsyncStorage</Text>
-                </TouchableOpacity>
+                {confirmingStorageClear ? (
+                  <View style={styles.confirmationPanel}>
+                    <Text style={styles.confirmationTitle}>Clear local app data?</Text>
+                    <Text style={styles.confirmationCopy}>
+                      This resets the account, settings, device identity, and Dev Portal preferences on this device.
+                    </Text>
+                    <View style={styles.confirmationActions}>
+                      <TouchableOpacity
+                        style={[styles.smallButton, styles.confirmationButton]}
+                        onPress={() => setConfirmingStorageClear(false)}
+                      >
+                        <Text style={styles.smallButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.smallButton, styles.dangerButton, styles.confirmationButton]}
+                        onPress={clearStorage}
+                      >
+                        <Text style={styles.actionButtonText}>Clear data</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.dangerButton]}
+                    onPress={handleClearStorage}
+                  >
+                    <Text style={styles.actionButtonText}>🗑️ Clear All AsyncStorage</Text>
+                  </TouchableOpacity>
+                )}
 
                 <Text style={styles.sectionHeading}>Dev Button Position</Text>
                 <Text style={styles.sectionDescription}>
@@ -696,12 +748,12 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 720,
     maxHeight: '92%',
-    backgroundColor: '#1a2530',
-    borderWidth: 2,
-    borderColor: '#ffd700',
-    borderRadius: 12,
+    backgroundColor: '#162330',
+    borderWidth: 1,
+    borderColor: '#3c4d5d',
+    borderRadius: 18,
     overflow: 'hidden',
     zIndex: 2,
     elevation: 2,
@@ -711,39 +763,75 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
   modalCardLandscape: {
-    maxWidth: 680,
+    maxWidth: 820,
     maxHeight: '95%',
+  },
+  modalCardCompact: {
+    maxHeight: '96%',
+    borderRadius: 14,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#131c24',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: '#101b25',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 215, 0, 0.3)',
+    borderBottomColor: '#2e4050',
+  },
+  headerCopy: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  eyebrow: {
+    fontSize: 7,
+    color: '#70d9d2',
+    fontFamily: 'dogicapixelbold',
+    letterSpacing: 1.2,
+    marginBottom: 5,
   },
   headerTitle: {
-    fontSize: 13,
-    color: '#ffd700',
+    fontSize: 15,
+    color: '#fff1cd',
     fontFamily: 'dogicapixelbold',
-    letterSpacing: 0.5,
   },
-  headerSubtitle: {
-    fontSize: 9,
-    color: '#8892b0',
-    fontFamily: 'dogicapixel',
-    marginTop: 4,
+  contextRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
   },
-  highlightText: {
-    color: '#1ba39c',
+  contextChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: 230,
+    backgroundColor: '#1b2c3a',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#365064',
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+  },
+  contextLabel: {
+    color: '#7d91a2',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 6,
+    marginRight: 6,
+  },
+  contextValue: {
+    flexShrink: 1,
+    color: '#70d9d2',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 7,
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#213241',
+    borderWidth: 1,
+    borderColor: '#405363',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -753,9 +841,11 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixelbold',
   },
   statusBanner: {
-    backgroundColor: '#1ba39c',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    backgroundColor: '#123d3b',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1ba39c',
+    paddingVertical: 9,
+    paddingHorizontal: 16,
   },
   statusBannerText: {
     color: '#fff',
@@ -765,23 +855,34 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#16202a',
+    backgroundColor: '#101b25',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    gap: 4,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 10,
+    minWidth: 58,
+    minHeight: 52,
+    borderRadius: 9,
+    paddingVertical: 7,
+    paddingHorizontal: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabButtonActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: '#ffd700',
-    backgroundColor: '#1f2c3a',
+    backgroundColor: '#26394a',
+    borderWidth: 1,
+    borderColor: '#ffd700',
+  },
+  tabIcon: {
+    fontSize: 13,
+    marginBottom: 4,
   },
   tabButtonText: {
-    fontSize: 9,
+    fontSize: 7,
     color: '#8892b0',
     fontFamily: 'dogicapixel',
   },
@@ -793,27 +894,28 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: 18,
   },
   section: {
     marginBottom: 8,
   },
   sectionHeading: {
-    fontSize: 10,
-    color: '#ffd700',
+    fontSize: 9.5,
+    color: '#fff1cd',
     fontFamily: 'dogicapixelbold',
-    marginTop: 12,
-    marginBottom: 6,
+    marginTop: 14,
+    marginBottom: 7,
   },
   sectionDescription: {
-    fontSize: 8,
-    color: '#a0aec0',
+    fontSize: 8.5,
+    color: '#a9b8c4',
     fontFamily: 'dogicapixel',
     marginBottom: 8,
-    lineHeight: 12,
+    lineHeight: 14,
   },
   buttonRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 8,
   },
@@ -825,15 +927,15 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: '#273646',
+    backgroundColor: '#26394a',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 40,
+    minHeight: 46,
     marginBottom: 6,
   },
   primaryButton: {
@@ -852,6 +954,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#c0392b',
     borderColor: '#962d22',
   },
+  confirmationPanel: {
+    backgroundColor: '#3b2425',
+    borderWidth: 1,
+    borderColor: '#a83a31',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  confirmationTitle: {
+    color: '#fff1cd',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 9,
+    marginBottom: 6,
+  },
+  confirmationCopy: {
+    color: '#e5bdba',
+    fontFamily: 'dogicapixel',
+    fontSize: 8,
+    lineHeight: 13,
+  },
+  confirmationActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 10,
+  },
+  confirmationButton: {
+    minWidth: 116,
+  },
   actionButtonText: {
     color: '#ffffff',
     fontSize: 8.5,
@@ -859,11 +990,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   smallButton: {
-    backgroundColor: '#273646',
+    minWidth: 104,
+    minHeight: 40,
+    backgroundColor: '#26394a',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 6,
-    paddingVertical: 8,
+    borderRadius: 9,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     alignItems: 'center',
   },
@@ -881,12 +1014,12 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixelbold',
   },
   subtext: {
-    fontSize: 7.5,
-    color: '#718096',
+    fontSize: 8,
+    color: '#8da0af',
     fontFamily: 'dogicapixel',
     marginBottom: 8,
     marginLeft: 2,
-    lineHeight: 11,
+    lineHeight: 13,
   },
   pinInputRow: {
     flexDirection: 'row',

@@ -123,7 +123,7 @@ This document distinguishes between the visible product concept and what the cur
 
 `app/app/devGameRoute.js` contains `START_ON_DEV_GAME_SCREEN = false`, so development and production builds start by default on `Home`.
 
-In development mode, a floating on-screen **Dev Portal** button (`⚡ DEV`) is rendered across all screens (managed by `app/shared/dev/DevPortal.js`), offset to the left of right-hand header icons and the in-game race tracker so all interactive buttons remain accessible. Long-pressing the badge or selecting a position in the portal cycles its corner placement. Its presence is controlled by:
+In development mode, a floating on-screen **Dev Lab** button is rendered across all screens (managed by `app/shared/dev/DevPortal.js`), offset to the left of right-hand header icons and the in-game race tracker so all interactive buttons remain accessible. Long-pressing the badge or selecting a position in the portal cycles its corner placement. The portal uses a responsive dark tool panel with explicit current-screen and room context, icon-and-label tabs, larger touch targets, and accessible tab/close semantics. Its presence is controlled by:
 
 1. `EXPO_PUBLIC_ENABLE_DEV_PORTAL` in `.env` or `.env.local` (set to `true` or `false`).
 2. `__DEV__` React Native global flag (fallback when the env variable is omitted).
@@ -133,8 +133,8 @@ The Dev Portal provides four cross-platform capability suites plus one web-only 
 - **Screens / Quick Start**: Instant 1-tap navigation to `GameScreen` with mock 2-team or 3-team configurations (zero Firebase/lobby setup required), mock `CharacterSelection`, live Firebase test room creation directly to `LobbyScreen`, or arbitrary app screens (`Home`, `CreateGameScreen`, `HostName`, `JoinGameScreen`).
 - **Multiplayer & Bots**: Detects or accepts any 4-digit game PIN and provides 1-tap lobby filling (`autoFillLobby`), adding bot players to specific teams (`+ Bot Team 1/2/3`), auto-assigning default vehicles to unready teams in Firebase (`readyUpTeams`), and clearing added test bots without needing multiple physical devices or manual database edits.
 - **Board & Game Tools**: Allows forcing exact dice roll values (1 to 3) to test specific travel legs and stop arrival animations, driving the active turn's team directly to any country stop on the active route followed by opening its challenge card, and resetting board state.
-- **Countries (web only)**: Lists the Firestore-backed master stop catalogue in driving order. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. When moving a point, the camera centers on the target country, the marker bounces in glowing cyan with an animated beacon wave, vertical beam, and floating billboard name badge, other pins are dimmed, hovering over any pin surfaces its country name, and the 3D dice is hidden so the board and country targets remain fully visible and clickable. Pressing anywhere on the map immediately updates the marker's position optimistically and persists the coordinates as a single-document update to Cloud Firestore (`countries/{stopId}`) alongside the local cache and Realtime Database fallback. The tab and placement UI are not exposed on iOS or Android.
-- **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags.
+- **Countries (web only)**: Lists the Firestore-backed master stop catalogue in driving order, with route-length guidance, coordinate metadata, and visually grouped stop/challenge controls. Developers can reorder or remove stops, add and remove challenges, start a map-placement flow for a new stop, or fine-tune an existing point. Removing a stop requires confirmation and explains that existing room route snapshots are unchanged. When moving a point, the camera centers on the target country, the marker bounces in glowing cyan with an animated beacon wave, vertical beam, and floating billboard name badge, other pins are dimmed, hovering over any pin surfaces its country name, and the 3D dice is hidden so the board and country targets remain fully visible and clickable. Pressing anywhere on the map immediately updates the marker's position optimistically and persists the coordinates as a single-document update to Cloud Firestore (`countries/{stopId}`) alongside the local cache and Realtime Database fallback. The tab and placement UI are not exposed on iOS or Android.
+- **Identity & Tools**: Displays the persistent anonymous `deviceID` from AsyncStorage, supports 1-tap device ID regeneration to simulate fresh installations, and displays runtime environment flags. Clearing all local application data requires confirmation and identifies the account, settings, identity, and Dev Portal preferences that will be reset.
 
 The development mock game assigns room ID `DEV-INSTANT` or `DEV-MOCK`. Instant GameScreen shortcuts load the current Firebase-authored catalogue and use the 12-stop long itinerary by default; matching authored stop edits remain visible after a browser refresh. If the catalogue cannot be read, the content service falls back to bundled defaults. The Dev Portal's country authoring tools still show the complete catalogue, while its board tools use the active duration itinerary. Live multiplayer rooms retain their immutable room route snapshot.
 
@@ -681,7 +681,7 @@ Position and look-at target are interpolated every frame using exponential dampi
 - The die body is a Drei `RoundedBox` measuring `0.48` units per side.
 - Each of six faces has a manually defined transform.
 - Pips are small circle meshes placed from lookup tables.
-- Opposite faces use the standard 1/6, 2/5, and 3/4 pairing.
+- The six physical faces show `1`, `2`, and `3` twice each on opposite sides, matching the reduced gameplay roll range.
 - A pixel-art “THROW ME” label is built once as a centered merged geometry and rendered within a warm cream rounded badge (#FFF1CD) with dark navy text (#2C3E50) and a thin navy rim matching the HUD and die; dice pips share one geometry and material.
 
 ### Internal modes
@@ -704,7 +704,7 @@ The idle die is positioned on the camera's center ray at a fixed viewing distanc
 2. Pointer movement is projected onto a foreground hold plane at `HOLD_Z` so the held die stays directly under the pointer.
 3. The held point is clamped to `HOLD_BOUNDS` in the foreground, while landing and roll targets are clamped to `DICE_BOUNDS` on the board.
 4. Recent drag displacement is smoothed into a throw direction.
-5. Pointer up generates a random result from 1 through 3. The mesh still has six physical faces, but only faces 1–3 can be selected as results.
+5. Pointer up generates a random result from 1 through 3. All six physical sides also display only 1, 2, or 3 pips.
 6. Throw strength slightly modifies rolling distance.
 7. The die animates through a parabolic airborne stage.
 8. It rolls and bounces toward the final position.
