@@ -101,7 +101,7 @@ This document distinguishes between the visible product concept and what the cur
 - Animated vehicle movement along a curved route.
 - Animated country markers and camera following.
 - Configurable location challenge cards.
-- Duration-driven routes: short, medium, and long rooms snapshot distinct 6, 9, and 12-stop itineraries from Belgium to Greece.
+- Duration-driven routes: every room samples a fresh, geographically ordered 6, 9, or 12-stop itinerary from Belgium to Greece.
 - The bundled long-route catalogue contains one stop for each of 51 European countries under an inclusive convention: sovereign states wholly or partly in Europe plus Kosovo. Each bundled stop has a country code, representative city, flag palette, and at least one original challenge.
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools backed by Cloud Firestore (`countries` and `challenges` collections) with local cache and Realtime Database fallback.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
@@ -171,15 +171,15 @@ The host is inserted into Team 1 as its leader. In a two-team room, the first jo
 
 ### Route and stop numbering
 
-The board route is an ordered collection of destination coordinates joined by travel legs. Every new room starts in Belgium and finishes in Greece, while duration selects a distinct itinerary:
+The board route is an ordered collection of destination coordinates joined by travel legs. Every new room starts in Belgium and finishes in Greece. Duration sets the stop count, while one of several Atlantic, Alpine, Central, or Northern European corridors and evenly distributed stops within it are selected randomly:
 
-- Short: 6 stops through Central and Southeast Europe.
-- Medium: 9 stops through France, Switzerland, Italy, and the Balkans.
-- Long: 12 stops through Northern, Central, and Southeast Europe.
+- Short: 6 stops, sampling four intermediate countries across the selected corridor.
+- Medium: 9 stops, sampling seven intermediate countries across the selected corridor.
+- Long: 12 stops, sampling ten intermediate countries across the selected corridor.
 
 Stop index `0` is the initial position. Every following index represents another destination along the route. Intermediate stops may resolve to a challenge, while the final stop completes that team’s journey. The exact number of stops and their names are content choices and can change without altering the basic turn state machine.
 
-The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and `challenges/{challengeId}`) with a mirrored fallback at Firebase Realtime Database `gameContent/countryStops` and `localStorage` (`tipsy_authored_country_stops_v2`). Creating a room copies the duration itinerary into `games/{gameID}/routeStops`; matching authored stop content and positions are retained, while missing itinerary countries fall back to their bundled definitions. This snapshot prevents later authoring changes from altering an active room. `constants/countryStops.js` supplies the three route definitions and a 51-country catalogue fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
+The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and `challenges/{challengeId}`) with a mirrored fallback at Firebase Realtime Database `gameContent/countryStops` and `localStorage` (`tipsy_authored_country_stops_v2`). Creating a room randomly samples a duration-sized corridor and copies it into `games/{gameID}/routeStops`; removed intermediate catalogue countries are excluded from selection, authored content and positions are retained, and the required Belgium/Greece endpoints have bundled fallbacks. This snapshot prevents later random calls or authoring changes from altering an active room. `constants/countryStops.js` supplies the route corridors, sampling logic, and 51-country catalogue fallback, while `constants/route.js` builds the runtime Three.js route model from the snapshot. Existing room snapshots keep their content and order. Former Western Europe snapshots are remapped into the widened viewport, while known Europe stops carrying an older or missing `positionVersion` receive the current bundled pin coordinates at load time.
 
 ### Roll behavior
 
@@ -387,7 +387,7 @@ The setup globe and wordmark use a larger compact presentation, while each optio
 
 When the host returns from an existing lobby, the same setup screen is opened in edit mode with the current choices preselected. Completing the steps transactionally updates the existing `games/{gameID}` record while preserving its ID, host metadata, and `players/{gameID}` roster. A player-range reduction is rejected if the current roster would not fit or Team 3 still has members.
 
-Duration is consumed when the room route snapshot is created: short selects the authored content for a fixed 6-stop Belgium-to-Greece itinerary, medium selects a distinct 9-stop itinerary, and long selects a distinct 12-stop itinerary. Editing duration while the room is still in the lobby regenerates this snapshot. Difficulty remains unused. All three duration choices also reuse the beer-bottle images originally used for difficulty.
+Duration is consumed when the room route snapshot is created: short samples 6 stops, medium 9 stops, and long 12 stops from one randomly selected, geographically ordered corridor. Editing duration while the room is still in the lobby generates a fresh route snapshot. Difficulty remains unused. All three duration choices also reuse the beer-bottle images originally used for difficulty.
 
 ### `HostName`
 
@@ -1304,13 +1304,14 @@ Use at least two separate installations or clear/device-specific storage careful
 9. Inspect Firebase to confirm `teamModels` values.
 10. Confirm every client enters `GameScreen` with Team 1 active.
 11. Confirm the route preview lists the itinerary selected by duration, begins in Belgium, ends in Greece, and matches the board markers.
-12. Confirm only Team 1's leader can roll, every result is between 1 and 3, and every device shows the same result and vehicle movement.
-13. Confirm each reached stop adds 10 points on every client.
-14. Confirm every device opens the same challenge and only the active team's leader can press `DONE / NEXT TURN`.
-15. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.
-16. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
-17. Finish the tour and confirm all clients show the same finish order, podium bonuses, scores, and winner.
-18. Restart from the host and confirm every device resets to Team 1 at Belgium with zero points.
+12. Create another room with the same duration and confirm its snapshot can use a different corridor and/or intermediate countries without changing the stop count.
+13. Confirm only Team 1's leader can roll, every result is between 1 and 3, and every device shows the same result and vehicle movement.
+14. Confirm each reached stop adds 10 points on every client.
+15. Confirm every device opens the same challenge and only the active team's leader can press `DONE / NEXT TURN`.
+16. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.
+17. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
+18. Finish the tour and confirm all clients show the same finish order, podium bonuses, scores, and winner.
+19. Restart from the host and confirm every device resets to Team 1 at Belgium with zero points without changing that room's snapshotted route.
 
 ### Reconnection test
 
@@ -1416,7 +1417,7 @@ Keep challenge content separate from rendering and select a challenge from a cou
 
 ### Extend duration modes
 
-Duration currently snapshots fixed 6, 9, and 12-stop Belgium-to-Greece itineraries. Future modes can make route definitions remotely configurable or add multiple route families, laps, and target scores. Preserve the room-level route snapshot so content edits never mutate an active game.
+Duration currently snapshots randomly sampled 6, 9, and 12-stop Belgium-to-Greece itineraries from data-driven corridor definitions. Future modes can make corridor definitions remotely configurable or add more route families, laps, and target scores. Preserve the room-level route snapshot so content edits and later random calls never mutate an active game.
 
 ### Improve rendering performance
 

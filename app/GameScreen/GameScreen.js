@@ -20,6 +20,7 @@ import { getPathRevealDuration, createRouteModel } from './constants/route';
 import {
   COUNTRY_POSITION_VERSION,
   getStopsForDuration,
+  mergeRouteStopsWithCatalogue,
   resolveGameRouteStops,
 } from './constants/countryStops';
 import { subscribeCountryStops, updateCountryStop } from './services/countryStopsService';
@@ -412,7 +413,18 @@ const GameScreen = ({ route }) => {
     if (Platform.OS !== 'web' || multiplayerEnabled) return undefined;
     return subscribeCountryStops(
       (authoredStops) => {
-        setDevRouteStops(getStopsForDuration(authoredStops, gameData?.duration || 'long'));
+        setDevRouteStops((currentStops) => {
+          if (currentStops?.length >= 2) {
+            return mergeRouteStopsWithCatalogue(currentStops, authoredStops);
+          }
+          if (gameData?.routeStops) {
+            return mergeRouteStopsWithCatalogue(
+              resolveGameRouteStops(gameData),
+              authoredStops
+            );
+          }
+          return getStopsForDuration(authoredStops, gameData?.duration || 'long');
+        });
       },
       (error) => {
         console.warn('Unable to subscribe to authored country stops:', error);
