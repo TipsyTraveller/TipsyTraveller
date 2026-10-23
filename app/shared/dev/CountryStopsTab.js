@@ -16,6 +16,8 @@ export default function CountryStopsTab({ onClose }) {
   const [prompt, setPrompt] = useState('');
   const [penalty, setPenalty] = useState('');
   const [error, setError] = useState('');
+  const [pendingAction, setPendingAction] = useState(null);
+  const [removalCandidate, setRemovalCandidate] = useState(null);
 
   useEffect(() => subscribeCountryStops(
     (nextStops) => {
@@ -48,27 +50,42 @@ export default function CountryStopsTab({ onClose }) {
     devEventBus.emit('dev:beginCountryPlacement', { ...nextRequest, countryStops: stops });
   };
 
-  const confirmRemove = async (stop) => {
+  const removeStop = async (stop) => {
+    setPendingAction(`remove-${stop.id}`);
     try {
       await removeCountryStop(stop.id);
     } catch (removeError) {
       setError(removeError?.message || 'Unable to remove country stop.');
+    } finally {
+      setPendingAction(null);
+      setRemovalCandidate(null);
     }
+  };
+
+  const confirmRemove = (stop) => {
+    setRemovalCandidate(stop.id);
   };
 
   const addChallenge = async (stop) => {
     if (!title.trim() || !prompt.trim()) return;
+    setPendingAction(`challenge-${stop.id}`);
     const challenges = [...(stop.challenges || []), {
       id: `challenge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       title: title.trim(),
       prompt: prompt.trim(),
       penalty: penalty.trim() || 'Take 1 sip.',
     }];
-    await updateCountryStop(stop.id, { challenges });
-    setEditingChallengeFor(null);
-    setTitle('');
-    setPrompt('');
-    setPenalty('');
+    try {
+      await updateCountryStop(stop.id, { challenges });
+      setEditingChallengeFor(null);
+      setTitle('');
+      setPrompt('');
+      setPenalty('');
+    } catch (updateError) {
+      setError(updateError?.message || 'Unable to save challenge.');
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   const removeChallenge = async (stop, challengeId) => {
@@ -80,7 +97,12 @@ export default function CountryStopsTab({ onClose }) {
   return (
     <View style={styles.section}>
       <Text style={styles.heading}>Country Route Authoring</Text>
-      <Text style={styles.description}>Web only. The list order is the driving order. Short uses 4 points, medium 6, and long uses every point.</Text>
+      <Text style={styles.description}>Manage the master stop catalogue used when new routes are generated. Existing rooms keep their saved route.</Text>
+      <View style={styles.routeLegend}>
+        <Text style={styles.legendItem}>SHORT · 6 STOPS</Text>
+        <Text style={styles.legendItem}>MEDIUM · 9 STOPS</Text>
+        <Text style={styles.legendItem}>LONG · 12 STOPS</Text>
+      </View>
       {Boolean(error) && <Text style={styles.error}>{error}</Text>}
       <TouchableOpacity style={styles.addStop} onPress={() => beginPlacement({ mode: 'create' })}>
         <Text style={styles.buttonText}>＋ ADD COUNTRY STOP ON MAP</Text>
@@ -91,7 +113,7 @@ export default function CountryStopsTab({ onClose }) {
           <View style={styles.stopHeader}>
             <View style={styles.stopCopy}>
               <Text style={styles.stopTitle}>{index + 1}. {stop.name.toUpperCase()}</Text>
-              <Text style={styles.coordinates}>{stop.position.x.toFixed(2)}, {stop.position.y.toFixed(2)} · {stop.challenges.length} challenge(s)</Text>
+              <Text style={styles.coordinates}>X {stop.position.x.toFixed(2)}  ·  Y {stop.position.y.toFixed(2)}  ·  {stop.challenges.length} challenge(s)</Text>
             </View>
             <TouchableOpacity disabled={index === 0} style={styles.iconButton} onPress={() => reorderCountryStop(stop.id, -1)}><Text style={styles.iconText}>↑</Text></TouchableOpacity>
             <TouchableOpacity disabled={index === stops.length - 1} style={styles.iconButton} onPress={() => reorderCountryStop(stop.id, 1)}><Text style={styles.iconText}>↓</Text></TouchableOpacity>
@@ -99,8 +121,28 @@ export default function CountryStopsTab({ onClose }) {
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.secondary} onPress={() => beginPlacement({ mode: 'move', stop })}><Text style={styles.buttonText}>MOVE POINT</Text></TouchableOpacity>
             <TouchableOpacity style={styles.secondary} onPress={() => setEditingChallengeFor(editingChallengeFor === stop.id ? null : stop.id)}><Text style={styles.buttonText}>＋ CHALLENGE</Text></TouchableOpacity>
-            <TouchableOpacity disabled={stops.length <= 2} style={styles.remove} onPress={() => confirmRemove(stop)}><Text style={styles.buttonText}>REMOVE</Text></TouchableOpacity>
+            <TouchableOpacity
+              disabled={stops.length <= 2 || Boolean(pendingAction)}
+              style={[styles.remove, (stops.length <= 2 || Boolean(pendingAction)) && styles.disabled]}
+              onPress={() => confirmRemove(stop)}
+            >
+              <Text style={styles.buttonText}>{pendingAction === `remove-${stop.id}` ? 'REMOVING...' : 'REMOVE'}</Text>
+            </TouchableOpacity>
           </View>
+          {removalCandidate === stop.id && (
+            <View style={styles.confirmationPanel}>
+              <Text style={styles.confirmationTitle}>Remove {stop.name}?</Text>
+              <Text style={styles.confirmationCopy}>Future routes will no longer use this stop. Existing room snapshots stay unchanged.</Text>
+              <View style={styles.confirmationActions}>
+                <TouchableOpacity style={styles.cancel} onPress={() => setRemovalCandidate(null)}>
+                  <Text style={styles.buttonText}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.remove} onPress={() => removeStop(stop)}>
+                  <Text style={styles.buttonText}>REMOVE STOP</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           {stop.challenges.map((challenge) => (
             <View key={challenge.id} style={styles.challengeRow}>
               <View style={styles.challengeCopy}><Text style={styles.challengeTitle}>{challenge.title}</Text><Text style={styles.challengePrompt}>{challenge.prompt}</Text></View>
@@ -112,7 +154,13 @@ export default function CountryStopsTab({ onClose }) {
               <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Challenge title" placeholderTextColor="#718096" />
               <TextInput style={[styles.input, styles.multiline]} value={prompt} onChangeText={setPrompt} placeholder="Challenge prompt" placeholderTextColor="#718096" multiline />
               <TextInput style={styles.input} value={penalty} onChangeText={setPenalty} placeholder="Penalty (optional)" placeholderTextColor="#718096" />
-              <TouchableOpacity style={styles.save} onPress={() => addChallenge(stop)}><Text style={styles.buttonText}>SAVE CHALLENGE</Text></TouchableOpacity>
+              <TouchableOpacity
+                disabled={!title.trim() || !prompt.trim() || Boolean(pendingAction)}
+                style={[styles.save, (!title.trim() || !prompt.trim() || Boolean(pendingAction)) && styles.disabled]}
+                onPress={() => addChallenge(stop)}
+              >
+                <Text style={styles.buttonText}>{pendingAction === `challenge-${stop.id}` ? 'SAVING...' : 'SAVE CHALLENGE'}</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -123,20 +171,27 @@ export default function CountryStopsTab({ onClose }) {
 
 const styles = StyleSheet.create({
   section: { marginBottom: 8 },
-  heading: { fontSize: 10, color: '#ffd700', fontFamily: 'dogicapixelbold', marginTop: 12, marginBottom: 6 },
-  description: { fontSize: 8, color: '#a0aec0', fontFamily: 'dogicapixel', marginBottom: 10, lineHeight: 12 },
+  heading: { fontSize: 11, color: '#fff1cd', fontFamily: 'dogicapixelbold', marginTop: 8, marginBottom: 7 },
+  description: { fontSize: 8.5, color: '#a9b8c4', fontFamily: 'dogicapixel', marginBottom: 10, lineHeight: 14 },
+  routeLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  legendItem: { color: '#70d9d2', backgroundColor: '#123d3b', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 8, fontFamily: 'dogicapixelbold', fontSize: 6.5 },
   error: { color: '#ff7b72', fontFamily: 'dogicapixel', fontSize: 8, marginBottom: 8 },
-  addStop: { backgroundColor: '#1ba39c', borderRadius: 7, padding: 11, alignItems: 'center', marginBottom: 10 },
-  stopCard: { backgroundColor: '#202d3a', borderWidth: 1, borderColor: '#405064', borderRadius: 8, padding: 10, marginBottom: 9 },
+  addStop: { backgroundColor: '#1ba39c', borderRadius: 10, padding: 13, alignItems: 'center', marginBottom: 12 },
+  stopCard: { backgroundColor: '#1c2c39', borderWidth: 1, borderColor: '#405567', borderRadius: 11, padding: 12, marginBottom: 10 },
   stopHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stopCopy: { flex: 1 },
   stopTitle: { color: '#ffd700', fontFamily: 'dogicapixelbold', fontSize: 8.5 },
   coordinates: { color: '#8892b0', fontFamily: 'dogicapixel', fontSize: 7, marginTop: 4 },
-  iconButton: { width: 28, height: 28, backgroundColor: '#314255', borderRadius: 5, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 36, height: 36, backgroundColor: '#31485a', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   iconText: { color: '#fff', fontSize: 14 },
   actionRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
-  secondary: { flex: 1, backgroundColor: '#2f80ed', borderRadius: 5, padding: 8, alignItems: 'center' },
-  remove: { backgroundColor: '#c0392b', borderRadius: 5, padding: 8, alignItems: 'center' },
+  secondary: { flex: 1, minHeight: 38, backgroundColor: '#2f80ed', borderRadius: 8, padding: 9, alignItems: 'center', justifyContent: 'center' },
+  remove: { minHeight: 38, backgroundColor: '#a83a31', borderRadius: 8, padding: 9, alignItems: 'center', justifyContent: 'center' },
+  confirmationPanel: { marginTop: 8, padding: 10, backgroundColor: '#3b2425', borderWidth: 1, borderColor: '#a83a31', borderRadius: 8 },
+  confirmationTitle: { color: '#fff1cd', fontFamily: 'dogicapixelbold', fontSize: 8, marginBottom: 5 },
+  confirmationCopy: { color: '#e5bdba', fontFamily: 'dogicapixel', fontSize: 7, lineHeight: 11 },
+  confirmationActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginTop: 9 },
+  cancel: { minHeight: 38, backgroundColor: '#405064', borderRadius: 8, padding: 9, alignItems: 'center', justifyContent: 'center' },
   buttonText: { color: '#fff', fontFamily: 'dogicapixelbold', fontSize: 7.5, textAlign: 'center' },
   challengeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 7, backgroundColor: '#16202a', padding: 8, borderRadius: 5 },
   challengeCopy: { flex: 1 },
@@ -144,7 +199,8 @@ const styles = StyleSheet.create({
   challengePrompt: { color: '#a0aec0', fontFamily: 'dogicapixel', fontSize: 7, marginTop: 3, lineHeight: 10 },
   deleteChallenge: { color: '#ff7b72', fontSize: 12, padding: 5 },
   editor: { marginTop: 8, borderTopWidth: 1, borderTopColor: '#405064', paddingTop: 8 },
-  input: { backgroundColor: '#131c24', borderWidth: 1, borderColor: '#526173', borderRadius: 5, color: '#fff', fontFamily: 'dogicapixel', fontSize: 8, padding: 8, marginBottom: 6 },
+  input: { minHeight: 42, backgroundColor: '#101b25', borderWidth: 1, borderColor: '#526b7e', borderRadius: 8, color: '#fff', fontFamily: 'dogicapixel', fontSize: 8, padding: 10, marginBottom: 7 },
   multiline: { minHeight: 54, textAlignVertical: 'top' },
-  save: { backgroundColor: '#27ae60', borderRadius: 5, padding: 9, alignItems: 'center' },
+  save: { minHeight: 42, backgroundColor: '#239b56', borderRadius: 8, padding: 10, alignItems: 'center', justifyContent: 'center' },
+  disabled: { opacity: 0.45 },
 });

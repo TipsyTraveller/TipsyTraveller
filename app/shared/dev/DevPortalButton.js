@@ -78,9 +78,17 @@ export default function DevPortalButton({ onPress, visible = true }) {
         onLongPress={handleLongPress}
         activeOpacity={0.75}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="Open Dev Portal"
+        accessibilityHint="Long press to move the button to another corner"
       >
-        <View style={styles.indicator} />
-        <Text style={styles.buttonText}>⚡ DEV</Text>
+        <View style={styles.iconBadge}>
+          <Text style={styles.iconText}>⚡</Text>
+        </View>
+        <View>
+          <Text style={styles.buttonEyebrow}>TOOLS</Text>
+          <Text style={styles.buttonText}>DEV LAB</Text>
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -96,14 +104,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1a2530',
-    borderWidth: 2,
+    backgroundColor: '#101b25',
+    borderWidth: 1,
     borderColor: '#ffd700',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    minHeight: 32,
-    minWidth: 72,
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    minHeight: 42,
+    minWidth: 92,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35,
@@ -115,16 +123,28 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  indicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#27ae60',
-    marginRight: 6,
+  iconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    backgroundColor: '#1b3e3c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  iconText: {
+    fontSize: 12,
+  },
+  buttonEyebrow: {
+    color: '#70d9d2',
+    fontSize: 5.5,
+    fontFamily: 'dogicapixelbold',
+    letterSpacing: 0.8,
+    marginBottom: 2,
   },
   buttonText: {
-    color: '#ffd700',
-    fontSize: 9,
+    color: '#fff1cd',
+    fontSize: 7,
     fontFamily: 'dogicapixelbold',
     letterSpacing: 0.5,
   },
