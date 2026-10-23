@@ -681,7 +681,7 @@ Position and look-at target are interpolated every frame using exponential dampi
 - The die body is a Drei `RoundedBox` measuring `0.48` units per side.
 - Each of six faces has a manually defined transform.
 - Pips are small circle meshes placed from lookup tables.
-- Opposite faces use the standard 1/6, 2/5, and 3/4 pairing.
+- The six physical faces show `1`, `2`, and `3` twice each on opposite sides, matching the reduced gameplay roll range.
 - A pixel-art “THROW ME” label is built once as a centered merged geometry and rendered within a warm cream rounded badge (#FFF1CD) with dark navy text (#2C3E50) and a thin navy rim matching the HUD and die; dice pips share one geometry and material.
 
 ### Internal modes
@@ -704,7 +704,7 @@ The idle die is positioned on the camera's center ray at a fixed viewing distanc
 2. Pointer movement is projected onto a foreground hold plane at `HOLD_Z` so the held die stays directly under the pointer.
 3. The held point is clamped to `HOLD_BOUNDS` in the foreground, while landing and roll targets are clamped to `DICE_BOUNDS` on the board.
 4. Recent drag displacement is smoothed into a throw direction.
-5. Pointer up generates a random result from 1 through 3. The mesh still has six physical faces, but only faces 1–3 can be selected as results.
+5. Pointer up generates a random result from 1 through 3. All six physical sides also display only 1, 2, or 3 pips.
 6. Throw strength slightly modifies rolling distance.
 7. The die animates through a parabolic airborne stage.
 8. It rolls and bounces toward the final position.
