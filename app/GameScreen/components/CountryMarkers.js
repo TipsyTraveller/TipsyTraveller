@@ -25,9 +25,9 @@ const DIMMED_MARKER_MATERIAL = new THREE.MeshStandardMaterial({
   side: THREE.DoubleSide,
 });
 
-// Marker scaling for mobile readability
-const ACTIVE_MARKER_SCALE = 0.175;
-const INACTIVE_MARKER_SCALE = 0.14;
+// Keep route pins readable without covering smaller countries or nearby stops.
+const ACTIVE_MARKER_SCALE = 0.12;
+const INACTIVE_MARKER_SCALE = 0.095;
 
 const createCountryBadgeTexture = (text, isMoving) => {
   if (typeof document === 'undefined' || !text) return null;
