@@ -54,12 +54,17 @@ export const startInstantGameScreen = async ({ teamCount = 2, teamModels, durati
   };
 
   const mockTeamMembers = {
-    playerCounter: isThreeTeams ? 3 : 2,
+    playerCounter: isThreeTeams ? 4 : 3,
     team1: {
       devHost: {
         name: 'Dev Host',
         isLeader: true,
         deviceID,
+      },
+      devPartner: {
+        name: 'Dev Partner',
+        isLeader: false,
+        deviceID: 'dev-partner-team1',
       },
     },
     team2: {

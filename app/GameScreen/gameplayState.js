@@ -7,7 +7,7 @@ import {
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
 import { getPathRevealDuration } from './constants/route';
 
-export const GAMEPLAY_SCHEMA_VERSION = 3;
+export const GAMEPLAY_SCHEMA_VERSION = 4;
 export const POINTS_PER_STOP = 10;
 export const FINISH_BONUSES = [30, 15, 5];
 
@@ -15,9 +15,10 @@ export const getFinishPosition = (teamProgress) => (
   Object.values(teamProgress || {}).filter((progress) => progress?.isDone).length + 1
 );
 
-export const getTeamScore = ({ finishPosition = null, currentLeg = 0 }) => (
+export const getTeamScore = ({ challengePoints = 0, finishPosition = null, currentLeg = 0 }) => (
   currentLeg * POINTS_PER_STOP
   + (finishPosition ? (FINISH_BONUSES[finishPosition - 1] || 0) : 0)
+  + challengePoints
 );
 
 export const createSessionId = () => (
@@ -42,6 +43,7 @@ export const createInitialGameplay = (gameData, now = Date.now()) => {
     currentAction: null,
     challengeStop: null,
     challengeId: null,
+    challengeRound: null,
     updatedAt: now,
   };
 };

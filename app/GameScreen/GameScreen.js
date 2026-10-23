@@ -6,7 +6,13 @@ import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
 import RoutePreview from './components/RoutePreview';
-import { getChallengeForStop, getChallengeIdForStop } from './constants/challenges';
+import {
+  COUNTRY_WORD_CHALLENGE_TYPE,
+  getChallengeForStop,
+  getChallengeIdForStop,
+  getCountryWordRound,
+  getTeamPlayers,
+} from './constants/challenges';
 import {
   DICE_MAX_RESULT,
   DICE_RESULT_DURATION,
@@ -179,7 +185,10 @@ const GameScreen = ({ route }) => {
 
     if (gameplay.phase === 'challenge') {
       setLastRoll(action?.value ?? null);
-      setCurrentChallenge(getChallengeForStop(gameplay.challengeStop, routeStops, gameplay.challengeId));
+      setCurrentChallenge({
+        ...getChallengeForStop(gameplay.challengeStop, routeStops, gameplay.challengeId),
+        ...(gameplay.challengeRound || {}),
+      });
       setState('challenge');
       return;
     }
@@ -208,6 +217,18 @@ const GameScreen = ({ route }) => {
 
   const activePiece = gamePieces[activeTeamIndex] || gamePieces[0];
   const activeProgress = teamProgress[activePiece?.id] || { currentLeg: 0, isDone: false };
+
+  const createLocalChallenge = (stopIndex, pieceId, seed) => {
+    const players = getTeamPlayers(teamMembers, pieceId);
+    const challengeId = getChallengeIdForStop(routeStops[stopIndex], seed, {
+      teamPlayerCount: players.length,
+    });
+    const challenge = getChallengeForStop(stopIndex, routeStops, challengeId);
+    return {
+      ...challenge,
+      ...(getCountryWordRound(challenge, players, seed) || {}),
+    };
+  };
 
   const resetLocalGame = () => {
     activeCarProgressRef.current = 0;
@@ -251,6 +272,56 @@ const GameScreen = ({ route }) => {
     setLastRoll(null);
     setActiveTeamIndex(nextActiveTeamIndex);
     setState('waiting');
+  };
+
+  const handleCountryWordAction = (action) => {
+    if (multiplayerEnabled) {
+      multiplayer.updateCountryWordChallenge(action).catch((error) => {
+        console.log('Unable to update synchronized country word challenge', error);
+      });
+      return;
+    }
+
+    if (!currentChallenge || currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return;
+    if (action === 'ready' && currentChallenge.stage === 'intro') {
+      setCurrentChallenge({ ...currentChallenge, stage: 'secret' });
+      return;
+    }
+    if (action === 'start' && currentChallenge.stage === 'secret') {
+      setCurrentChallenge({ ...currentChallenge, stage: 'playing', startedAt: Date.now() });
+      return;
+    }
+    if (!['guessed', 'failed', 'timeout'].includes(action) || currentChallenge.stage !== 'playing') {
+      return;
+    }
+
+    const guessed = action === 'guessed';
+    const pointsAwarded = guessed ? (Number(currentChallenge.successPoints) || 10) : 0;
+    if (pointsAwarded && activePiece?.id) {
+      setTeamProgress((progress) => {
+        const current = progress[activePiece.id] || {};
+        const challengePoints = (Number(current.challengePoints) || 0) + pointsAwarded;
+        return {
+          ...progress,
+          [activePiece.id]: {
+            ...current,
+            challengePoints,
+            score: getTeamScore({
+              challengePoints,
+              currentLeg: current.currentLeg,
+              finishPosition: current.finishPosition,
+            }),
+          },
+        };
+      });
+    }
+
+    setCurrentChallenge({
+      ...currentChallenge,
+      stage: 'result',
+      result: guessed ? 'guessed' : action,
+      pointsAwarded,
+    });
   };
 
   const handleDiceRollStart = () => {
@@ -313,12 +384,16 @@ const GameScreen = ({ route }) => {
 
     const hasFinishedRoute = landedLeg >= routeModel.finalStopIndex;
     const finishPosition = hasFinishedRoute ? getFinishPosition(teamProgress) : null;
+    const previousProgress = teamProgress[pieceId] || {};
+    const challengePoints = Number(previousProgress.challengePoints) || 0;
     const nextTeamProgress = {
       ...teamProgress,
       [pieceId]: {
+        ...previousProgress,
         currentLeg: hasFinishedRoute ? routeModel.finalStopIndex : landedLeg,
         isDone: hasFinishedRoute,
-        score: getTeamScore({ currentLeg: landedLeg, finishPosition }),
+        challengePoints,
+        score: getTeamScore({ challengePoints, currentLeg: landedLeg, finishPosition }),
         finishPosition,
       },
     };
@@ -346,11 +421,8 @@ const GameScreen = ({ route }) => {
       return;
     }
 
-    setCurrentChallenge(getChallengeForStop(
-      landedLeg,
-      routeStops,
-      getChallengeIdForStop(routeStops[landedLeg], Math.random()),
-    ));
+    const challengeSeed = `local-${Date.now()}-${Math.random()}`;
+    setCurrentChallenge(createLocalChallenge(landedLeg, pieceId, challengeSeed));
     setState('challenge');
   };
 
@@ -368,11 +440,8 @@ const GameScreen = ({ route }) => {
 
     if (startLeg === targetLeg) {
       setIsDevDrive(false);
-      setCurrentChallenge(getChallengeForStop(
-        targetLeg,
-        routeStops,
-        getChallengeIdForStop(routeStops[targetLeg], Math.random()),
-      ));
+      const challengeSeed = `dev-${Date.now()}-${Math.random()}`;
+      setCurrentChallenge(createLocalChallenge(targetLeg, currentActivePiece.id, challengeSeed));
       setState('challenge');
       return;
     }
@@ -382,6 +451,7 @@ const GameScreen = ({ route }) => {
     setTeamProgress((previous) => ({
       ...previous,
       [currentActivePiece.id]: {
+        ...(previous[currentActivePiece.id] || {}),
         currentLeg: startLeg,
         isDone: false,
       },
@@ -591,8 +661,10 @@ const GameScreen = ({ route }) => {
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
         challenge={currentChallenge}
+        getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
         teamLabel={activePiece?.label}
         visible={state === 'challenge'}
+        onChallengeAction={handleCountryWordAction}
         onComplete={handleChallengeComplete}
         pieceRefs={pieceRefs.current}
         routeModel={routeModel}

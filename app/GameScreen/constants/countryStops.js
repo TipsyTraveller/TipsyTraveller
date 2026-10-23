@@ -41,6 +41,88 @@ const challenge = (id, title, prompt, penalty = 'If the team cannot do it, take 
   penalty,
 }]);
 
+const COUNTRY_WORDS = {
+  iceland: ['Blue Lagoon', 'volcano', 'geyser', 'Reykjavik'],
+  ireland: ['shamrock', 'Dublin', 'leprechaun', 'Guinness'],
+  'united-kingdom': ['Big Ben', 'London', 'double-decker bus', 'tea'],
+  portugal: ['pastel de nata', 'Lisbon', 'fado', 'tram'],
+  spain: ['paella', 'flamenco', 'Madrid', 'Sagrada Familia'],
+  andorra: ['Pyrenees', 'skiing', 'Andorra la Vella', 'mountains'],
+  france: ['Eiffel Tower', 'croissant', 'Louvre', 'baguette'],
+  monaco: ['Formula One', 'Monte Carlo', 'casino', 'yacht'],
+  belgium: ['waffle', 'Atomium', 'chocolate', 'Brussels'],
+  netherlands: ['windmill', 'tulip', 'Amsterdam', 'bicycle'],
+  luxembourg: ['Grand Duchy', 'Luxembourg City', 'castle', 'fortress'],
+  switzerland: ['fondue', 'Alps', 'Swiss watch', 'Matterhorn'],
+  liechtenstein: ['Vaduz', 'Alps', 'castle', 'postage stamp'],
+  germany: ['Brandenburg Gate', 'pretzel', 'Berlin', 'Autobahn'],
+  denmark: ['Little Mermaid', 'Copenhagen', 'LEGO', 'hygge'],
+  norway: ['fjord', 'Viking', 'Oslo', 'Northern Lights'],
+  sweden: ['meatballs', 'Stockholm', 'IKEA', 'ABBA'],
+  finland: ['sauna', 'Helsinki', 'reindeer', 'Northern Lights'],
+  estonia: ['Tallinn', 'digital society', 'old town', 'Baltic Sea'],
+  latvia: ['Riga', 'amber', 'Baltic Sea', 'Art Nouveau'],
+  lithuania: ['Vilnius', 'amber', 'basketball', 'Baltic Sea'],
+  poland: ['pierogi', 'Warsaw', 'Wawel Castle', 'chopin'],
+  czechia: ['Prague', 'Charles Bridge', 'castle', 'astronomical clock'],
+  austria: ['Mozart', 'Vienna', 'waltz', 'schnitzel'],
+  slovakia: ['Bratislava', 'Tatra Mountains', 'castle', 'Danube'],
+  hungary: ['Budapest', 'goulash', 'Danube', 'thermal bath'],
+  slovenia: ['Lake Bled', 'Ljubljana', 'dragon', 'cave'],
+  italy: ['Colosseum', 'pizza', 'Venice', 'pasta'],
+  'san-marino': ['Three Towers', 'Monte Titano', 'microstate', 'fortress'],
+  'vatican-city': ['Sistine Chapel', 'Pope', "Saint Peter's Basilica", 'Michelangelo'],
+  malta: ['Valletta', 'Blue Lagoon', 'knight', 'harbour'],
+  croatia: ['Dubrovnik', 'Adriatic Sea', 'island', 'Zagreb'],
+  'bosnia-herzegovina': ['Sarajevo', 'Mostar Bridge', 'Balkan', 'coffee'],
+  serbia: ['Belgrade', 'Danube', 'fortress', 'raspberry'],
+  montenegro: ['Bay of Kotor', 'Podgorica', 'mountain', 'Adriatic Sea'],
+  albania: ['Tirana', 'eagle', 'bunker', 'Albanian Riviera'],
+  kosovo: ['Pristina', 'Newborn Monument', 'Balkan', 'mountains'],
+  'north-macedonia': ['Lake Ohrid', 'Skopje', 'Balkan', 'Mother Teresa'],
+  greece: ['Acropolis', 'Athens', 'olive', 'Greek mythology'],
+  bulgaria: ['Sofia', 'rose oil', 'yogurt', 'Black Sea'],
+  romania: ['Dracula', 'Transylvania', 'Bucharest', 'Carpathians'],
+  moldova: ['wine cellar', 'Chisinau', 'vineyard', 'monastery'],
+  ukraine: ['sunflower', 'Kyiv', 'borscht', 'Carpathians'],
+  belarus: ['Minsk', 'bison', 'forest', 'potato'],
+  russia: ['Red Square', 'Moscow', 'matryoshka', 'Kremlin'],
+  kazakhstan: ['steppe', 'Astana', 'yurt', 'Baikonur'],
+  georgia: ['Tbilisi', 'khachapuri', 'Caucasus', 'wine'],
+  armenia: ['Mount Ararat', 'Yerevan', 'apricot', 'monastery'],
+  azerbaijan: ['Baku', 'Flame Towers', 'Caspian Sea', 'carpet'],
+  turkey: ['Istanbul', 'baklava', 'Grand Bazaar', 'hot-air balloon'],
+  cyprus: ['Nicosia', 'halloumi', 'Aphrodite', 'Mediterranean Sea'],
+};
+
+const getCountryWordChallenge = (countryId) => {
+  const words = COUNTRY_WORDS[countryId];
+  if (!words) return null;
+
+  return {
+    id: 'guess-country-word',
+    type: 'countryWordGuess',
+    title: 'Guess the Country Word',
+    prompt: 'One player explains a secret country-themed word while their team tries to guess it.',
+    penalty: 'Guess it within 30 seconds to earn 10 points.',
+    penaltyTag: '10 PTS',
+    durationSeconds: 30,
+    successPoints: 10,
+    words,
+  };
+};
+
+const ensureCountryWordChallenge = (countryId, challenges) => {
+  const countryWordChallenge = getCountryWordChallenge(countryId);
+  if (!countryWordChallenge) return challenges;
+  return [
+    ...challenges.filter((item) => (
+      item?.id !== countryWordChallenge.id && item?.type !== countryWordChallenge.type
+    )),
+    countryWordChallenge,
+  ];
+};
+
 const stop = ({ accent, challenge: stopChallenge, city, code, id, name, sourcePosition }, order) => ({
   id,
   name,
@@ -110,7 +192,10 @@ const EUROPE_COUNTRIES = [
   { id: 'cyprus', name: 'Cyprus', code: 'CY', city: 'Nicosia', longitude: 33.3823, latitude: 35.1856, sourcePosition: [610, 369], accent: '#f2994a', challenge: challenge('island-finale', 'Island Finale', 'Create a team postcard pose and hold it while the table counts to five.') },
 ];
 
-export const DEFAULT_COUNTRY_STOPS = EUROPE_COUNTRIES.map(stop);
+export const DEFAULT_COUNTRY_STOPS = EUROPE_COUNTRIES.map(stop).map((countryStop) => ({
+  ...countryStop,
+  challenges: ensureCountryWordChallenge(countryStop.id, countryStop.challenges),
+}));
 const DEFAULT_COUNTRY_STOP_BY_ID = new Map(DEFAULT_COUNTRY_STOPS.map((countryStop) => [
   countryStop.id,
   countryStop,
@@ -156,12 +241,26 @@ export const normalizeCountryStops = (value) => {
       order: Number.isFinite(Number(stop.order)) ? Number(stop.order) : index,
       position: { x: Number(stop.position?.x) || 0, y: Number(stop.position?.y) || 0 },
       accent: stop.accent || '#1ba39c',
-      challenges: toList(stop.challenges).map((challenge, challengeIndex) => ({
-        id: String(challenge.id || `challenge-${challengeIndex}`),
-        title: String(challenge.title || 'Border Check'),
-        prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
-        penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
-      })),
+      challenges: ensureCountryWordChallenge(
+        String(stop.id || `stop-${index}`),
+        toList(stop.challenges).map((challenge, challengeIndex) => ({
+          id: String(challenge.id || `challenge-${challengeIndex}`),
+          title: String(challenge.title || 'Border Check'),
+          prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
+          penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
+          ...(challenge.type ? { type: String(challenge.type) } : {}),
+          ...(challenge.penaltyTag ? { penaltyTag: String(challenge.penaltyTag) } : {}),
+          ...(Number.isFinite(Number(challenge.durationSeconds))
+            ? { durationSeconds: Number(challenge.durationSeconds) }
+            : {}),
+          ...(Number.isFinite(Number(challenge.successPoints))
+            ? { successPoints: Number(challenge.successPoints) }
+            : {}),
+          ...(Array.isArray(challenge.words)
+            ? { words: challenge.words.map(String).filter(Boolean) }
+            : {}),
+        }))
+      ),
     };
 
     if (stop.code) {

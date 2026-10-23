@@ -106,7 +106,7 @@ This document distinguishes between the visible product concept and what the cur
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools backed by Cloud Firestore (`countries` and `challenges` collections) with local cache and Realtime Database fallback.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Firebase-synchronized team scores and finish positions, with a final ranked winner board.
-- A route preview card on GameScreen entry showing the selected itinerary, stop count, 1–3 roll range, and scoring rules.
+- A route preview card on GameScreen entry showing the selected itinerary, stop count, 1–3 roll range, route/word-challenge scoring, and finish bonuses.
 - Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll action while waiting for a throw.
 - Active-game re-entry through the room PIN with canonical state restoration.
 - Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
@@ -189,8 +189,8 @@ The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and
 - Landing before the finish opens a challenge.
 - There is no collision rule; multiple teams may occupy the same stop. A stop's marker is hidden while one or more cars are parked on it and reappears as soon as the last car starts moving away. Co-located vehicles use center, left, and right parking slots. When a moving vehicle passes a team parked at an intermediate stop, it performs a visual kickflip over that vehicle without changing either team's gameplay state.
 - There are no shortcuts, reverse movement, bonus rolls, or stored penalties in the current code.
-- Penalties are sips of water and are instructions only; the app does not record whether a challenge was passed or failed.
-- A team's live score is `currentLeg × 10`, plus its podium bonus after finishing. Finish order is assigned transactionally and is the competition tiebreaker represented by the bonus.
+- Ordinary challenge penalties are social instructions only. The `Guess the Country Word` challenge records `guessed`, `failed`, or `timeout` and awards 10 points for a successful guess.
+- A team's live score is `currentLeg × 10 + challengePoints`, plus its podium bonus after finishing. Finish order is assigned transactionally and remains the competition tiebreaker represented by the bonus.
 
 ---
 
@@ -280,7 +280,7 @@ stateDiagram-v2
 | `isCarDriving` | Whether the path reveal has finished and the active vehicle is currently driving |
 | `moveTargets` | Map of team ID to destination leg |
 | `currentChallenge` | Challenge record for the latest non-final landing |
-| `teamProgress` | Per-team `{ currentLeg, isDone, score, finishPosition }` data |
+| `teamProgress` | Per-team `{ currentLeg, isDone, score, challengePoints, finishPosition }` data |
 | `pieceRefs` | React refs for each Three.js vehicle group, used by the camera |
 | `activeCarProgressRef` | React ref tracking the active vehicle's normalized curve progress so the route ribbon trims behind the car |
 
@@ -780,6 +780,10 @@ Challenges are stored as a pool on each authored country stop. Each has:
 
 `constants/challenges.js` retains country flag presentation and backwards-compatible fallback challenges. In multiplayer, movement completion deterministically chooses a challenge from the landed stop using the action ID and stores both `challengeStop` and `challengeId` in the canonical gameplay record, so every client renders the same prompt.
 
+Every bundled country has exactly one `Guess the Country Word` entry alongside its original challenge. Each entry supplies four country-themed words, a 30-second duration, and a 10-point success value. It is excluded from selection when the active team contains fewer than two players. When selected, the action ID deterministically chooses both an explainer and a secret word. The active team leader's device runs `intro -> secret -> playing -> result`: it asks the group to pass the phone to the chosen player, reveals the word privately, hides it during the countdown, and records `guessed`, `failed`, or `timeout`. Other clients show a non-secret in-progress message until the result is available.
+
+In multiplayer, `challengeRound` stores the selected player, secret word, stage, server-adjusted start timestamp, result, and awarded points. Stage changes and the score award use Realtime Database transactions. The score award is idempotent because only a `playing` round can transition to `result`. Local development games use the same state sequence without Firebase.
+
 For the challenge ticket, `getChallengeForStop` reads the two-letter country `code`, representative `city`, and optional `landmark` from the stop snapshot, falling back to `STOP_VISUALS` for legacy default stop IDs. Stops without a landmark render a flexible spacer instead. The flag strip reads its colors from `COUNTRY_FLAGS`/`getCountryFlag` by country name; the bundled 51-country catalogue has a palette for every country. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds).
 
 
@@ -803,7 +807,7 @@ There are no looping effects: no shimmer, floating, button pulse, accent beam, o
 
 ### Completion semantics
 
-The button does not record success or failure. In a multiplayer room it is enabled only for the active team's leader; pressing it transactionally closes the challenge, identifies the next unfinished team, clears the latest roll, and returns every client to `waiting`. Penalties are social instructions for the players to apply themselves.
+Ordinary challenge cards do not record success or failure. Their completion button is enabled only for the active team's leader; pressing it transactionally closes the challenge, identifies the next unfinished team, clears the latest roll, and returns every client to `waiting`. The word challenge keeps Next Turn disabled until its result stage. `GUESSED` adds 10 points exactly once, while `NOT GUESSED` and timer expiry add none. Ordinary penalties remain social instructions for the players to apply themselves.
 
 ---
 
@@ -850,15 +854,15 @@ The Realtime Database expects this conceptual structure:
         }
       ],
       "gameplay": {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "sessionId": "m8abc123-roomrun",
         "revision": 4,
         "phase": "moving",
         "activeTeamId": "team1",
         "turnNumber": 3,
         "teamProgress": {
-          "team1": { "currentLeg": 2, "isDone": false, "score": 20 },
-          "team2": { "currentLeg": 1, "isDone": false, "score": 10 }
+          "team1": { "currentLeg": 2, "isDone": false, "score": 30, "challengePoints": 10 },
+          "team2": { "currentLeg": 1, "isDone": false, "score": 10, "challengePoints": 0 }
         },
         "currentAction": {
           "id": "device-action-id",
@@ -874,6 +878,7 @@ The Realtime Database expects this conceptual structure:
         },
         "challengeStop": null,
         "challengeId": null,
+        "challengeRound": null,
         "updatedAt": 1792195200000
       }
     }
@@ -964,8 +969,8 @@ Listeners are detached when the lobby unmounts.
 `.info/serverTimeOffset`. The gameplay listener drives the local board toward
 the shared phase and progress. A monotonically increasing revision and unique
 action ID make transitions and animations idempotent. Roll, movement-complete,
-challenge-complete, and restart writes use Realtime Database transactions.
-Movement completion also updates the active team's score. Reaching Greece
+challenge-stage, challenge-complete, and restart writes use Realtime Database transactions.
+Movement completion updates route points without overwriting earned challenge points. A successful country-word round transactionally adds its configured points. Reaching Greece
 transactionally assigns the next finish position and its podium bonus, so
 simultaneous clients cannot award two teams the same place.
 
@@ -1307,12 +1312,15 @@ Use at least two separate installations or clear/device-specific storage careful
 11. Confirm the route preview lists the itinerary selected by duration, begins in Belgium, ends in Greece, and matches the board markers.
 12. Create another room with the same duration and confirm its snapshot can use a different corridor and/or intermediate countries without changing the stop count.
 13. Confirm only Team 1's leader can roll, every result is between 1 and 3, and every device shows the same result and vehicle movement.
-14. Confirm each reached stop adds 10 points on every client.
-15. Confirm every device opens the same challenge and only the active team's leader can press `DONE / NEXT TURN`.
-16. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.
-17. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
-18. Finish the tour and confirm all clients show the same finish order, podium bonuses, scores, and winner.
-19. Restart from the host and confirm every device resets to Team 1 at Belgium with zero points without changing that room's snapshotted route.
+14. Confirm each reached stop adds 10 route points on every client.
+15. With a one-player active team, confirm `Guess the Country Word` is never selected.
+16. With at least two players on the active team, reach stops until `Guess the Country Word` is selected. Confirm the active leader's device names an explainer and can reveal the secret, other clients never render the secret, the word is hidden after Start, and the timer expires at 30 seconds.
+17. Press `GUESSED` and confirm exactly 10 challenge points are added on every client. In a separate round, confirm `NOT GUESSED` and timeout add zero points and Next Turn stays disabled until a result exists.
+18. Confirm every device opens the same ordinary challenge and only the active team's leader can press `DONE / NEXT TURN`.
+19. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.
+20. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
+21. Finish the tour and confirm all clients show the same finish order, podium bonuses, challenge points, total scores, and winner.
+22. Restart from the host and confirm every device resets to Team 1 at Belgium with zero points without changing that room's snapshotted route.
 
 ### Reconnection test
 

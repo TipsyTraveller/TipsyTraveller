@@ -118,6 +118,8 @@ const CardBack = ({ compact, style }) => (
 const ChallengePopup = ({
   canComplete = true,
   challenge,
+  getNow = Date.now,
+  onChallengeAction,
   onComplete,
   pieceRefs,
   routeModel,
@@ -132,6 +134,10 @@ const ChallengePopup = ({
   const tear = useRef(new Animated.Value(0)).current;
   const [tearing, setTearing] = useState(false);
   const [ready, setReady] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(30);
+  const timeoutReportedRef = useRef(false);
+  const challengeActionRef = useRef(onChallengeAction);
+  challengeActionRef.current = onChallengeAction;
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
   const challengeKey = challenge ? `${challenge.stopIndex}:${challenge.title}` : '';
 
@@ -189,6 +195,40 @@ const ChallengePopup = ({
       if (flySequence) flySequence.stop();
     };
   }, [challengeKey, flip, fly, tear, visible]);
+
+  const isCountryWordChallenge = challenge?.type === 'countryWordGuess';
+  const challengeStage = challenge?.stage || 'intro';
+  const challengeDuration = Number(challenge?.durationSeconds) || 30;
+
+  useEffect(() => {
+    timeoutReportedRef.current = false;
+    if (!visible || !isCountryWordChallenge || challengeStage !== 'playing') {
+      setRemainingSeconds(challengeDuration);
+      return undefined;
+    }
+
+    const updateTimer = () => {
+      const elapsed = Math.max(0, getNow() - (Number(challenge.startedAt) || getNow()));
+      const nextRemaining = Math.max(0, Math.ceil(challengeDuration - (elapsed / 1000)));
+      setRemainingSeconds(nextRemaining);
+      if (nextRemaining === 0 && canComplete && !timeoutReportedRef.current) {
+        timeoutReportedRef.current = true;
+        challengeActionRef.current?.('timeout');
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 250);
+    return () => clearInterval(interval);
+  }, [
+    canComplete,
+    challenge?.startedAt,
+    challengeDuration,
+    challengeStage,
+    getNow,
+    isCountryWordChallenge,
+    visible,
+  ]);
 
   const handleComplete = useCallback(() => {
     if (tearing) return;
@@ -319,7 +359,11 @@ const ChallengePopup = ({
       },
     ],
   };
-  const timer = getChallengeTimer(challenge);
+  const timer = isCountryWordChallenge && challengeStage === 'playing'
+    ? `${String(remainingSeconds).padStart(2, '0')} SEC`
+    : getChallengeTimer(challenge);
+  const canFinishChallenge = canComplete
+    && (!isCountryWordChallenge || challengeStage === 'result');
   const missionCode = challenge.code
     ? `MISSION ${challenge.code}-${String(challenge.stopIndex).padStart(2, '0')}`
     : 'MISSION';
@@ -338,6 +382,73 @@ const ChallengePopup = ({
   }
   const roomy = cardHeight >= 280;
   const landmarkWidth = Math.max(96, Math.min(160, cardHeight * 0.36));
+
+  const renderCountryWordContent = () => {
+    if (!canComplete && challengeStage !== 'result') {
+      return (
+        <View style={styles.wordCenteredContent}>
+          <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>CHALLENGE IN PROGRESS</Text>
+          <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>
+            The active team is playing on their team leader's device.
+          </Text>
+        </View>
+      );
+    }
+
+    if (challengeStage === 'intro') {
+      return (
+        <View style={styles.wordCenteredContent}>
+          <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>PASS THE PHONE</Text>
+          <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>
+            Give the phone to {challenge.selectedPlayerName}. Keep the screen hidden from the rest of the team.
+          </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Reveal the secret word" style={({ pressed }) => [styles.wordActionButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('ready')}>
+            <Text style={styles.wordActionText}>I'M READY</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    if (challengeStage === 'secret') {
+      return (
+        <View style={styles.wordCenteredContent}>
+          <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>YOUR SECRET WORD</Text>
+          <View style={styles.secretWordBox}><Text style={styles.secretWord}>{challenge.secretWord}</Text></View>
+          <Text style={styles.wordRules}>Describe it without saying any part of the word, translating it, or spelling it.</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Start the 30 second guessing timer" style={({ pressed }) => [styles.wordActionButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('start')}>
+            <Text style={styles.wordActionText}>START</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    if (challengeStage === 'playing') {
+      return (
+        <View style={styles.wordCenteredContent}>
+          <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>GUESS THE WORD</Text>
+          <Text style={styles.hiddenWord}>SECRET WORD HIDDEN</Text>
+          <Text style={styles.countdown}>{`00:${String(remainingSeconds).padStart(2, '0')}`}</Text>
+          <View style={styles.wordResultActions}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Mark the word as guessed" style={({ pressed }) => [styles.wordActionButton, styles.guessedButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('guessed')}>
+              <Text style={styles.wordActionText}>GUESSED</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Mark the word as not guessed" style={({ pressed }) => [styles.wordActionButton, styles.failedButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('failed')}>
+              <Text style={styles.wordActionText}>NOT GUESSED</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    const guessed = challenge.result === 'guessed';
+    return (
+      <View style={styles.wordCenteredContent}>
+        <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{guessed ? 'GUESSED!' : 'NOT GUESSED'}</Text>
+        <Text style={styles.resultPoints}>{guessed ? `+${challenge.pointsAwarded || challenge.successPoints || 10} POINTS` : '0 POINTS'}</Text>
+        <Text style={[styles.prompt, compact && styles.promptCompact]}>{guessed ? 'Great teamwork!' : challenge.result === 'timeout' ? 'Time ran out.' : 'Better luck at the next stop.'}</Text>
+      </View>
+    );
+  };
 
   return (
     <View
@@ -394,20 +505,22 @@ const ChallengePopup = ({
               <View style={styles.buttonWrap}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={canComplete
+                  accessibilityLabel={canFinishChallenge
                     ? 'Complete challenge and start next turn'
-                    : `Waiting for ${teamLabel} to complete the challenge`}
-                  disabled={!canComplete || tearing || !ready}
+                    : canComplete
+                      ? 'Complete the country word challenge before starting the next turn'
+                      : `Waiting for ${teamLabel} to complete the challenge`}
+                  disabled={!canFinishChallenge || tearing || !ready}
                   onPress={handleComplete}
                   style={({ pressed }) => [
                     styles.completeButton,
-                    !canComplete && styles.completeButtonDisabled,
+                    !canFinishChallenge && styles.completeButtonDisabled,
                     pressed && styles.completeButtonPressed,
                   ]}
                 >
-                  <Text style={styles.completeButtonText}>{canComplete ? 'Next Turn' : 'Watching'}</Text>
-                  {canComplete ? null : (
-                    <Text style={styles.completeButtonSubText}>{`Waiting for ${teamLabel}`}</Text>
+                  <Text style={styles.completeButtonText}>{canFinishChallenge ? 'Next Turn' : 'Watching'}</Text>
+                  {canFinishChallenge ? null : (
+                    <Text style={styles.completeButtonSubText}>{canComplete ? 'Finish the challenge' : `Waiting for ${teamLabel}`}</Text>
                   )}
                 </Pressable>
               </View>
@@ -428,15 +541,19 @@ const ChallengePopup = ({
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{challenge.title}</Text>
-              <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>{challenge.prompt}</Text>
-              <View style={styles.bodySpacer} />
-              <View style={styles.penaltyBox}>
-                <View style={styles.penaltyTag}>
-                  <Text style={styles.penaltyTagText}>{getPenaltyTag(challenge)}</Text>
-                </View>
-                <Text style={styles.penaltyText}>{challenge.penalty}</Text>
-              </View>
+              {isCountryWordChallenge ? renderCountryWordContent() : (
+                <>
+                  <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{challenge.title}</Text>
+                  <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>{challenge.prompt}</Text>
+                  <View style={styles.bodySpacer} />
+                  <View style={styles.penaltyBox}>
+                    <View style={styles.penaltyTag}>
+                      <Text style={styles.penaltyTagText}>{getPenaltyTag(challenge)}</Text>
+                    </View>
+                    <Text style={styles.penaltyText}>{challenge.penalty}</Text>
+                  </View>
+                </>
+              )}
               </View>
             </Animated.View>
           </View>
@@ -821,6 +938,88 @@ const styles = StyleSheet.create({
   bodySpacer: {
     flex: 1,
     minHeight: 12,
+  },
+  wordCenteredContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  wordActionButton: {
+    minHeight: 42,
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderBottomWidth: 6,
+    borderColor: '#111111',
+    borderRadius: 9,
+    backgroundColor: '#1BA39C',
+  },
+  wordActionText: {
+    color: '#111111',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  secretWordBox: {
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 3,
+    borderColor: '#111111',
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+  },
+  secretWord: {
+    color: '#D71920',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 18,
+    lineHeight: 24,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  wordRules: {
+    marginTop: 8,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixel',
+    fontSize: 8,
+    lineHeight: 13,
+    textAlign: 'center',
+  },
+  hiddenWord: {
+    marginTop: 10,
+    color: '#4A5A6B',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textAlign: 'center',
+  },
+  countdown: {
+    marginTop: 8,
+    color: '#D71920',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 30,
+    lineHeight: 36,
+    textAlign: 'center',
+  },
+  wordResultActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  guessedButton: {
+    flex: 1,
+  },
+  failedButton: {
+    flex: 1,
+    backgroundColor: '#E8412F',
+  },
+  resultPoints: {
+    marginTop: 14,
+    color: '#1BA39C',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 18,
+    lineHeight: 24,
+    textAlign: 'center',
   },
   penaltyBox: {
     flexDirection: 'row',
