@@ -83,7 +83,7 @@ const cloneTexturedMaterial = (material) => {
   return clonedMaterial;
 };
 
-const prepareVehicleScene = (scene, color, preserveMaterials) => {
+const prepareVehicleScene = (scene, color, preserveMaterials, isPreview = false) => {
   const clone = scene.clone(true);
   const teamMaterials = preserveMaterials ? null : buildTeamMaterials(color);
 
@@ -124,7 +124,7 @@ const prepareVehicleScene = (scene, color, preserveMaterials) => {
   clone.scale.multiplyScalar(normalizedScale);
   clone.position.set(
     -center.x * normalizedScale,
-    -bounds.min.y * normalizedScale,
+    isPreview ? -center.y * normalizedScale : -bounds.min.y * normalizedScale,
     -center.z * normalizedScale
   );
 
@@ -133,11 +133,11 @@ const prepareVehicleScene = (scene, color, preserveMaterials) => {
 
 const VehicleModel = memo(({ color = '#d71920', mode = 'board', model }) => {
   const { scene } = useGLTF(model.source);
-  const preparedScene = useMemo(
-    () => prepareVehicleScene(scene, color, model.preserveMaterials),
-    [color, model.preserveMaterials, scene]
-  );
   const isPreview = mode === 'preview';
+  const preparedScene = useMemo(
+    () => prepareVehicleScene(scene, color, model.preserveMaterials, isPreview),
+    [color, isPreview, model.preserveMaterials, scene]
+  );
 
   // Materials are created per prepared clone. Native textures are shared with the cached GLTF,
   // so only the web path (which clones its maps) disposes textures.

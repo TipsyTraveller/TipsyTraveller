@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     alignItems: 'center',
-    paddingBottom: 20,
+    // paddingBottom: 20,
   },
   scroll: {
     width: '100%',
