@@ -5,8 +5,10 @@ import { db } from '../../../firebaseConfig';
 import {
   buildRollAction,
   createInitialGameplay,
+  getFinishPosition,
   getNextActiveTeamId,
   getRequiredTeamIds,
+  getTeamScore,
 } from '../gameplayState';
 import { getChallengeIdForStop } from '../constants/challenges';
 
@@ -135,11 +137,16 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
       const teamIds = getRequiredTeamIds(gameDataRef.current);
       const hasFinishedRoute = action.targetLeg >= routeModel.finalStopIndex;
+      const finishPosition = hasFinishedRoute
+        ? getFinishPosition(current.teamProgress)
+        : null;
       const teamProgress = {
         ...current.teamProgress,
         [action.teamId]: {
           currentLeg: action.targetLeg,
           isDone: hasFinishedRoute,
+          score: getTeamScore({ currentLeg: action.targetLeg, finishPosition }),
+          finishPosition,
         },
       };
 

@@ -1,6 +1,43 @@
 import { MAP_CY, MAP_H, MAP_W, svgPoint, uv } from './mapCoordinates';
 
-export const DURATION_STOP_COUNTS = { short: 4, medium: 6, long: Infinity };
+export const DURATION_ROUTE_IDS = {
+  short: [
+    'belgium',
+    'germany',
+    'austria',
+    'croatia',
+    'north-macedonia',
+    'greece',
+  ],
+  medium: [
+    'belgium',
+    'france',
+    'switzerland',
+    'italy',
+    'slovenia',
+    'croatia',
+    'bosnia-herzegovina',
+    'albania',
+    'greece',
+  ],
+  long: [
+    'belgium',
+    'netherlands',
+    'germany',
+    'denmark',
+    'sweden',
+    'poland',
+    'czechia',
+    'austria',
+    'hungary',
+    'serbia',
+    'north-macedonia',
+    'greece',
+  ],
+};
+export const DURATION_STOP_COUNTS = Object.fromEntries(
+  Object.entries(DURATION_ROUTE_IDS).map(([duration, ids]) => [duration, ids.length])
+);
 export const COUNTRY_POSITION_VERSION = 2;
 
 const position = (x, y) => {
@@ -172,9 +209,13 @@ export const applyCurrentDefaultPositions = (value) => normalizeCountryStops(val
 
 export const getStopsForDuration = (stops, duration = 'long') => {
   const normalized = normalizeCountryStops(stops);
-  const requestedCount = DURATION_STOP_COUNTS[duration] ?? DURATION_STOP_COUNTS.long;
-  const count = Math.max(2, Math.min(normalized.length, requestedCount));
-  return normalized.slice(0, count).map((stop, index) => ({ ...stop, order: index }));
+  const routeIds = DURATION_ROUTE_IDS[duration] || DURATION_ROUTE_IDS.long;
+  const authoredById = new Map(normalized.map((countryStop) => [countryStop.id, countryStop]));
+
+  return routeIds.map((id, index) => ({
+    ...(authoredById.get(id) || DEFAULT_COUNTRY_STOP_BY_ID.get(id)),
+    order: index,
+  }));
 };
 
 export const resolveGameRouteStops = (gameData = {}) => (

@@ -1,9 +1,24 @@
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
-import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
+import {
+  DICE_MAX_RESULT,
+  DICE_RESULT_DURATION,
+  DICE_RESULT_EXIT_BUFFER,
+} from './constants/diceBounds';
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
 import { getPathRevealDuration } from './constants/route';
 
-export const GAMEPLAY_SCHEMA_VERSION = 2;
+export const GAMEPLAY_SCHEMA_VERSION = 3;
+export const POINTS_PER_STOP = 10;
+export const FINISH_BONUSES = [30, 15, 5];
+
+export const getFinishPosition = (teamProgress) => (
+  Object.values(teamProgress || {}).filter((progress) => progress?.isDone).length + 1
+);
+
+export const getTeamScore = ({ finishPosition = null, currentLeg = 0 }) => (
+  currentLeg * POINTS_PER_STOP
+  + (finishPosition ? (FINISH_BONUSES[finishPosition - 1] || 0) : 0)
+);
 
 export const createSessionId = () => (
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -67,13 +82,14 @@ export const getRollTiming = ({ fromLeg, routeModel, targetLeg, now }) => {
 export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, routeModel, value }) => {
   const activeProgress = gameplay?.teamProgress?.[gameplay.activeTeamId];
   const fromLeg = activeProgress?.currentLeg ?? 0;
-  const targetLeg = Math.min(fromLeg + value, routeModel.finalStopIndex);
+  const safeValue = Math.max(1, Math.min(Math.round(Number(value) || 1), DICE_MAX_RESULT));
+  const targetLeg = Math.min(fromLeg + safeValue, routeModel.finalStopIndex);
 
   return {
     id: createActionId(deviceID),
     type: 'roll',
     teamId: gameplay.activeTeamId,
-    value,
+    value: safeValue,
     fromLeg,
     targetLeg,
     inputMethod,

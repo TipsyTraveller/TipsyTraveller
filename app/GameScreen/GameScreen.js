@@ -5,8 +5,13 @@ import ChallengePopup from './components/ChallengePopup';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
+import RoutePreview from './components/RoutePreview';
 import { getChallengeForStop, getChallengeIdForStop } from './constants/challenges';
-import { DICE_RESULT_DURATION, DICE_RESULT_EXIT_BUFFER } from './constants/diceBounds';
+import {
+  DICE_MAX_RESULT,
+  DICE_RESULT_DURATION,
+  DICE_RESULT_EXIT_BUFFER,
+} from './constants/diceBounds';
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
 import { getDefaultModelOption, getModelOption } from './constants/modelOptions';
 import { devEventBus } from '../shared/dev/devEventBus';
@@ -19,6 +24,7 @@ import {
 } from './constants/countryStops';
 import { subscribeCountryStops, updateCountryStop } from './services/countryStopsService';
 import CountryStopPlacementForm from './components/CountryStopPlacementForm';
+import { getFinishPosition, getTeamScore } from './gameplayState';
 
 const EMPTY_GAME_DATA = {};
 
@@ -38,7 +44,7 @@ const getNextActiveTeamIndex = (gamePieces, teamProgress, currentIndex) => {
   return null;
 };
 
-const rollDice = () => Math.floor(Math.random() * 6) + 1;
+const rollDice = () => Math.floor(Math.random() * DICE_MAX_RESULT) + 1;
 
 const useLatestCallback = (callback) => {
   const callbackRef = useRef(callback);
@@ -66,6 +72,7 @@ const GameScreen = ({ route }) => {
   const [placementRequest, setPlacementRequest] = useState(null);
   const [placementPosition, setPlacementPosition] = useState(null);
   const [isDevDrive, setIsDevDrive] = useState(false);
+  const [showRoutePreview, setShowRoutePreview] = useState(true);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const routeStops = useMemo(
@@ -103,6 +110,7 @@ const GameScreen = ({ route }) => {
     setDevRouteStops(null);
     setPlacementRequest(null);
     setPlacementPosition(null);
+    setShowRoutePreview(true);
   }, [gameData]);
 
   useEffect(() => {
@@ -253,10 +261,11 @@ const GameScreen = ({ route }) => {
   const startLocalRoll = (value = rollDice(), resultDisplayDelay = 0) => {
     if (!['waiting', 'rolling'].includes(state) || !activePiece || activeProgress.isDone) return;
 
+    const safeValue = Math.max(1, Math.min(Math.round(Number(value) || 1), DICE_MAX_RESULT));
     const startLeg = activeProgress.currentLeg;
-    const targetLeg = Math.min(startLeg + value, routeModel.finalStopIndex);
+    const targetLeg = Math.min(startLeg + safeValue, routeModel.finalStopIndex);
     activeCarProgressRef.current = routeModel.stopProgress[startLeg] ?? 0;
-    setLastRoll(value);
+    setLastRoll(safeValue);
     setMoveStartLeg(startLeg);
     setPassedLeg(startLeg);
     setIsCarDriving(false);
@@ -302,11 +311,14 @@ const GameScreen = ({ route }) => {
     }
 
     const hasFinishedRoute = landedLeg >= routeModel.finalStopIndex;
+    const finishPosition = hasFinishedRoute ? getFinishPosition(teamProgress) : null;
     const nextTeamProgress = {
       ...teamProgress,
       [pieceId]: {
         currentLeg: hasFinishedRoute ? routeModel.finalStopIndex : landedLeg,
         isDone: hasFinishedRoute,
+        score: getTeamScore({ currentLeg: landedLeg, finishPosition }),
+        finishPosition,
       },
     };
     setTeamProgress(nextTeamProgress);
@@ -400,11 +412,7 @@ const GameScreen = ({ route }) => {
     if (Platform.OS !== 'web' || multiplayerEnabled) return undefined;
     return subscribeCountryStops(
       (authoredStops) => {
-        setDevRouteStops((current) => (
-          current?.length >= 2
-            ? authoredStops
-            : getStopsForDuration(authoredStops, gameData?.duration || 'long')
-        ));
+        setDevRouteStops(getStopsForDuration(authoredStops, gameData?.duration || 'long'));
       },
       (error) => {
         console.warn('Unable to subscribe to authored country stops:', error);
@@ -499,7 +507,7 @@ const GameScreen = ({ route }) => {
     state === 'moving' && moveTargetLeg !== null ? moveTargetLeg : hudCurrentLeg + 1,
     routeModel.stopNames.length - 1
   )];
-  const progress = `${currentLeg + 1} / ${routeModel.finalStopIndex}`;
+  const progress = `${currentLeg + 1} / ${routeModel.finalStopIndex + 1}`;
   const canRoll = state === 'waiting'
     && !activeProgress.isDone
     && (!multiplayerEnabled || (multiplayer.canControlTurn && multiplayer.isConnected));
@@ -546,6 +554,7 @@ const GameScreen = ({ route }) => {
 
       <GameHud
         activeTeamLabel={activePiece?.label}
+        activeTeamScore={activeProgress.score || 0}
         canRestart={!multiplayerEnabled || multiplayer.isHost}
         fromName={fromName}
         lastRoll={lastRoll}
@@ -553,6 +562,8 @@ const GameScreen = ({ route }) => {
         progress={progress}
         remainingMoves={remainingMoves}
         state={state}
+        gamePieces={gamePieces}
+        teamProgress={teamProgress}
         toName={toName}
       />
       <RaceProgressTracker
@@ -573,6 +584,12 @@ const GameScreen = ({ route }) => {
         onComplete={handleChallengeComplete}
         pieceRefs={pieceRefs.current}
         routeModel={routeModel}
+      />
+      <RoutePreview
+        duration={gameData?.duration}
+        onClose={() => setShowRoutePreview(false)}
+        stops={routeStops}
+        visible={showRoutePreview && !placementRequest}
       />
       {placementRequest && (
         <CountryStopPlacementForm
