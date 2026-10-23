@@ -1,90 +1,94 @@
 # Game Challenges
 
-Dit bestand verzamelt ideeën voor challenges in de mobiele teamgame. Voeg nieuwe ideeën onderaan toe als `Challenge 2`, `Challenge 3`, enzovoort. Het is een **ideeën- en functioneel overzicht**, geen definitieve implementatie.
+This file records challenge concepts and their implementation status. Add future ideas at the bottom as `Challenge 2`, `Challenge 3`, and so on.
 
-## Overzicht
+## Overview
 
-| ID | Naam | Type | Status |
+| ID | Name | Type | Status |
 | --- | --- | --- | --- |
-| 1 | Raad het landwoord | Team / uitlegspel | Idee |
+| 1 | Guess the Country Word | Team / explanation game | Implemented |
 
 ---
 
-## Challenge 1 — Raad het landwoord
+## Challenge 1 — Guess the Country Word
 
 ### Concept
-Wanneer een team in een land terechtkomt (bijvoorbeeld **Frankrijk**), start een woordraad-challenge die bij dat land past. Eén willekeurig geselecteerde speler legt een geheim woord uit aan de rest van het team, zonder het woord zelf te zeggen. Het team heeft **30 seconden** om te raden.
 
-### Spelverloop
-1. **Trigger:** het team komt in een land terecht.
-2. **Speler kiezen:** de app kiest willekeurig één speler uit het actieve team.
-3. **Gsm doorgeven:** toon bijvoorbeeld: **'Geef de gsm aan [spelernaam]'**.
-4. **Geheim woord tonen:** na een tik op **'Ik ben klaar'** ziet alleen die speler een woord dat bij het land hoort (bijvoorbeeld Frankrijk → **Eiffeltoren**).
-5. **Start:** de speler tikt op **'Start'**; de afteltimer van 30 seconden begint.
-6. **Uitleggen en raden:** de gekozen speler omschrijft het woord zonder het letterlijk te noemen. De andere teamleden proberen het te raden.
-7. **Resultaat registreren:** het team kiest **'Geraden'** of **'Niet gelukt'**. Bij het verstrijken van de tijd wordt het resultaat automatisch **'Niet gelukt'** als er nog geen succes is geregistreerd.
-8. **Score tonen:** de app kent punten toe op basis van het resultaat en toont een korte bevestiging.
+When a team lands in a country, one randomly selected player explains a secret word associated with that country. The rest of the active team has 30 seconds to guess it.
 
-### Voorbeeldschermen / UI
-- **Intro:** `Jullie zijn in Frankrijk!` + `Geef de gsm aan Emma`.
-- **Privéwoord:** `Jouw woord: Eiffeltoren` + knop `Start`.
-- **Spelen:** afteltimer `00:30` + knoppen `Geraden` en `Niet gelukt`. **Verberg het geheime woord** op dit scherm zodat het team niet kan spieken.
-- **Resultaat:** `Geraden! +10 punten` of `Niet gelukt — 0 punten` (voorlopige puntensuggestie).
+### Game flow
 
-### Spelregels
-- De uitlegger mag het doelwoord niet letterlijk zeggen.
-- De uitlegger mag niet een deel van het doelwoord verklappen.
-- Geen vertalingen of spelling van het woord gebruiken (voorlopige regel; kan aangepast worden).
-- Alleen het actieve team mag raden.
+1. The team lands in a country and the challenge is selected from that country's pool.
+2. The app randomly selects one player from the active team and asks the group to pass the phone to them.
+3. After `I'M READY`, the selected player sees one randomly selected country-themed word.
+4. Pressing `START` hides the word and begins the 30-second countdown.
+5. The selected player describes the word without saying it while their teammates guess.
+6. The active team chooses `GUESSED` or `NOT GUESSED`. An expired timer automatically records `timeout`.
+7. A successful guess adds 10 points to the active team's score; failure or timeout adds zero.
+8. The result screen enables `NEXT TURN`.
 
-### Punten (voorlopig voorstel)
-| Resultaat | Punten |
+### UI states
+
+- **Intro:** `PASS THE PHONE` and `Give the phone to [player name]`.
+- **Secret word:** `YOUR SECRET WORD`, the country-themed word, the explanation rules, and `START`.
+- **Playing:** a `00:30` countdown, hidden-word message, `GUESSED`, and `NOT GUESSED`.
+- **Result:** `GUESSED! +10 POINTS`, `NOT GUESSED — 0 POINTS`, or `Time ran out`.
+- **Other clients:** a non-secret in-progress message; the secret word is shown only on the active team leader's device being passed around.
+
+### Rules
+
+- The explainer may not say the target word or any part of it.
+- The explainer may not translate or spell the target word.
+- Only the active team may guess.
+- The challenge is excluded when the active team has fewer than two players.
+- Each of the 51 bundled countries contains exactly one copy of this challenge and six medium-to-hard country-themed words or phrases.
+
+### Scoring
+
+| Result | Points |
 | --- | ---: |
-| Geraden binnen 30 seconden | +10 |
-| Niet geraden / tijd verstreken | 0 |
+| Guessed within 30 seconds | +10 |
+| Not guessed / timer expired | 0 |
 
-> Puntentoekenning en tijdsduur zijn configureerbaar. De exacte waardes kunnen later met andere challenges gebalanceerd worden.
+### Technical implementation
 
-### Technische notities voor implementatie
-- **Input:** `countryId`, `teamId`, lijst van actieve teamspelers.
-- **Selectie:** willekeurige speler uit het team en willekeurig woord uit een woordenlijst per land.
-- **State:** `intro → secretWord → playing → result`.
-- **Timer:** 30 seconden, pas starten na bevestiging van de uitlegger.
-- **Resultaat:** `success | failure | timeout`, met de verdiende punten gekoppeld aan het team.
-- **Content:** per land een uitbreidbare verzameling herkenbare woorden (bv. Frankrijk: Eiffeltoren, croissant, baguette, Louvre).
-- **Privacy/spelplezier:** toon het woord alleen vóór de timer; scherm het daarna af.
-- **Later te beslissen:** moeten woorden herhaald kunnen worden, hoe ga je om met slechts één speler in een team, en moet de moeilijkheid per woord instelbaar zijn?
+- **Input:** country stop, active team ID, and the active team's player list.
+- **Selection:** deterministic challenge, player, and word selection from the roll action ID in multiplayer; equivalent seeded local selection in development games.
+- **State:** `intro -> secret -> playing -> result`.
+- **Timer:** 30 seconds, started only after the explainer presses `START`.
+- **Result:** `guessed | failed | timeout`, synchronized in `gameplay.challengeRound`.
+- **Score:** successful results transactionally increase `teamProgress[teamId].challengePoints` and the displayed total score exactly once.
+- **Content:** `app/GameScreen/constants/countryStops.js` owns the versioned word lists for the 51 bundled countries. Each list avoids basic country names, capitals, and overly obvious clues.
+- **Persistence:** both `countries/{countryId}.challenges` and `challenges/{countryId}__guess-country-word` store the complete list in Cloud Firestore. Existing documents are batch-migrated when their `wordListVersion` is outdated.
 
 ---
 
-## Template voor nieuwe challenges
-
-Kopieer dit blok onderaan telkens wanneer er een idee bijkomt:
+## Template for new challenges
 
 ```md
-## Challenge X — Naam
+## Challenge X — Name
 
 ### Concept
-<Korte beschrijving>
+<Short description>
 
-### Spelverloop
-1. <Stap 1>
-2. <Stap 2>
+### Game flow
+1. <Step 1>
+2. <Step 2>
 
-### Voorbeeldschermen / UI
-- <Welke tekst, knoppen of animaties verschijnen?>
+### UI states
+- <Which text, buttons, or animations appear?>
 
-### Spelregels
-- <Regels>
+### Rules
+- <Rules>
 
-### Punten (voorlopig voorstel)
-- Succes: <punten>
-- Mislukt: <punten>
+### Scoring
+- Success: <points>
+- Failure: <points>
 
-### Technische notities voor implementatie
+### Technical implementation
 - Trigger:
 - Input:
 - State:
 - Timer:
-- Overige:
+- Other:
 ```

@@ -174,19 +174,50 @@ export const getPenaltyTag = (challenge) => {
 
 // Optional timer chip, taken from the first "N seconds" in the challenge text.
 export const getChallengeTimer = (challenge) => {
+  if (Number.isFinite(Number(challenge.durationSeconds))) {
+    return `${Number(challenge.durationSeconds)} SEC`;
+  }
   const match = `${challenge.prompt ?? ''} ${challenge.penalty ?? ''}`.match(/(\d+)\s*-?\s*seconds?/i);
   return match ? `${match[1]} SEC` : null;
 };
 
-export const getChallengeIdForStop = (stop, seed = '') => {
+export const COUNTRY_WORD_CHALLENGE_TYPE = 'countryWordGuess';
+
+const hashSeed = (seed) => String(seed).split('').reduce((total, character) => (
+  ((total * 31) + character.charCodeAt(0)) >>> 0
+), 0);
+
+export const getTeamPlayers = (teamMembers, teamId) => {
+  const members = teamMembers?.[teamId];
+  if (!members || typeof members !== 'object') return [];
+  return Object.values(members).filter((member) => member?.name);
+};
+
+export const getChallengeIdForStop = (stop, seed = '', { teamPlayerCount = 0 } = {}) => {
   const challenges = Array.isArray(stop?.challenges)
     ? stop.challenges
     : Object.values(stop?.challenges || {});
-  if (!challenges.length) return null;
-  const hash = String(seed).split('').reduce((total, character) => (
-    ((total * 31) + character.charCodeAt(0)) >>> 0
-  ), 0);
-  return challenges[hash % challenges.length]?.id || challenges[0]?.id || null;
+  const eligibleChallenges = challenges.filter((challenge) => (
+    challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || teamPlayerCount >= 2
+  ));
+  if (!eligibleChallenges.length) return null;
+  const hash = hashSeed(seed);
+  return eligibleChallenges[hash % eligibleChallenges.length]?.id || eligibleChallenges[0]?.id || null;
+};
+
+export const getCountryWordRound = (challenge, players, seed = '') => {
+  if (challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || players.length < 2) return null;
+  const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
+  if (!words.length) return null;
+
+  return {
+    stage: 'intro',
+    selectedPlayerName: players[hashSeed(`${seed}:player`) % players.length].name,
+    secretWord: words[hashSeed(`${seed}:word`) % words.length],
+    startedAt: null,
+    result: null,
+    pointsAwarded: 0,
+  };
 };
 
 export const getChallengeForStop = (stopIndex, routeStops, challengeId) => {

@@ -41,6 +41,89 @@ const challenge = (id, title, prompt, penalty = 'If the team cannot do it, take 
   penalty,
 }]);
 
+const COUNTRY_WORDS = {
+  iceland: ['Thingvellir', 'Eyjafjallajokull', 'skyr', 'puffin colony', 'medieval saga', 'geothermal lagoon'],
+  ireland: ['Cliffs of Moher', 'hurling', 'bodhran', 'Gaelic language', 'Ring of Kerry', 'soda bread'],
+  'united-kingdom': ['Stonehenge', 'Beefeater', "Hadrian's Wall", 'black cab', 'Westminster', 'crumpet'],
+  portugal: ['azulejo tiles', 'bacalhau', 'cork oak', 'Douro Valley', 'custard tart', 'saudade'],
+  spain: ['Alhambra', 'gazpacho', 'castanets', 'Camino de Santiago', 'jamon', 'parador'],
+  andorra: ['Caldea spa', 'Vallnord', 'Romanesque church', 'duty-free shopping', 'Madriu Valley', 'co-prince'],
+  france: ['Mont Saint-Michel', 'bouillabaisse', 'petanque', 'Versailles', 'escargot', 'Tour de France'],
+  monaco: ['Casino Square', 'hairpin bend', 'Grimaldi dynasty', 'principality', 'Larvotto Beach', 'yacht club'],
+  belgium: ['Manneken Pis', 'speculoos', 'comic strip', 'Trappist abbey', 'saxophone', 'diamond district'],
+  netherlands: ['polder', 'stroopwafel', 'Kinderdijk', 'Delta Works', "King's Day", 'Delftware'],
+  luxembourg: ['Bock Casemates', 'Schengen', 'Grand Duke', 'Moselle Valley', 'fortified old town', 'multilingualism'],
+  switzerland: ['Bernese Oberland', 'raclette', 'canton', 'yodel', 'Glacier Express', 'edelweiss'],
+  liechtenstein: ['Gutenberg Castle', 'Kunstmuseum', 'Rhine Valley', 'princely family', 'alpine pasture', 'double-landlocked'],
+  germany: ['Neuschwanstein', 'currywurst', 'Black Forest', 'Bundestag', 'Bauhaus', 'Christmas market'],
+  denmark: ['smorrebrod', 'Nyhavn', 'Jutland', 'runestone', 'modernist furniture', 'cinnamon roll'],
+  norway: ['stave church', 'Trolltunga', 'brown cheese', 'Lofoten Islands', 'polar night', 'bunad'],
+  sweden: ['Dala horse', 'midsummer pole', 'archipelago', 'Nobel Prize', 'cinnamon bun', 'ice hotel'],
+  finland: ['sisu', 'Lakeland', 'Moomin', 'salmiakki', 'midnight sun', 'design district'],
+  estonia: ['e-residency', 'Singing Revolution', 'bog walk', 'Saaremaa', 'medieval city wall', 'black bread'],
+  latvia: ['Rundale Palace', 'midsummer wreath', 'Riga Black Balsam', 'Daugava River', 'song festival', 'grey peas'],
+  lithuania: ['Hill of Crosses', 'Curonian Spit', 'cepelinai', 'Gediminas Tower', 'pagan heritage', 'rye bread'],
+  poland: ['Wieliczka Salt Mine', 'obwarzanek', 'Solidarity movement', 'amber coast', 'Bialowieza Forest', 'mazurka'],
+  czechia: ['Bohemian glass', 'pilsner', 'Kafka', 'spa colonnade', 'marionette', 'Moravian wine'],
+  austria: ['Schonbrunn Palace', 'Sachertorte', 'coffeehouse', 'Spanish Riding School', 'alpine chalet', 'opera ball'],
+  slovakia: ['Spis Castle', 'bryndza cheese', 'High Tatras', 'folk embroidery', 'ice cave', 'wooden church'],
+  hungary: ['paprika', 'ruin bar', 'Puszta', 'Tokaji wine', 'Chain Bridge', 'thermal spring'],
+  slovenia: ['Postojna Cave', 'Lipizzaner', 'beehive panel', 'karst landscape', 'potica', 'Soca River'],
+  italy: ['white truffle', 'gondolier', 'Renaissance', 'limoncello', 'Vespa', 'opera house'],
+  'san-marino': ['Guaita Tower', 'Cesta Tower', 'crossbow corps', 'Mount Titano', 'medieval republic', 'postage stamp'],
+  'vatican-city': ['Swiss Guard', 'papal conclave', 'Pieta', 'papal audience', 'Raphael Rooms', 'Apostolic Palace'],
+  malta: ['megalithic temple', 'luzzu boat', 'Mdina', 'eight-pointed cross', 'pastizzi', 'Hypogeum'],
+  croatia: ['Plitvice Lakes', 'cravat', 'Istrian truffle', 'klapa singing', "Diocletian's Palace", 'bora wind'],
+  'bosnia-herzegovina': ['cevapi', 'Sebilj fountain', 'stecak tombstone', 'copper coffee set', 'Bascarsija', 'Neretva River'],
+  serbia: ['slava celebration', 'rakija', 'gusle', 'Nikola Tesla', 'Exit Festival', 'plum brandy'],
+  montenegro: ['Durmitor', 'black mountain', 'Njegusi ham', 'Ostrog Monastery', 'Tara Canyon', 'Venetian walls'],
+  albania: ['iso-polyphony', 'Skanderbeg', 'Berat windows', 'Blue Eye spring', 'byrek', 'Ionian Riviera'],
+  kosovo: ['Newborn Monument', 'Rugova Canyon', 'filigree', 'qebapa', 'Ottoman bazaar', 'Sharr Mountains'],
+  'north-macedonia': ['ajvar', 'Matka Canyon', 'Cyrillic script', 'Stone Bridge', 'Ohrid pearl', 'tavce gravce'],
+  greece: ['Meteora', 'ouzo', 'Delphi oracle', 'moussaka', 'Cyclades', 'olive wreath'],
+  bulgaria: ['Cyrillic alphabet', 'banitsa', 'Rila Monastery', 'kukeri mask', 'Thracian tomb', 'Shopska salad'],
+  romania: ['painted monastery', 'Carpathian shepherd', 'Sighisoara', 'Danube Delta', 'Maramures gate', 'Palace of Parliament'],
+  moldova: ['Cricova tunnels', 'mamaliga', 'Orheiul Vechi', 'walnut orchard', 'woven carpet', 'Dniester River'],
+  ukraine: ['pysanka', 'vyshyvanka', 'bandura', 'golden domes', 'Cossack', 'varenyky'],
+  belarus: ['Mir Castle', 'linen weaving', 'draniki', 'Naliboki Forest', 'blue lakes', 'straw weaving'],
+  russia: ['Hermitage Museum', 'Trans-Siberian Railway', 'samovar', 'balalaika', 'White Nights', 'onion dome'],
+  kazakhstan: ['eagle hunter', 'dombra', 'Charyn Canyon', 'kumis', 'space launch', 'felt yurt'],
+  georgia: ['supra feast', 'qvevri', 'Svan tower', 'polyphonic singing', 'churchkhela', 'sulfur bath'],
+  armenia: ['khachkar', 'duduk', 'lavash', 'Geghard Monastery', 'brandy distillery', 'tuff stone'],
+  azerbaijan: ['mud volcano', 'mugham', 'pomegranate', 'Maiden Tower', 'pear-shaped tea glass', 'fire temple'],
+  turkey: ['whirling dervish', 'evil eye', 'hammam', 'Bosphorus', 'lokum', 'Cappadocia'],
+  cyprus: ['Commandaria', 'lace village', 'mouflon', 'copper mine', 'divided capital', 'mezze'],
+};
+
+const getCountryWordChallenge = (countryId) => {
+  const words = COUNTRY_WORDS[countryId];
+  if (!words) return null;
+
+  return {
+    id: 'guess-country-word',
+    type: 'countryWordGuess',
+    title: 'Guess the Country Word',
+    prompt: 'One player explains a secret country-themed word while their team tries to guess it.',
+    penalty: 'Guess it within 30 seconds to earn 10 points.',
+    penaltyTag: '10 PTS',
+    durationSeconds: 30,
+    successPoints: 10,
+    wordListVersion: 2,
+    words,
+  };
+};
+
+const ensureCountryWordChallenge = (countryId, challenges) => {
+  const countryWordChallenge = getCountryWordChallenge(countryId);
+  if (!countryWordChallenge) return challenges;
+  return [
+    ...challenges.filter((item) => (
+      item?.id !== countryWordChallenge.id && item?.type !== countryWordChallenge.type
+    )),
+    countryWordChallenge,
+  ];
+};
+
 const stop = ({ accent, challenge: stopChallenge, city, code, id, name, sourcePosition }, order) => ({
   id,
   name,
@@ -110,7 +193,10 @@ const EUROPE_COUNTRIES = [
   { id: 'cyprus', name: 'Cyprus', code: 'CY', city: 'Nicosia', longitude: 33.3823, latitude: 35.1856, sourcePosition: [610, 369], accent: '#f2994a', challenge: challenge('island-finale', 'Island Finale', 'Create a team postcard pose and hold it while the table counts to five.') },
 ];
 
-export const DEFAULT_COUNTRY_STOPS = EUROPE_COUNTRIES.map(stop);
+export const DEFAULT_COUNTRY_STOPS = EUROPE_COUNTRIES.map(stop).map((countryStop) => ({
+  ...countryStop,
+  challenges: ensureCountryWordChallenge(countryStop.id, countryStop.challenges),
+}));
 const DEFAULT_COUNTRY_STOP_BY_ID = new Map(DEFAULT_COUNTRY_STOPS.map((countryStop) => [
   countryStop.id,
   countryStop,
@@ -156,12 +242,29 @@ export const normalizeCountryStops = (value) => {
       order: Number.isFinite(Number(stop.order)) ? Number(stop.order) : index,
       position: { x: Number(stop.position?.x) || 0, y: Number(stop.position?.y) || 0 },
       accent: stop.accent || '#1ba39c',
-      challenges: toList(stop.challenges).map((challenge, challengeIndex) => ({
-        id: String(challenge.id || `challenge-${challengeIndex}`),
-        title: String(challenge.title || 'Border Check'),
-        prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
-        penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
-      })),
+      challenges: ensureCountryWordChallenge(
+        String(stop.id || `stop-${index}`),
+        toList(stop.challenges).map((challenge, challengeIndex) => ({
+          id: String(challenge.id || `challenge-${challengeIndex}`),
+          title: String(challenge.title || 'Border Check'),
+          prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
+          penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
+          ...(challenge.type ? { type: String(challenge.type) } : {}),
+          ...(challenge.penaltyTag ? { penaltyTag: String(challenge.penaltyTag) } : {}),
+          ...(Number.isFinite(Number(challenge.durationSeconds))
+            ? { durationSeconds: Number(challenge.durationSeconds) }
+            : {}),
+          ...(Number.isFinite(Number(challenge.successPoints))
+            ? { successPoints: Number(challenge.successPoints) }
+            : {}),
+          ...(Number.isFinite(Number(challenge.wordListVersion))
+            ? { wordListVersion: Number(challenge.wordListVersion) }
+            : {}),
+          ...(Array.isArray(challenge.words)
+            ? { words: challenge.words.map(String).filter(Boolean) }
+            : {}),
+        }))
+      ),
     };
 
     if (stop.code) {

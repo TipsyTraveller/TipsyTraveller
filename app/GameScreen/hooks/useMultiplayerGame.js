@@ -10,7 +10,13 @@ import {
   getRequiredTeamIds,
   getTeamScore,
 } from '../gameplayState';
-import { getChallengeIdForStop } from '../constants/challenges';
+import {
+  COUNTRY_WORD_CHALLENGE_TYPE,
+  getChallengeForStop,
+  getChallengeIdForStop,
+  getCountryWordRound,
+  getTeamPlayers,
+} from '../constants/challenges';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
   if (!deviceID) return { localTeamId: null, isTeamLeader: false };
@@ -35,6 +41,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   const [isLoading, setIsLoading] = useState(enabled);
   const gameDataRef = useRef(gameData);
   gameDataRef.current = gameData;
+  const teamMembersRef = useRef(teamMembers);
+  teamMembersRef.current = teamMembers;
 
   useEffect(() => {
     let active = true;
@@ -113,6 +121,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         currentAction: action,
         challengeStop: null,
         challengeId: null,
+        challengeRound: null,
         updatedAt: action.startedAt,
       };
     });
@@ -140,27 +149,35 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       const finishPosition = hasFinishedRoute
         ? getFinishPosition(current.teamProgress)
         : null;
+      const previousProgress = current.teamProgress?.[action.teamId] || {};
+      const challengePoints = Number(previousProgress.challengePoints) || 0;
       const teamProgress = {
         ...current.teamProgress,
         [action.teamId]: {
+          ...previousProgress,
           currentLeg: action.targetLeg,
           isDone: hasFinishedRoute,
-          score: getTeamScore({ currentLeg: action.targetLeg, finishPosition }),
+          challengePoints,
+          score: getTeamScore({ challengePoints, currentLeg: action.targetLeg, finishPosition }),
           finishPosition,
         },
       };
 
       if (!hasFinishedRoute) {
+        const stop = routeModel.countryStops[action.targetLeg];
+        const players = getTeamPlayers(teamMembersRef.current, action.teamId);
+        const challengeId = getChallengeIdForStop(stop, action.id, {
+          teamPlayerCount: players.length,
+        });
+        const challenge = getChallengeForStop(action.targetLeg, routeModel.countryStops, challengeId);
         return {
           ...current,
           phase: 'challenge',
           revision: (current.revision || 0) + 1,
           teamProgress,
           challengeStop: action.targetLeg,
-          challengeId: getChallengeIdForStop(
-            routeModel.countryStops[action.targetLeg],
-            action.id
-          ),
+          challengeId,
+          challengeRound: getCountryWordRound(challenge, players, action.id),
           updatedAt: completedAt,
         };
       }
@@ -176,12 +193,87 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         currentAction: null,
         challengeStop: null,
         challengeId: null,
+        challengeRound: null,
         updatedAt: completedAt,
       };
     });
 
     return result.committed;
   }, [enabled, gameID, now, routeModel]);
+
+  const updateCountryWordChallenge = useCallback(async (action) => {
+    if (!enabled || !gameID || !canControlTurn) return false;
+
+    const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
+      const round = current?.challengeRound;
+      if (
+        !current
+        || current.phase !== 'challenge'
+        || current.activeTeamId !== identity.localTeamId
+        || !round
+      ) {
+        return undefined;
+      }
+
+      const updatedAt = now();
+      if (action === 'ready' && round.stage === 'intro') {
+        return {
+          ...current,
+          revision: (current.revision || 0) + 1,
+          challengeRound: { ...round, stage: 'secret' },
+          updatedAt,
+        };
+      }
+      if (action === 'start' && round.stage === 'secret') {
+        return {
+          ...current,
+          revision: (current.revision || 0) + 1,
+          challengeRound: { ...round, stage: 'playing', startedAt: updatedAt },
+          updatedAt,
+        };
+      }
+      if (!['guessed', 'failed', 'timeout'].includes(action) || round.stage !== 'playing') {
+        return undefined;
+      }
+
+      const guessed = action === 'guessed';
+      const challenge = getChallengeForStop(
+        current.challengeStop,
+        routeModel.countryStops,
+        current.challengeId
+      );
+      if (challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return undefined;
+      const pointsAwarded = guessed ? (Number(challenge.successPoints) || 10) : 0;
+      const activeProgress = current.teamProgress?.[current.activeTeamId] || {};
+      const challengePoints = (Number(activeProgress.challengePoints) || 0) + pointsAwarded;
+
+      return {
+        ...current,
+        revision: (current.revision || 0) + 1,
+        teamProgress: {
+          ...current.teamProgress,
+          [current.activeTeamId]: {
+            ...activeProgress,
+            challengePoints,
+            score: getTeamScore({
+              challengePoints,
+              currentLeg: activeProgress.currentLeg,
+              finishPosition: activeProgress.finishPosition,
+            }),
+          },
+        },
+        challengeRound: {
+          ...round,
+          stage: 'result',
+          result: guessed ? 'guessed' : action,
+          pointsAwarded,
+        },
+        updatedAt,
+      };
+    });
+
+    return result.committed;
+  }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel.countryStops]);
 
   const completeChallenge = useCallback(async () => {
     if (!enabled || !gameID || !canControlTurn) return false;
@@ -191,6 +283,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         !current
         || current.phase !== 'challenge'
         || current.activeTeamId !== identity.localTeamId
+        || (current.challengeRound && current.challengeRound.stage !== 'result')
       ) {
         return undefined;
       }
@@ -211,6 +304,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         currentAction: null,
         challengeStop: null,
         challengeId: null,
+        challengeRound: null,
         updatedAt: now(),
       };
     });
@@ -243,5 +337,6 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     restart,
     serverNow: now,
     submitRoll,
+    updateCountryWordChallenge,
   };
 }

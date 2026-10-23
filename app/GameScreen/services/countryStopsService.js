@@ -89,6 +89,8 @@ const writeLocalCache = (stops) => {
 let removedStopIds = readRemovedStopIds();
 let cachedStops = readLocalCache();
 let seedingPromise = null;
+let countryWordMigrationPromise = null;
+let countryWordMigrationVerified = false;
 const subscribers = new Set();
 
 const serializeStopDoc = (stop, touchTimestamp = null) => stripUndefined({
@@ -172,12 +174,95 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         title: challenge.title,
         prompt: challenge.prompt,
         penalty: challenge.penalty,
+        type: challenge.type,
+        penaltyTag: challenge.penaltyTag,
+        durationSeconds: challenge.durationSeconds,
+        successPoints: challenge.successPoints,
+        wordListVersion: challenge.wordListVersion,
+        words: challenge.words,
         order: index,
         updatedAt,
       }),
       { merge: true }
     );
   });
+};
+
+const toChallengeList = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value && typeof value === 'object') return Object.values(value).filter(Boolean);
+  return [];
+};
+
+const getCountryWordChallenge = (stop) => (
+  toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'countryWordGuess')
+);
+
+const hasCurrentCountryWordContent = (challenge, expected) => (
+  challenge?.id === expected?.id
+  && Number(challenge?.wordListVersion) === Number(expected?.wordListVersion)
+  && Array.isArray(challenge?.words)
+  && JSON.stringify(challenge.words) === JSON.stringify(expected.words)
+);
+
+const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
+  if (countryWordMigrationPromise) return countryWordMigrationPromise;
+
+  countryWordMigrationPromise = (async () => {
+    try {
+      const normalizedStops = applyCurrentDefaultPositions(rawCountryDocs);
+      const rawStopsById = new Map(rawCountryDocs.map((stop) => [stop.id, stop]));
+      const embeddedContentIsCurrent = normalizedStops.every((stop) => {
+        const expected = getCountryWordChallenge(stop);
+        return !expected || hasCurrentCountryWordContent(
+          getCountryWordChallenge(rawStopsById.get(stop.id)),
+          expected
+        );
+      });
+      if (countryWordMigrationVerified && embeddedContentIsCurrent) return 0;
+
+      const challengeSnapshot = await getDocs(collection(firestore, CHALLENGES_COLLECTION));
+      const challengeDocsById = new Map(challengeSnapshot.docs.map((docSnap) => [
+        docSnap.id,
+        docSnap.data(),
+      ]));
+      const targets = normalizedStops.filter((stop) => {
+        const expected = getCountryWordChallenge(stop);
+        if (!expected) return false;
+        const rawCountryChallenge = getCountryWordChallenge(rawStopsById.get(stop.id));
+        const challengeDoc = challengeDocsById.get(`${stop.id}__${expected.id}`);
+        return !hasCurrentCountryWordContent(rawCountryChallenge, expected)
+          || !hasCurrentCountryWordContent(challengeDoc, expected);
+      });
+
+      if (!targets.length) {
+        countryWordMigrationVerified = true;
+        return 0;
+      }
+
+      const updatedAt = Date.now();
+      const batch = writeBatch(firestore);
+      targets.forEach((stop) => {
+        batch.set(
+          doc(firestore, COUNTRIES_COLLECTION, stop.id),
+          { challenges: stop.challenges, updatedAt },
+          { merge: true }
+        );
+        syncChallengesForStopInBatch(batch, stop, updatedAt);
+      });
+      await batch.commit();
+      countryWordMigrationVerified = true;
+      console.info(`Synchronized country word lists for ${targets.length} Firestore countries.`);
+      return targets.length;
+    } catch (migrationError) {
+      console.warn('Unable to synchronize country word lists to Firestore:', migrationError);
+      return 0;
+    } finally {
+      countryWordMigrationPromise = null;
+    }
+  })();
+
+  return countryWordMigrationPromise;
 };
 
 const seedFirestoreCatalogueIfNeeded = async () => {
@@ -241,6 +326,7 @@ export const getCountryStops = async () => {
     const docs = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
 
     if (docs.length >= 2 && !isLegacyCountryCatalogue(docs)) {
+      await migrateCountryWordChallengesIfNeeded(docs);
       return updateCachedStops(mergeRemoteStopsWithCache(docs));
     }
 
@@ -267,6 +353,7 @@ export const subscribeCountryStops = (callback, onError) => {
     async (snapshot) => {
       const docs = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
       if (docs.length >= 2 && !isLegacyCountryCatalogue(docs)) {
+        await migrateCountryWordChallengesIfNeeded(docs);
         updateCachedStops(mergeRemoteStopsWithCache(docs));
         return;
       }

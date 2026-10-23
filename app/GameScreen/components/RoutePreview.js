@@ -29,7 +29,7 @@ const RoutePreview = ({ duration = 'long', onClose, stops, visible }) => {
         <Text style={styles.eyebrow}>YOUR ROAD TO GREECE</Text>
         <Text style={styles.title}>{DURATION_LABELS[duration] || DURATION_LABELS.long}</Text>
         <Text style={styles.summary}>
-          {stops.length} stops · rolls are 1–3 · every stop advanced earns 10 points
+          {stops.length} stops · rolls are 1–3 · stops and successful word guesses earn 10 points
         </Text>
 
         <ScrollView
@@ -50,7 +50,7 @@ const RoutePreview = ({ duration = 'long', onClose, stops, visible }) => {
         </ScrollView>
 
         <View style={styles.footer}>
-          <Text style={styles.podium}>Finish bonus: 1st +30 · 2nd +15 · 3rd +5</Text>
+          <Text style={styles.podium}>Word guess: +10 · Finish: 1st +30 · 2nd +15 · 3rd +5</Text>
           <TouchableOpacity
             accessibilityLabel="Start the route"
             accessibilityRole="button"
