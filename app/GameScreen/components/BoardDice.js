@@ -51,9 +51,6 @@ const FACE_PIPS = {
   1: ['center'],
   2: ['topLeft', 'bottomRight'],
   3: ['topLeft', 'center', 'bottomRight'],
-  4: ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'],
-  5: ['topLeft', 'topRight', 'center', 'bottomLeft', 'bottomRight'],
-  6: ['topLeft', 'topRight', 'middleLeft', 'middleRight', 'bottomLeft', 'bottomRight'],
 };
 
 const PIP_POSITIONS = {
@@ -67,21 +64,18 @@ const PIP_POSITIONS = {
 };
 
 const FACE_TRANSFORMS = [
-  { value: 1, position: [0, 0, HALF_SIZE + 0.003], rotation: [0, 0, 0] },
-  { value: 6, position: [0, 0, -HALF_SIZE - 0.003], rotation: [Math.PI, 0, 0] },
-  { value: 2, position: [0, HALF_SIZE + 0.003, 0], rotation: [-Math.PI / 2, 0, 0] },
-  { value: 5, position: [0, -HALF_SIZE - 0.003, 0], rotation: [Math.PI / 2, 0, 0] },
-  { value: 3, position: [HALF_SIZE + 0.003, 0, 0], rotation: [0, Math.PI / 2, 0] },
-  { value: 4, position: [-HALF_SIZE - 0.003, 0, 0], rotation: [0, -Math.PI / 2, 0] },
+  { id: 1, pipValue: 1, position: [0, 0, HALF_SIZE + 0.003], rotation: [0, 0, 0] },
+  { id: 4, pipValue: 1, position: [0, 0, -HALF_SIZE - 0.003], rotation: [Math.PI, 0, 0] },
+  { id: 2, pipValue: 2, position: [0, HALF_SIZE + 0.003, 0], rotation: [-Math.PI / 2, 0, 0] },
+  { id: 5, pipValue: 2, position: [0, -HALF_SIZE - 0.003, 0], rotation: [Math.PI / 2, 0, 0] },
+  { id: 3, pipValue: 3, position: [HALF_SIZE + 0.003, 0, 0], rotation: [0, Math.PI / 2, 0] },
+  { id: 6, pipValue: 3, position: [-HALF_SIZE - 0.003, 0, 0], rotation: [0, -Math.PI / 2, 0] },
 ];
 
 const FACE_ROTATIONS = {
   1: [0, 0, 0],
   2: [Math.PI / 2, 0, 0],
   3: [0, -Math.PI / 2, 0],
-  4: [0, Math.PI / 2, 0],
-  5: [-Math.PI / 2, 0, 0],
-  6: [Math.PI, 0, 0],
 };
 const FACE_QUATERNIONS = Object.fromEntries(
   Object.entries(FACE_ROTATIONS).map(([value, rotation]) => [
@@ -168,19 +162,19 @@ const DicePips = ({ value }) => (
   </>
 );
 
-const DiceFace = ({ faceRefs, position, rotation, value }) => (
+const DiceFace = ({ faceId, faceRefs, pipValue, position, rotation }) => (
   <group
     ref={(node) => {
       if (node) {
-        faceRefs.current[value] = node;
+        faceRefs.current[faceId] = node;
       } else {
-        delete faceRefs.current[value];
+        delete faceRefs.current[faceId];
       }
     }}
     position={position}
     rotation={rotation}
   >
-    <DicePips value={value} />
+    <DicePips value={pipValue} />
   </group>
 );
 
@@ -768,11 +762,12 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
         />
         {FACE_TRANSFORMS.map((face) => (
           <DiceFace
-            key={face.value}
+            key={face.id}
+            faceId={face.id}
             faceRefs={faceRefs}
+            pipValue={face.pipValue}
             position={face.position}
             rotation={face.rotation}
-            value={face.value}
           />
         ))}
       </group>
