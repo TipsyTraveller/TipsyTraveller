@@ -2,7 +2,7 @@
 
 ## Run on your phone with Expo Go
 
-This project uses Expo SDK 57, matching the current Expo Go release.
+This project uses Expo SDK 58, matching the current Expo Go release.
 
 1. Install or update **Expo Go** on your phone.
 2. Put your phone and Mac on the same Wi-Fi network.
