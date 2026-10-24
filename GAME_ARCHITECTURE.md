@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 23 October 2026.
+> Last reviewed against the source code: 24 October 2026.
 
 ## Table of contents
 
@@ -780,7 +780,7 @@ Challenges are stored as a pool on each authored country stop. Each has:
 
 `constants/challenges.js` retains country flag presentation and backwards-compatible fallback challenges. In multiplayer, movement completion deterministically chooses a challenge from the landed stop using the action ID and stores both `challengeStop` and `challengeId` in the canonical gameplay record, so every client renders the same prompt.
 
-Every bundled country has exactly one `Guess the Country Word` entry alongside its original challenge. Each entry supplies six distinct medium-to-hard country-themed words or phrases, a 30-second duration, a 10-point success value, and a versioned word-list marker. Obvious answers such as the country name, capital, or best-known basic food were replaced by more specific geography, culture, history, architecture, and traditions. The challenge is excluded from selection when the active team contains fewer than two players. When selected, the action ID deterministically chooses both an explainer and a secret word. The active team leader's device runs `intro -> secret -> playing -> result`: it asks the group to pass the phone to the chosen player, reveals the word privately, hides it during the countdown, and records `guessed`, `failed`, or `timeout`. Other clients show a non-secret in-progress message until the result is available.
+Every bundled country has exactly one `Guess the Country Word` entry alongside its original challenge. Each entry supplies six distinct medium-to-hard country-themed words or phrases, a 30-second duration, a 10-point success value, and a versioned word-list marker. Obvious answers such as the country name, capital, or best-known basic food were replaced by more specific geography, culture, history, architecture, and traditions. The challenge is excluded from selection when the active team contains fewer than two players. When selected, the action ID deterministically chooses both an explainer and a secret word. The active team leader's device runs `intro -> playing -> result`: it asks the group to pass the phone to the chosen player (`PASS THE PHONE` with `START`). Pressing `START` immediately begins the 30-second timer and opens an explanation popup overlay briefing the explainer on what to do. For the first 7 seconds, the explanation popup counts down while the timer ticks; once the explanation countdown finishes, the popup dismisses to reveal the secret word with the remaining time (~23 seconds), creating pressure to think and explain on the spot. The round records `guessed`, `failed`, or `timeout`. Other clients show a non-secret in-progress message until the result is available.
 
 In multiplayer, `challengeRound` stores the selected player, secret word, stage, server-adjusted start timestamp, result, and awarded points. Stage changes and the score award use Realtime Database transactions. The score award is idempotent because only a `playing` round can transition to `result`. Local development games use the same state sequence without Firebase.
 
@@ -1314,7 +1314,7 @@ Use at least two separate installations or clear/device-specific storage careful
 13. Confirm only Team 1's leader can roll, every result is between 1 and 3, and every device shows the same result and vehicle movement.
 14. Confirm each reached stop adds 10 route points on every client.
 15. With a one-player active team, confirm `Guess the Country Word` is never selected.
-16. With at least two players on the active team, reach stops until `Guess the Country Word` is selected. Confirm the active leader's device names an explainer and can reveal the secret, other clients never render the secret, the word is hidden after Start, and the timer expires at 30 seconds.
+16. With at least two players on the active team, reach stops until `Guess the Country Word` is selected. Confirm the active leader's device names an explainer with a START button, other clients never render the secret, pressing START immediately starts the 30s timer and shows an explanation popup overlay for 7 seconds, the secret word is revealed after the explanation finishes with ~23s remaining, and the timer expires at 0 seconds.
 17. Press `GUESSED` and confirm exactly 10 challenge points are added on every client. In a separate round, confirm `NOT GUESSED` and timeout add zero points and Next Turn stays disabled until a result exists.
 18. Confirm every device opens the same ordinary challenge and only the active team's leader can press `DONE / NEXT TURN`.
 19. Repeat for the other teams and confirm turns, route positions, finished-team skipping, and tour completion remain identical.

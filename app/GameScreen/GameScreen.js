@@ -280,11 +280,7 @@ const GameScreen = ({ route }) => {
     }
 
     if (!currentChallenge || currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return;
-    if (action === 'ready' && currentChallenge.stage === 'intro') {
-      setCurrentChallenge({ ...currentChallenge, stage: 'secret' });
-      return;
-    }
-    if (action === 'start' && currentChallenge.stage === 'secret') {
+    if ((action === 'start' || action === 'ready') && (currentChallenge.stage === 'intro' || currentChallenge.stage === 'secret')) {
       setCurrentChallenge({ ...currentChallenge, stage: 'playing', startedAt: Date.now() });
       return;
     }

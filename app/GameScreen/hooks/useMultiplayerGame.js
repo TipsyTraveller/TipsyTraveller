@@ -216,15 +216,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       const updatedAt = now();
-      if (action === 'ready' && round.stage === 'intro') {
-        return {
-          ...current,
-          revision: (current.revision || 0) + 1,
-          challengeRound: { ...round, stage: 'secret' },
-          updatedAt,
-        };
-      }
-      if (action === 'start' && round.stage === 'secret') {
+      if ((action === 'start' || action === 'ready') && (round.stage === 'intro' || round.stage === 'secret')) {
         return {
           ...current,
           revision: (current.revision || 0) + 1,

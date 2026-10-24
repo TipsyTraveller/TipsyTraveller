@@ -19,21 +19,22 @@ When a team lands in a country, one randomly selected player explains a secret w
 ### Game flow
 
 1. The team lands in a country and the challenge is selected from that country's pool.
-2. The app randomly selects one player from the active team and asks the group to pass the phone to them.
-3. After `I'M READY`, the selected player sees one randomly selected country-themed word.
-4. Pressing `START` hides the word and begins the 30-second countdown.
-5. The selected player describes the word without saying it while their teammates guess.
-6. The active team chooses `GUESSED` or `NOT GUESSED`. An expired timer automatically records `timeout`.
-7. A successful guess adds 10 points to the active team's score; failure or timeout adds zero.
-8. The result screen enables `NEXT TURN`.
+2. The app randomly selects one player from the active team and asks the group to pass the phone to them (`PASS THE PHONE` with a `START` button).
+3. Pressing `START` begins the 30-second countdown immediately and displays an explanation popup explaining what the player has to do.
+4. During the first 7 seconds, the player reads the instructions while the countdown is already running and the popup counts down (`WORD REVEALS IN 7s...`).
+5. After the explanation countdown finishes, the popup dismisses to reveal the secret word with the remaining time (~23 seconds), creating pressure to describe it immediately.
+6. The selected player describes the word without saying it while their teammates guess.
+7. The active team chooses `GUESSED` or `NOT GUESSED`. An expired timer automatically records `timeout`.
+8. A successful guess adds 10 points to the active team's score; failure or timeout adds zero.
+9. The result screen enables `NEXT TURN`.
 
 ### UI states
 
-- **Intro:** `PASS THE PHONE` and `Give the phone to [player name]`.
-- **Secret word:** `YOUR SECRET WORD`, the country-themed word, the explanation rules, and `START`.
-- **Playing:** a `00:30` countdown, hidden-word message, `GUESSED`, and `NOT GUESSED`.
+- **Intro:** `PASS THE PHONE`, `Give the phone to [player name]`, and `START`.
+- **Playing (0-7s):** explanation popup overlay with rules briefing and `WORD REVEALS IN [N]s` countdown while the 30s timer is already ticking.
+- **Playing (7-30s):** secret word revealed, `00:[N]` countdown, `GUESSED`, and `NOT GUESSED`.
 - **Result:** `GUESSED! +10 POINTS`, `NOT GUESSED — 0 POINTS`, or `Time ran out`.
-- **Other clients:** a non-secret in-progress message; the secret word is shown only on the active team leader's device being passed around.
+- **Other clients:** a non-secret in-progress message; the secret word and explanation are shown only on the active team leader's device being passed around.
 
 ### Rules
 
@@ -54,8 +55,8 @@ When a team lands in a country, one randomly selected player explains a secret w
 
 - **Input:** country stop, active team ID, and the active team's player list.
 - **Selection:** deterministic challenge, player, and word selection from the roll action ID in multiplayer; equivalent seeded local selection in development games.
-- **State:** `intro -> secret -> playing -> result`.
-- **Timer:** 30 seconds, started only after the explainer presses `START`.
+- **State:** `intro -> playing -> result` (with legacy fallback for `secret`).
+- **Timer:** 30 seconds, started immediately when the explainer presses `START` on the pass-the-phone screen; the first 7 seconds display the explanation popup overlay before revealing the secret word for the remaining time.
 - **Result:** `guessed | failed | timeout`, synchronized in `gameplay.challengeRound`.
 - **Score:** successful results transactionally increase `teamProgress[teamId].challengePoints` and the displayed total score exactly once.
 - **Content:** `app/GameScreen/constants/countryStops.js` owns the versioned word lists for the 51 bundled countries. Each list avoids basic country names, capitals, and overly obvious clues.
