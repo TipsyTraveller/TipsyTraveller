@@ -22,6 +22,9 @@ const SOURCE_PATH = new URL('../assets/map.svg', import.meta.url);
 const OUTPUT_PATH = process.env.MAP_OUTPUT
   ? pathToFileURL(path.resolve(process.env.MAP_OUTPUT))
   : new URL('../assets/models/world-map-vector.glb', import.meta.url);
+const TWO_D_OUTPUT_PATH = process.env.MAP_2D_OUTPUT
+  ? pathToFileURL(path.resolve(process.env.MAP_2D_OUTPUT))
+  : null;
 const SOURCE_WIDTH = 1096;
 const SOURCE_HEIGHT = 780;
 const MAP_WIDTH = 20;
@@ -36,6 +39,7 @@ const BORDER_BOUNDS = {
   minY: 190 - BORDER_MARGIN,
   maxY: 408 + BORDER_MARGIN,
 };
+const TWO_D_BOUNDS = { minX: 440, maxX: 730, minY: 190, maxY: 408 };
 
 globalThis.DOMParser = DOMParser;
 
@@ -465,6 +469,74 @@ const borderMaterial = new THREE.LineBasicMaterial({
 const borders = new THREE.LineSegments(borderGeometry, borderMaterial);
 borders.name = 'CountryBorders';
 borders.renderOrder = 2;
+
+if (TWO_D_OUTPUT_PATH) {
+  const formatNumber = (value) => Number(value.toFixed(2));
+  const formatPoint = (point) => `${formatNumber(point.x)} ${formatNumber(point.y)}`;
+  const serializeSubPath = (subPathEntry) => {
+    const [firstCurve] = subPathEntry.curves;
+    if (!firstCurve) return '';
+    const start = firstCurve.v0 || firstCurve.v1;
+    const commands = [`M${formatPoint(start)}`];
+
+    subPathEntry.curves.forEach((curve) => {
+      if (curve.isCubicBezierCurve) {
+        commands.push(`C${formatPoint(curve.v1)} ${formatPoint(curve.v2)} ${formatPoint(curve.v3)}`);
+      } else if (curve.isLineCurve) {
+        commands.push(`L${formatPoint(curve.v2)}`);
+      } else {
+        throw new Error(`Unsupported 2D map curve type: ${curve.type}`);
+      }
+    });
+
+    commands.push('Z');
+    return commands.join('');
+  };
+
+  const curveIntersects2DViewport = (curve) => {
+    const points = curve.getPoints(CURVE_DIVISIONS);
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    return !(
+      Math.max(...xs) < TWO_D_BOUNDS.minX
+      || Math.min(...xs) > TWO_D_BOUNDS.maxX
+      || Math.max(...ys) < TWO_D_BOUNDS.minY
+      || Math.min(...ys) > TWO_D_BOUNDS.maxY
+    );
+  };
+  const subPathIntersects2DViewport = (subPathEntry) => (
+    subPathEntry.curves.some(curveIntersects2DViewport)
+  );
+  const duplicateTwinCurves = new Set(twinMatches.map(({ second }) => second.curve));
+  const serializeBorderCurve = (curve) => {
+    const start = curve.v0 || curve.v1;
+    if (curve.isCubicBezierCurve) {
+      return `M${formatPoint(start)}C${formatPoint(curve.v1)} ${formatPoint(curve.v2)} ${formatPoint(curve.v3)}`;
+    }
+    if (curve.isLineCurve) {
+      return `M${formatPoint(start)}L${formatPoint(curve.v2)}`;
+    }
+    throw new Error(`Unsupported 2D map curve type: ${curve.type}`);
+  };
+
+  const fillPathData = subPaths
+    .filter(subPathIntersects2DViewport)
+    .map(serializeSubPath)
+    .filter(Boolean)
+    .join(' ');
+  const borderPathData = subPaths
+    .flatMap(({ curves }) => curves)
+    .filter((curve) => !duplicateTwinCurves.has(curve) && curveIntersects2DViewport(curve))
+    .map(serializeBorderCurve)
+    .join(' ');
+  const moduleSource = `// Generated from assets/map.svg by scripts/build-vector-map.mjs.\n`
+    + `// Shared country edges are welded and duplicate twins are omitted from the border layer.\n`
+    + `export const EUROPE_SVG_VIEWBOX = { minX: 440, minY: 190, width: 290, height: 218 };\n`
+    + `export const EUROPE_MAP_FILL_PATH_DATA = ${JSON.stringify(fillPathData)};\n`
+    + `export const EUROPE_MAP_BORDER_PATH_DATA = ${JSON.stringify(borderPathData)};\n`;
+  await fs.writeFile(TWO_D_OUTPUT_PATH, moduleSource);
+  console.log(`Wrote ${TWO_D_OUTPUT_PATH.pathname}`);
+}
 
 const scene = new THREE.Scene();
 scene.name = 'WorldMapRelief';

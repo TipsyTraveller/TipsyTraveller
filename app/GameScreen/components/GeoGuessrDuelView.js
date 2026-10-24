@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
-import { EUROPE_MAP_PATH_DATA, EUROPE_SVG_VIEWBOX } from '../constants/europeMapPaths';
+import {
+  EUROPE_MAP_BORDER_PATH_DATA,
+  EUROPE_MAP_FILL_PATH_DATA,
+  EUROPE_SVG_VIEWBOX,
+} from '../constants/europeMapPaths';
 import {
   boardToSvgCoords,
   normalizedMapToBoard,
@@ -134,10 +138,15 @@ const GeoGuessrEuropeMap = ({
           fill="#223144"
         />
         <Path
-          d={EUROPE_MAP_PATH_DATA}
+          d={EUROPE_MAP_FILL_PATH_DATA}
           fill="#FFF1CD"
-          stroke="#718091"
-          strokeWidth={0.35 * markerScale}
+        />
+        <Path
+          d={EUROPE_MAP_BORDER_PATH_DATA}
+          fill="none"
+          stroke="#7C8791"
+          strokeWidth={0.24 * markerScale}
+          strokeLinecap="round"
           strokeLinejoin="round"
         />
 
@@ -152,21 +161,21 @@ const GeoGuessrEuropeMap = ({
                 x2={targetSvg.svgX}
                 y2={targetSvg.svgY}
                 stroke={color}
-                strokeWidth="2.2"
-                strokeDasharray="4,3"
+                strokeWidth={0.7 * markerScale}
+                strokeDasharray={`${2 * markerScale},${1.5 * markerScale}`}
               />
               <Circle
                 cx={guessSvg.svgX}
                 cy={guessSvg.svgY}
-                r={3.8 * markerScale}
+                r={1.1 * markerScale}
                 fill={color}
                 stroke="#111111"
-                strokeWidth={1.5 * markerScale}
+                strokeWidth={0.35 * markerScale}
               />
               <Circle
                 cx={guessSvg.svgX}
                 cy={guessSvg.svgY}
-                r={1.25 * markerScale}
+                r={0.32 * markerScale}
                 fill="#FFFFFF"
               />
             </G>
@@ -178,23 +187,23 @@ const GeoGuessrEuropeMap = ({
             <Circle
               cx={targetSvg.svgX}
               cy={targetSvg.svgY}
-              r={7 * markerScale}
+              r={2.2 * markerScale}
               fill="rgba(255, 215, 0, 0.28)"
               stroke="#FFD700"
-              strokeWidth={1.3 * markerScale}
+              strokeWidth={0.35 * markerScale}
             />
             <Circle
               cx={targetSvg.svgX}
               cy={targetSvg.svgY}
-              r={4.2 * markerScale}
+              r={1.3 * markerScale}
               fill="#FFD700"
               stroke="#111111"
-              strokeWidth={1.6 * markerScale}
+              strokeWidth={0.4 * markerScale}
             />
             <Circle
               cx={targetSvg.svgX}
               cy={targetSvg.svgY}
-              r={1.4 * markerScale}
+              r={0.36 * markerScale}
               fill="#D71920"
             />
           </G>
@@ -205,23 +214,23 @@ const GeoGuessrEuropeMap = ({
             <Circle
               cx={draftSvg.svgX}
               cy={draftSvg.svgY}
-              r={6.4 * markerScale}
+              r={1.8 * markerScale}
               fill="rgba(27, 163, 156, 0.25)"
               stroke="#1BA39C"
-              strokeWidth={1.2 * markerScale}
+              strokeWidth={0.3 * markerScale}
             />
             <Circle
               cx={draftSvg.svgX}
               cy={draftSvg.svgY}
-              r={3.7 * markerScale}
+              r={1.1 * markerScale}
               fill="#D71920"
               stroke="#111111"
-              strokeWidth={1.5 * markerScale}
+              strokeWidth={0.35 * markerScale}
             />
             <Circle
               cx={draftSvg.svgX}
               cy={draftSvg.svgY}
-              r={1.2 * markerScale}
+              r={0.3 * markerScale}
               fill="#FFF1CD"
             />
           </G>
