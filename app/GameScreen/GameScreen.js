@@ -5,7 +5,6 @@ import ChallengePopup from './components/ChallengePopup';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
-import RoutePreview from './components/RoutePreview';
 import {
   COUNTRY_WORD_CHALLENGE_TYPE,
   getChallengeForStop,
@@ -79,7 +78,6 @@ const GameScreen = ({ route }) => {
   const [placementRequest, setPlacementRequest] = useState(null);
   const [placementPosition, setPlacementPosition] = useState(null);
   const [isDevDrive, setIsDevDrive] = useState(false);
-  const [showRoutePreview, setShowRoutePreview] = useState(true);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const routeStops = useMemo(
@@ -117,7 +115,6 @@ const GameScreen = ({ route }) => {
     setDevRouteStops(null);
     setPlacementRequest(null);
     setPlacementPosition(null);
-    setShowRoutePreview(true);
   }, [gameData]);
 
   useEffect(() => {
@@ -668,12 +665,6 @@ const GameScreen = ({ route }) => {
         onComplete={handleChallengeComplete}
         pieceRefs={pieceRefs.current}
         routeModel={routeModel}
-      />
-      <RoutePreview
-        duration={gameData?.duration}
-        onClose={() => setShowRoutePreview(false)}
-        stops={routeStops}
-        visible={showRoutePreview && !placementRequest}
       />
       {placementRequest && (
         <CountryStopPlacementForm

@@ -4,10 +4,13 @@ import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
 
 const RIBBON_SEGMENTS = 900;
-const RIBBON_HALF_WIDTH = 0.0135;
+const BASE_ROUTE_HALF_WIDTH = 0.006;
+const ACTIVE_ROUTE_HALF_WIDTH = 0.0135;
 const ROUTE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.012;
-const ROUTE_LINE_COLOR = '#2C3E50';
-const ROUTE_LINE_OPACITY = 0.6;
+const BASE_ROUTE_COLOR = '#5FAFD0';
+const BASE_ROUTE_OPACITY = 0.62;
+const ACTIVE_ROUTE_COLOR = '#2F8FB7';
+const ACTIVE_ROUTE_OPACITY = 0.9;
 
 const easeInOutCubic = (value) => (
   value < 0.5
@@ -15,7 +18,7 @@ const easeInOutCubic = (value) => (
     : 1 - Math.pow(-2 * value + 2, 3) / 2
 );
 
-const buildRibbonGeometry = (halfWidth, routeModel, zHeight) => {
+const buildRibbonGeometry = (halfWidth, routeModel, zHeight, initiallyVisible = false) => {
   const vertexCount = (RIBBON_SEGMENTS + 1) * 2;
   const positions = new Float32Array(vertexCount * 3);
   const indices = new Uint16Array(RIBBON_SEGMENTS * 6);
@@ -56,7 +59,7 @@ const buildRibbonGeometry = (halfWidth, routeModel, zHeight) => {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.setDrawRange(0, 0);
+  geometry.setDrawRange(0, initiallyVisible ? indices.length : 0);
   geometry.computeBoundingSphere();
 
   return geometry;
@@ -76,12 +79,17 @@ const DottedRouteLine = memo(({
     elapsed: 0,
   });
 
-  const ribbonGeometry = useMemo(
-    () => buildRibbonGeometry(RIBBON_HALF_WIDTH, routeModel, ROUTE_Z),
+  const baseRouteGeometry = useMemo(
+    () => buildRibbonGeometry(BASE_ROUTE_HALF_WIDTH, routeModel, ROUTE_Z, true),
+    [routeModel]
+  );
+  const activeRouteGeometry = useMemo(
+    () => buildRibbonGeometry(ACTIVE_ROUTE_HALF_WIDTH, routeModel, ROUTE_Z + 0.002),
     [routeModel]
   );
 
-  useEffect(() => () => ribbonGeometry.dispose(), [ribbonGeometry]);
+  useEffect(() => () => baseRouteGeometry.dispose(), [baseRouteGeometry]);
+  useEffect(() => () => activeRouteGeometry.dispose(), [activeRouteGeometry]);
 
   useFrame((_state, delta) => {
     const isMoveActive = driving && toLeg > fromLeg;
@@ -89,7 +97,7 @@ const DottedRouteLine = memo(({
     if (!isMoveActive) {
       moveAnimRef.current.key = null;
       moveAnimRef.current.elapsed = 0;
-      ribbonGeometry.setDrawRange(0, 0);
+      activeRouteGeometry.setDrawRange(0, 0);
 
       if (groupRef.current) {
         groupRef.current.visible = false;
@@ -121,7 +129,7 @@ const DottedRouteLine = memo(({
 
     const remainingProgress = headProgress - tailProgress;
     if (remainingProgress <= 0.0005 && revealLinear >= 1) {
-      ribbonGeometry.setDrawRange(0, 0);
+      activeRouteGeometry.setDrawRange(0, 0);
       if (groupRef.current) {
         groupRef.current.visible = false;
       }
@@ -136,21 +144,33 @@ const DottedRouteLine = memo(({
     const endSegment = Math.max(startSegment + 1, Math.ceil(headProgress * RIBBON_SEGMENTS));
     const indexCount = Math.max(0, (endSegment - startSegment) * 6);
 
-    ribbonGeometry.setDrawRange(startSegment * 6, indexCount);
+    activeRouteGeometry.setDrawRange(startSegment * 6, indexCount);
   });
 
   return (
-    <group ref={groupRef} visible={false}>
-      <mesh geometry={ribbonGeometry} renderOrder={4} frustumCulled={false}>
+    <group>
+      <mesh geometry={baseRouteGeometry} renderOrder={3} frustumCulled={false}>
         <meshBasicMaterial
-          color={ROUTE_LINE_COLOR}
+          color={BASE_ROUTE_COLOR}
           depthWrite={false}
-          opacity={ROUTE_LINE_OPACITY}
+          opacity={BASE_ROUTE_OPACITY}
           side={THREE.DoubleSide}
           toneMapped={false}
           transparent={true}
         />
       </mesh>
+      <group ref={groupRef} visible={false}>
+        <mesh geometry={activeRouteGeometry} renderOrder={4} frustumCulled={false}>
+          <meshBasicMaterial
+            color={ACTIVE_ROUTE_COLOR}
+            depthWrite={false}
+            opacity={ACTIVE_ROUTE_OPACITY}
+            side={THREE.DoubleSide}
+            toneMapped={false}
+            transparent={true}
+          />
+        </mesh>
+      </group>
     </group>
   );
 });
