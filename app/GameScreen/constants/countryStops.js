@@ -1,4 +1,14 @@
-import { MAP_CY, MAP_H, MAP_W, svgPoint, uv } from './mapCoordinates';
+import { MAP_CY, MAP_H, MAP_W, svgPoint, uv } from './mapCoordinates.js';
+import {
+  DEFAULT_MONUMENT_POOL,
+  GEO_GUESSR_CHALLENGE_ID,
+  GEO_GUESSR_CHALLENGE_TYPE,
+  GEO_GUESSR_PHOTO_SECONDS,
+  GEO_GUESSR_PIN_SECONDS,
+  GEO_GUESSR_SUCCESS_POINTS,
+  MONUMENT_POOL_DOC_ID,
+  MONUMENT_POOL_VERSION,
+} from './monumentPool.js';
 
 export const DURATION_STOP_COUNTS = { short: 6, medium: 9, long: 12 };
 
@@ -113,14 +123,39 @@ const getCountryWordChallenge = (countryId) => {
   };
 };
 
+const COUNTRY_MONUMENT_IDS = DEFAULT_MONUMENT_POOL.reduce((acc, item) => {
+  if (!acc[item.countryId]) acc[item.countryId] = [];
+  acc[item.countryId].push(item.id);
+  return acc;
+}, {});
+
+const getGeoGuessrChallenge = (countryId) => ({
+  id: GEO_GUESSR_CHALLENGE_ID,
+  type: GEO_GUESSR_CHALLENGE_TYPE,
+  title: 'GeoGuessr Monument Duel',
+  prompt: 'Study a mystery European monument for 18 seconds, then every team drops a pin on the map. Closest pin wins 15 points!',
+  penalty: 'Closest team earns +15 points. Every other team takes 2 sips!',
+  penaltyTag: '15 PTS',
+  durationSeconds: GEO_GUESSR_PHOTO_SECONDS,
+  pinDurationSeconds: GEO_GUESSR_PIN_SECONDS,
+  successPoints: GEO_GUESSR_SUCCESS_POINTS,
+  monumentPoolId: MONUMENT_POOL_DOC_ID,
+  monumentPoolVersion: MONUMENT_POOL_VERSION,
+  countryMonumentIds: COUNTRY_MONUMENT_IDS[countryId] || [],
+});
+
 const ensureCountryWordChallenge = (countryId, challenges) => {
   const countryWordChallenge = getCountryWordChallenge(countryId);
-  if (!countryWordChallenge) return challenges;
+  const geoGuessrChallenge = getGeoGuessrChallenge(countryId);
+  const filtered = challenges.filter((item) => (
+    (!countryWordChallenge || (item?.id !== countryWordChallenge.id && item?.type !== countryWordChallenge.type))
+    && item?.id !== geoGuessrChallenge.id
+    && item?.type !== geoGuessrChallenge.type
+  ));
   return [
-    ...challenges.filter((item) => (
-      item?.id !== countryWordChallenge.id && item?.type !== countryWordChallenge.type
-    )),
-    countryWordChallenge,
+    ...filtered,
+    ...(countryWordChallenge ? [countryWordChallenge] : []),
+    geoGuessrChallenge,
   ];
 };
 
@@ -254,6 +289,9 @@ export const normalizeCountryStops = (value) => {
           ...(Number.isFinite(Number(challenge.durationSeconds))
             ? { durationSeconds: Number(challenge.durationSeconds) }
             : {}),
+          ...(Number.isFinite(Number(challenge.pinDurationSeconds))
+            ? { pinDurationSeconds: Number(challenge.pinDurationSeconds) }
+            : {}),
           ...(Number.isFinite(Number(challenge.successPoints))
             ? { successPoints: Number(challenge.successPoints) }
             : {}),
@@ -262,6 +300,13 @@ export const normalizeCountryStops = (value) => {
             : {}),
           ...(Array.isArray(challenge.words)
             ? { words: challenge.words.map(String).filter(Boolean) }
+            : {}),
+          ...(challenge.monumentPoolId ? { monumentPoolId: String(challenge.monumentPoolId) } : {}),
+          ...(Number.isFinite(Number(challenge.monumentPoolVersion))
+            ? { monumentPoolVersion: Number(challenge.monumentPoolVersion) }
+            : {}),
+          ...(Array.isArray(challenge.countryMonumentIds)
+            ? { countryMonumentIds: challenge.countryMonumentIds.map(String).filter(Boolean) }
             : {}),
         }))
       ),

@@ -7,11 +7,18 @@ import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
 import {
   COUNTRY_WORD_CHALLENGE_TYPE,
+  didTriggerRoadsideDuel,
+  GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
   getCountryWordRound,
+  getGeoGuessrRound,
   getTeamPlayers,
 } from './constants/challenges';
+import {
+  calculateBoardDistanceKm,
+  evaluateGeoGuessrGuesses,
+} from './constants/monumentPool';
 import {
   DICE_MAX_RESULT,
   DICE_RESULT_DURATION,
@@ -28,7 +35,11 @@ import {
   mergeRouteStopsWithCatalogue,
   resolveGameRouteStops,
 } from './constants/countryStops';
-import { subscribeCountryStops, updateCountryStop } from './services/countryStopsService';
+import {
+  getCachedMonumentPool,
+  subscribeCountryStops,
+  updateCountryStop,
+} from './services/countryStopsService';
 import CountryStopPlacementForm from './components/CountryStopPlacementForm';
 import { getFinishPosition, getTeamScore } from './gameplayState';
 
@@ -80,6 +91,8 @@ const GameScreen = ({ route }) => {
   const [isDevDrive, setIsDevDrive] = useState(false);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
+  const usedMonumentIdsRef = useRef([]);
+  const devForceChallengeTypeRef = useRef(null);
   const routeStops = useMemo(
     () => devRouteStops || resolveGameRouteStops(gameData),
     [devRouteStops, gameData?.duration, gameData?.routeStops]
@@ -127,6 +140,7 @@ const GameScreen = ({ route }) => {
     if (multiplayerEnabled) return;
 
     activeCarProgressRef.current = 0;
+    usedMonumentIdsRef.current = [];
     setState('waiting');
     setActiveTeamIndex(0);
     setLastRoll(null);
@@ -215,12 +229,47 @@ const GameScreen = ({ route }) => {
   const activePiece = gamePieces[activeTeamIndex] || gamePieces[0];
   const activeProgress = teamProgress[activePiece?.id] || { currentLeg: 0, isDone: false };
 
-  const createLocalChallenge = (stopIndex, pieceId, seed) => {
+  const createLocalChallenge = (
+    stopIndex,
+    pieceId,
+    seed,
+    { fromLeg = 0, currentTeamProgress = teamProgress, forceType = null } = {}
+  ) => {
+    const stop = routeStops[stopIndex];
     const players = getTeamPlayers(teamMembers, pieceId);
-    const challengeId = getChallengeIdForStop(routeStops[stopIndex], seed, {
-      teamPlayerCount: players.length,
+    const isRoadsideDuel = didTriggerRoadsideDuel({
+      fromLeg,
+      targetLeg: stopIndex,
+      teamId: pieceId,
+      teamProgress: currentTeamProgress,
+    });
+    const effectiveForceType = forceType || (isRoadsideDuel ? GEO_GUESSR_CHALLENGE_TYPE : null);
+    const challengeId = getChallengeIdForStop(stop, seed, {
+      teamPlayerCount: Math.max(players.length, 2),
+      forceType: effectiveForceType,
     });
     const challenge = getChallengeForStop(stopIndex, routeStops, challengeId);
+
+    if (challenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
+      const geoData = getGeoGuessrRound({
+        challenge,
+        isRoadsideDuel,
+        monumentPool: getCachedMonumentPool(),
+        requiredTeamIds: gamePieces.map((piece) => piece.id),
+        seed,
+        startedAt: Date.now(),
+        stopCountryId: stop?.id || null,
+        usedMonumentIds: usedMonumentIdsRef.current,
+      });
+      if (geoData) {
+        usedMonumentIdsRef.current = geoData.nextUsedMonumentIds;
+        return {
+          ...challenge,
+          ...geoData.round,
+        };
+      }
+    }
+
     return {
       ...challenge,
       ...(getCountryWordRound(challenge, players, seed) || {}),
@@ -229,6 +278,7 @@ const GameScreen = ({ route }) => {
 
   const resetLocalGame = () => {
     activeCarProgressRef.current = 0;
+    usedMonumentIdsRef.current = [];
     setState('waiting');
     setActiveTeamIndex(0);
     setLastRoll(null);
@@ -274,21 +324,145 @@ const GameScreen = ({ route }) => {
   const handleCountryWordAction = (action) => {
     if (multiplayerEnabled) {
       multiplayer.updateCountryWordChallenge(action).catch((error) => {
-        console.log('Unable to update synchronized country word challenge', error);
+        console.log('Unable to update synchronized challenge', error);
       });
       return;
     }
 
-    if (!currentChallenge || currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return;
-    if ((action === 'start' || action === 'ready') && (currentChallenge.stage === 'intro' || currentChallenge.stage === 'secret')) {
-      setCurrentChallenge({ ...currentChallenge, stage: 'playing', startedAt: Date.now() });
-      return;
-    }
-    if (!['guessed', 'failed', 'timeout'].includes(action) || currentChallenge.stage !== 'playing') {
+    if (!currentChallenge) return;
+    const actionType = typeof action === 'object' && action !== null ? action.type : action;
+
+    if (currentChallenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
+      const requiredTeamIds = Array.isArray(currentChallenge.requiredTeamIds) && currentChallenge.requiredTeamIds.length
+        ? currentChallenge.requiredTeamIds
+        : gamePieces.map((piece) => piece.id);
+
+      if (actionType === 'startPinning' && currentChallenge.stage === 'photo') {
+        setCurrentChallenge({
+          ...currentChallenge,
+          stage: 'pinning',
+          pinStartedAt: Date.now(),
+          activePinTeamIndex: 0,
+        });
+        return;
+      }
+
+      if (actionType === 'submitPin' && currentChallenge.stage === 'pinning') {
+        const currentPinIndex = Number(currentChallenge.activePinTeamIndex) || 0;
+        const pinTeamId = action?.teamId || requiredTeamIds[currentPinIndex] || activePiece?.id;
+        const pos = action?.position;
+        if (!pinTeamId || !pos) return;
+
+        const cleanPos = { x: Number(pos.x), y: Number(pos.y) };
+        const nextGuesses = {
+          ...(currentChallenge.guesses || {}),
+          [pinTeamId]: {
+            x: cleanPos.x,
+            y: cleanPos.y,
+            distanceKm: calculateBoardDistanceKm(cleanPos, currentChallenge.targetPosition),
+            lockedAt: Date.now(),
+          },
+        };
+
+        const nextPinIndex = currentPinIndex + 1;
+        if (nextPinIndex < requiredTeamIds.length) {
+          setCurrentChallenge({
+            ...currentChallenge,
+            guesses: nextGuesses,
+            activePinTeamIndex: nextPinIndex,
+            pinStartedAt: Date.now(),
+          });
+          return;
+        }
+
+        const evaluation = evaluateGeoGuessrGuesses({
+          guesses: nextGuesses,
+          requiredTeamIds,
+          targetPosition: currentChallenge.targetPosition,
+          seed: `local-eval-${Date.now()}`,
+          autoFillMissing: true,
+        });
+        const pointsAwarded = Number(currentChallenge.successPoints) || 15;
+
+        setTeamProgress((progress) => {
+          const next = { ...progress };
+          evaluation.winnerTeamIds.forEach((winnerId) => {
+            const prev = next[winnerId] || {};
+            const nextChallengePoints = (Number(prev.challengePoints) || 0) + pointsAwarded;
+            next[winnerId] = {
+              ...prev,
+              challengePoints: nextChallengePoints,
+              score: getTeamScore({
+                challengePoints: nextChallengePoints,
+                currentLeg: prev.currentLeg,
+                finishPosition: prev.finishPosition,
+              }),
+            };
+          });
+          return next;
+        });
+
+        setCurrentChallenge({
+          ...currentChallenge,
+          stage: 'result',
+          guesses: evaluation.guesses,
+          winnerTeamIds: evaluation.winnerTeamIds,
+          bestDistanceKm: evaluation.bestDistanceKm,
+          pointsAwarded,
+        });
+        return;
+      }
+
+      if ((actionType === 'timeoutPinning' || actionType === 'finalizePinning') && currentChallenge.stage === 'pinning') {
+        const evaluation = evaluateGeoGuessrGuesses({
+          guesses: currentChallenge.guesses || {},
+          requiredTeamIds,
+          targetPosition: currentChallenge.targetPosition,
+          seed: `local-eval-${Date.now()}`,
+          autoFillMissing: true,
+        });
+        const pointsAwarded = Number(currentChallenge.successPoints) || 15;
+
+        setTeamProgress((progress) => {
+          const next = { ...progress };
+          evaluation.winnerTeamIds.forEach((winnerId) => {
+            const prev = next[winnerId] || {};
+            const nextChallengePoints = (Number(prev.challengePoints) || 0) + pointsAwarded;
+            next[winnerId] = {
+              ...prev,
+              challengePoints: nextChallengePoints,
+              score: getTeamScore({
+                challengePoints: nextChallengePoints,
+                currentLeg: prev.currentLeg,
+                finishPosition: prev.finishPosition,
+              }),
+            };
+          });
+          return next;
+        });
+
+        setCurrentChallenge({
+          ...currentChallenge,
+          stage: 'result',
+          guesses: evaluation.guesses,
+          winnerTeamIds: evaluation.winnerTeamIds,
+          bestDistanceKm: evaluation.bestDistanceKm,
+          pointsAwarded,
+        });
+      }
       return;
     }
 
-    const guessed = action === 'guessed';
+    if (currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return;
+    if ((actionType === 'start' || actionType === 'ready') && (currentChallenge.stage === 'intro' || currentChallenge.stage === 'secret')) {
+      setCurrentChallenge({ ...currentChallenge, stage: 'playing', startedAt: Date.now() });
+      return;
+    }
+    if (!['guessed', 'failed', 'timeout'].includes(actionType) || currentChallenge.stage !== 'playing') {
+      return;
+    }
+
+    const guessed = actionType === 'guessed';
     const pointsAwarded = guessed ? (Number(currentChallenge.successPoints) || 10) : 0;
     if (pointsAwarded && activePiece?.id) {
       setTeamProgress((progress) => {
@@ -312,7 +486,7 @@ const GameScreen = ({ route }) => {
     setCurrentChallenge({
       ...currentChallenge,
       stage: 'result',
-      result: guessed ? 'guessed' : action,
+      result: guessed ? 'guessed' : actionType,
       pointsAwarded,
     });
   };
@@ -371,6 +545,8 @@ const GameScreen = ({ route }) => {
 
   const handleMoveComplete = (pieceId, landedLeg) => {
     const activeDevDrive = isDevDrive;
+    const forcedChallengeType = devForceChallengeTypeRef.current;
+    devForceChallengeTypeRef.current = null;
     if (isDevDrive) {
       setIsDevDrive(false);
     }
@@ -415,11 +591,17 @@ const GameScreen = ({ route }) => {
     }
 
     const challengeSeed = `local-${Date.now()}-${Math.random()}`;
-    setCurrentChallenge(createLocalChallenge(landedLeg, pieceId, challengeSeed));
+    setCurrentChallenge(
+      createLocalChallenge(landedLeg, pieceId, challengeSeed, {
+        fromLeg: moveStartLeg,
+        currentTeamProgress: teamProgress,
+        forceType: forcedChallengeType,
+      })
+    );
     setState('challenge');
   };
 
-  const startDevDriveToStop = (stopIndex) => {
+  const startDevDriveToStop = (stopIndex, forceType = null) => {
     if (multiplayerEnabled) return;
 
     const currentActivePiece = gamePieces[activeTeamIndex] || gamePieces[0];
@@ -433,12 +615,20 @@ const GameScreen = ({ route }) => {
 
     if (startLeg === targetLeg) {
       setIsDevDrive(false);
+      devForceChallengeTypeRef.current = null;
       const challengeSeed = `dev-${Date.now()}-${Math.random()}`;
-      setCurrentChallenge(createLocalChallenge(targetLeg, currentActivePiece.id, challengeSeed));
+      setCurrentChallenge(
+        createLocalChallenge(targetLeg, currentActivePiece.id, challengeSeed, {
+          fromLeg: startLeg,
+          currentTeamProgress: teamProgress,
+          forceType,
+        })
+      );
       setState('challenge');
       return;
     }
 
+    devForceChallengeTypeRef.current = forceType;
     setIsDevDrive(true);
 
     setTeamProgress((previous) => ({
@@ -499,9 +689,9 @@ const GameScreen = ({ route }) => {
     const unsubRoll = devEventBus.on('dev:forceRoll', ({ value }) => {
       requestRollRef.current?.(value, 'shortcut');
     });
-    const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex }) => {
+    const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex, forceType }) => {
       if (multiplayerEnabled) return;
-      stableDevDriveToStop(stopIndex);
+      stableDevDriveToStop(stopIndex, forceType || null);
     });
     const unsubPlacement = devEventBus.on('dev:beginCountryPlacement', (request) => {
       if (Platform.OS !== 'web' || multiplayerEnabled) return;
@@ -654,7 +844,11 @@ const GameScreen = ({ route }) => {
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
         challenge={currentChallenge}
+        gamePieces={gamePieces}
         getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
+        isTeamLeader={!multiplayerEnabled || multiplayer.isTeamLeader}
+        localTeamId={multiplayerEnabled ? multiplayer.localTeamId : activePiece?.id}
+        multiplayerEnabled={multiplayerEnabled}
         teamLabel={activePiece?.label}
         visible={state === 'challenge'}
         onChallengeAction={handleCountryWordAction}

@@ -12,9 +12,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
+import GeoGuessrDuelView from './GeoGuessrDuelView';
 import { setOverviewCameraPose } from '../constants/camera';
 import {
   COUNTRY_WORD_EXPLANATION_SECONDS,
+  GEO_GUESSR_CHALLENGE_TYPE,
+  GEO_GUESSR_PHOTO_SECONDS,
+  GEO_GUESSR_PIN_SECONDS,
   getChallengeTimer,
   getCountryFlag,
   getPenaltyTag,
@@ -123,7 +127,11 @@ const CardBack = ({ compact, style }) => (
 const ChallengePopup = ({
   canComplete = true,
   challenge,
+  gamePieces = [],
   getNow = Date.now,
+  isTeamLeader = true,
+  localTeamId = 'team1',
+  multiplayerEnabled = false,
   onChallengeAction,
   onComplete,
   pieceRefs,
@@ -145,7 +153,7 @@ const ChallengePopup = ({
   const challengeActionRef = useRef(onChallengeAction);
   challengeActionRef.current = onChallengeAction;
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
-  const challengeKey = challenge ? `${challenge.stopIndex}:${challenge.title}` : '';
+  const challengeKey = challenge ? `${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || ''}` : '';
 
   useEffect(() => {
     if (!visible) {
@@ -203,12 +211,43 @@ const ChallengePopup = ({
   }, [challengeKey, flip, fly, tear, visible]);
 
   const isCountryWordChallenge = challenge?.type === 'countryWordGuess';
-  const challengeStage = challenge?.stage || 'intro';
+  const isGeoGuessrChallenge = challenge?.type === GEO_GUESSR_CHALLENGE_TYPE;
+  const challengeStage = challenge?.stage || (isGeoGuessrChallenge ? 'photo' : 'intro');
   const challengeDuration = Number(challenge?.durationSeconds) || 30;
+  const photoDuration = Number(challenge?.photoDurationSeconds) || GEO_GUESSR_PHOTO_SECONDS;
+  const pinDuration = Number(challenge?.pinDurationSeconds) || GEO_GUESSR_PIN_SECONDS;
 
   useEffect(() => {
     timeoutReportedRef.current = false;
-    if (!visible || !isCountryWordChallenge || challengeStage !== 'playing') {
+
+    if (!visible) {
+      return undefined;
+    }
+
+    if (isGeoGuessrChallenge && (challengeStage === 'photo' || challengeStage === 'pinning')) {
+      const activeDuration = challengeStage === 'photo' ? photoDuration : pinDuration;
+      const startedAt = challengeStage === 'photo'
+        ? (Number(challenge?.photoStartedAt) || getNow())
+        : (Number(challenge?.pinStartedAt) || getNow());
+
+      const updateGeoTimer = () => {
+        const elapsedSeconds = Math.max(0, getNow() - startedAt) / 1000;
+        const nextRemaining = Math.max(0, Math.ceil(activeDuration - elapsedSeconds));
+        setRemainingSeconds(nextRemaining);
+        if (nextRemaining === 0 && canComplete && !timeoutReportedRef.current) {
+          timeoutReportedRef.current = true;
+          challengeActionRef.current?.({
+            type: challengeStage === 'photo' ? 'startPinning' : 'timeoutPinning',
+          });
+        }
+      };
+
+      updateGeoTimer();
+      const interval = setInterval(updateGeoTimer, 250);
+      return () => clearInterval(interval);
+    }
+
+    if (!isCountryWordChallenge || challengeStage !== 'playing') {
       setRemainingSeconds(challengeDuration);
       setExplanationSeconds(COUNTRY_WORD_EXPLANATION_SECONDS);
       return undefined;
@@ -232,11 +271,17 @@ const ChallengePopup = ({
     return () => clearInterval(interval);
   }, [
     canComplete,
+    challenge?.activePinTeamIndex,
+    challenge?.photoStartedAt,
+    challenge?.pinStartedAt,
     challenge?.startedAt,
     challengeDuration,
     challengeStage,
     getNow,
     isCountryWordChallenge,
+    isGeoGuessrChallenge,
+    photoDuration,
+    pinDuration,
     visible,
   ]);
 
@@ -369,14 +414,18 @@ const ChallengePopup = ({
       },
     ],
   };
-  const timer = isCountryWordChallenge && challengeStage === 'playing'
+  const timer = (isCountryWordChallenge && challengeStage === 'playing')
+    || (isGeoGuessrChallenge && (challengeStage === 'photo' || challengeStage === 'pinning'))
     ? `${String(remainingSeconds).padStart(2, '0')} SEC`
-    : getChallengeTimer(challenge);
+    : isGeoGuessrChallenge && challengeStage === 'result'
+      ? 'REVEALED'
+      : getChallengeTimer(challenge);
   const canFinishChallenge = canComplete
-    && (!isCountryWordChallenge || challengeStage === 'result');
+    && ((!isCountryWordChallenge && !isGeoGuessrChallenge) || challengeStage === 'result');
   const missionCode = challenge.code
     ? `MISSION ${challenge.code}-${String(challenge.stopIndex).padStart(2, '0')}`
     : 'MISSION';
+  const expandedGeoMap = isGeoGuessrChallenge && challengeStage === 'pinning';
   // Card size: on a phone it takes 75% of the screen width and 85% of its height.
   // Larger screens keep that same landscape rectangle (the phone's aspect ratio)
   // instead of stretching, scaled to fit inside the same 75% x 90% box.
@@ -389,6 +438,10 @@ const ChallengePopup = ({
   } else {
     cardHeight = Math.min(height * PHONE_CARD_HEIGHT, (width * PHONE_CARD_WIDTH) / PHONE_CARD_RATIO, 520);
     cardWidth = cardHeight * PHONE_CARD_RATIO;
+  }
+  if (expandedGeoMap) {
+    cardWidth = Math.max(320, width - insets.left - insets.right - 24);
+    cardHeight = Math.max(220, height - insets.top - insets.bottom - 20);
   }
   const roomy = cardHeight >= 280;
   const landmarkWidth = Math.max(96, Math.min(160, cardHeight * 0.36));
@@ -516,16 +569,27 @@ const ChallengePopup = ({
           pointerEvents={ready ? 'auto' : 'none'}
           style={[styles.frontFace, frontFaceAnimatedStyle]}
         >
-          <View style={styles.scrollContent}>
+          <View style={[styles.scrollContent, expandedGeoMap && styles.scrollContentExpanded]}>
             <Animated.View
               renderToHardwareTextureAndroid={tearing}
-              style={[styles.stubWrap, compact && styles.stubWrapCompact, tearStubStyle]}
+              style={[
+                styles.stubWrap,
+                compact && styles.stubWrapCompact,
+                expandedGeoMap && styles.stubWrapHidden,
+                tearStubStyle,
+              ]}
             >
               <View pointerEvents="none" style={styles.stubShadow} />
               <View style={[styles.stub, compact && styles.stubCompact]}>
               <FlagStrip country={challenge.country} />
               <Perforation />
-              <Text numberOfLines={1} style={styles.stubLabel}>Country Challenge</Text>
+              <Text numberOfLines={1} style={styles.stubLabel}>
+                {isGeoGuessrChallenge && challenge.roadsideDuel
+                  ? 'Roadside Duel'
+                  : isGeoGuessrChallenge
+                    ? 'Monument Duel'
+                    : 'Country Challenge'}
+              </Text>
               {challenge.landmark ? (
                 <View style={styles.landmark}>
                   <CityLandmark name={challenge.landmark} width={landmarkWidth} />
@@ -548,7 +612,7 @@ const ChallengePopup = ({
                   accessibilityLabel={canFinishChallenge
                     ? 'Complete challenge and start next turn'
                     : canComplete
-                      ? 'Complete the country word challenge before starting the next turn'
+                      ? 'Complete the challenge before starting the next turn'
                       : `Waiting for ${teamLabel} to complete the challenge`}
                   disabled={!canFinishChallenge || tearing || !ready}
                   onPress={handleComplete}
@@ -571,8 +635,8 @@ const ChallengePopup = ({
               renderToHardwareTextureAndroid={tearing}
               style={[styles.bodyWrap, tearBodyStyle]}
             >
-              <View pointerEvents="none" style={styles.bodyShadow} />
-              <View style={[styles.body, compact && styles.bodyCompact]}>
+              <View pointerEvents="none" style={[styles.bodyShadow, expandedGeoMap && styles.bodyShadowExpanded]} />
+              <View style={[styles.body, compact && styles.bodyCompact, expandedGeoMap && styles.bodyExpanded]}>
               <View style={styles.bodyHeader}>
                 <Text style={styles.missionCode}>{missionCode}</Text>
                 {timer ? (
@@ -581,7 +645,19 @@ const ChallengePopup = ({
                   </View>
                 ) : null}
               </View>
-              {isCountryWordChallenge ? renderCountryWordContent() : (
+              {isGeoGuessrChallenge ? (
+                <GeoGuessrDuelView
+                  canComplete={canComplete}
+                  challenge={challenge}
+                  compact={compact}
+                  gamePieces={gamePieces}
+                  isTeamLeader={isTeamLeader}
+                  localTeamId={localTeamId}
+                  multiplayerEnabled={multiplayerEnabled}
+                  onChallengeAction={onChallengeAction}
+                  remainingSeconds={remainingSeconds}
+                />
+              ) : isCountryWordChallenge ? renderCountryWordContent() : (
                 <>
                   <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{challenge.title}</Text>
                   <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>{challenge.prompt}</Text>
@@ -824,11 +900,19 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 12,
     backgroundColor: '#111111',
   },
+  bodyShadowExpanded: {
+    left: 8,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+  },
   stubWrap: {
     width: 210,
   },
   stubWrapCompact: {
     width: 168,
+  },
+  stubWrapHidden: {
+    display: 'none',
   },
   bodyWrap: {
     flex: 1,
@@ -839,6 +923,10 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'stretch',
+  },
+  scrollContentExpanded: {
+    paddingRight: 8,
+    paddingBottom: 8,
   },
   stub: {
     flex: 1,
@@ -964,6 +1052,13 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingLeft: 24,
     paddingRight: 20,
+  },
+  bodyExpanded: {
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
   bodyCompact: {
     paddingVertical: 12,

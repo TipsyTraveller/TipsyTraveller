@@ -12,11 +12,21 @@ import {
 } from '../gameplayState';
 import {
   COUNTRY_WORD_CHALLENGE_TYPE,
+  didTriggerRoadsideDuel,
+  GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
   getCountryWordRound,
+  getGeoGuessrRound,
   getTeamPlayers,
+  isBotOnlyTeam,
 } from '../constants/challenges';
+import {
+  calculateBoardDistanceKm,
+  evaluateGeoGuessrGuesses,
+  generateFallbackPin,
+} from '../constants/monumentPool';
+import { getCachedMonumentPool } from '../services/countryStopsService';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
   if (!deviceID) return { localTeamId: null, isTeamLeader: false };
@@ -166,10 +176,39 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (!hasFinishedRoute) {
         const stop = routeModel.countryStops[action.targetLeg];
         const players = getTeamPlayers(teamMembersRef.current, action.teamId);
+        const isRoadsideDuel = didTriggerRoadsideDuel({
+          fromLeg: action.fromLeg,
+          targetLeg: action.targetLeg,
+          teamId: action.teamId,
+          teamProgress: current.teamProgress,
+        });
         const challengeId = getChallengeIdForStop(stop, action.id, {
           teamPlayerCount: players.length,
+          forceType: isRoadsideDuel ? GEO_GUESSR_CHALLENGE_TYPE : null,
         });
         const challenge = getChallengeForStop(action.targetLeg, routeModel.countryStops, challengeId);
+        let challengeRound = null;
+        let usedMonumentIds = Array.isArray(current.usedMonumentIds) ? current.usedMonumentIds : [];
+
+        if (challenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
+          const geoData = getGeoGuessrRound({
+            challenge,
+            isRoadsideDuel,
+            monumentPool: getCachedMonumentPool(),
+            requiredTeamIds: teamIds,
+            seed: action.id,
+            startedAt: completedAt,
+            stopCountryId: stop?.id || null,
+            usedMonumentIds,
+          });
+          if (geoData) {
+            challengeRound = geoData.round;
+            usedMonumentIds = geoData.nextUsedMonumentIds;
+          }
+        } else {
+          challengeRound = getCountryWordRound(challenge, players, action.id);
+        }
+
         return {
           ...current,
           phase: 'challenge',
@@ -177,7 +216,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           teamProgress,
           challengeStop: action.targetLeg,
           challengeId,
-          challengeRound: getCountryWordRound(challenge, players, action.id),
+          challengeRound,
+          usedMonumentIds,
           updatedAt: completedAt,
         };
       }
@@ -202,21 +242,191 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   }, [enabled, gameID, now, routeModel]);
 
   const updateCountryWordChallenge = useCallback(async (action) => {
-    if (!enabled || !gameID || !canControlTurn) return false;
+    if (!enabled || !gameID) return false;
+
+    const actionType = typeof action === 'object' && action !== null ? action.type : action;
+    const isGeoPinSubmit = actionType === 'submitPin';
+
+    // Any team leader can submit their own team's GeoGuessr pin; other stage transitions
+    // require the active team's leader.
+    if (isGeoPinSubmit) {
+      if (!identity.isTeamLeader || !identity.localTeamId) return false;
+    } else if (!canControlTurn) {
+      return false;
+    }
 
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       const round = current?.challengeRound;
-      if (
-        !current
-        || current.phase !== 'challenge'
-        || current.activeTeamId !== identity.localTeamId
-        || !round
-      ) {
+      if (!current || current.phase !== 'challenge' || !round) {
         return undefined;
       }
 
+      const challenge = getChallengeForStop(
+        current.challengeStop,
+        routeModel.countryStops,
+        current.challengeId
+      );
       const updatedAt = now();
-      if ((action === 'start' || action === 'ready') && (round.stage === 'intro' || round.stage === 'secret')) {
+
+      if (challenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
+        if (actionType === 'startPinning' && round.stage === 'photo') {
+          if (current.activeTeamId !== identity.localTeamId) return undefined;
+          return {
+            ...current,
+            revision: (current.revision || 0) + 1,
+            challengeRound: {
+              ...round,
+              stage: 'pinning',
+              pinStartedAt: updatedAt,
+            },
+            updatedAt,
+          };
+        }
+
+        const requiredTeamIds = Array.isArray(round.requiredTeamIds) && round.requiredTeamIds.length
+          ? round.requiredTeamIds
+          : getRequiredTeamIds(gameDataRef.current);
+
+        if (actionType === 'submitPin' && round.stage === 'pinning') {
+          const pinTeamId = action?.teamId || identity.localTeamId;
+          if (!pinTeamId || pinTeamId !== identity.localTeamId) return undefined;
+          const pos = action?.position;
+          if (!pos || !Number.isFinite(Number(pos.x)) || !Number.isFinite(Number(pos.y))) {
+            return undefined;
+          }
+
+          const cleanPos = { x: Number(pos.x), y: Number(pos.y) };
+          const nextGuesses = {
+            ...(round.guesses || {}),
+            [pinTeamId]: {
+              x: cleanPos.x,
+              y: cleanPos.y,
+              distanceKm: calculateBoardDistanceKm(cleanPos, round.targetPosition),
+              lockedAt: updatedAt,
+            },
+          };
+
+          // Auto-generate pins for any bot-only teams so human teams don't wait on bots
+          requiredTeamIds.forEach((teamId) => {
+            if (!nextGuesses[teamId] && isBotOnlyTeam(teamMembersRef.current, teamId)) {
+              const botPos = generateFallbackPin(
+                round.targetPosition,
+                teamId,
+                `${current.sessionId}:${current.turnNumber}`
+              );
+              nextGuesses[teamId] = {
+                x: botPos.x,
+                y: botPos.y,
+                distanceKm: calculateBoardDistanceKm(botPos, round.targetPosition),
+                isAutoPin: true,
+                lockedAt: updatedAt,
+              };
+            }
+          });
+
+          const allLocked = requiredTeamIds.every((teamId) => Boolean(nextGuesses[teamId]));
+          if (!allLocked) {
+            return {
+              ...current,
+              revision: (current.revision || 0) + 1,
+              challengeRound: {
+                ...round,
+                guesses: nextGuesses,
+              },
+              updatedAt,
+            };
+          }
+
+          const evaluation = evaluateGeoGuessrGuesses({
+            guesses: nextGuesses,
+            requiredTeamIds,
+            targetPosition: round.targetPosition,
+            seed: `${current.sessionId}:${current.turnNumber}`,
+            autoFillMissing: true,
+          });
+          const pointsAwarded = Number(challenge.successPoints) || 15;
+          const nextTeamProgress = { ...current.teamProgress };
+
+          evaluation.winnerTeamIds.forEach((winnerId) => {
+            const prev = nextTeamProgress[winnerId] || {};
+            const nextChallengePoints = (Number(prev.challengePoints) || 0) + pointsAwarded;
+            nextTeamProgress[winnerId] = {
+              ...prev,
+              challengePoints: nextChallengePoints,
+              score: getTeamScore({
+                challengePoints: nextChallengePoints,
+                currentLeg: prev.currentLeg,
+                finishPosition: prev.finishPosition,
+              }),
+            };
+          });
+
+          return {
+            ...current,
+            revision: (current.revision || 0) + 1,
+            teamProgress: nextTeamProgress,
+            challengeRound: {
+              ...round,
+              stage: 'result',
+              guesses: evaluation.guesses,
+              winnerTeamIds: evaluation.winnerTeamIds,
+              bestDistanceKm: evaluation.bestDistanceKm,
+              pointsAwarded,
+            },
+            updatedAt,
+          };
+        }
+
+        if ((actionType === 'timeoutPinning' || actionType === 'finalizePinning') && round.stage === 'pinning') {
+          if (current.activeTeamId !== identity.localTeamId) return undefined;
+          const evaluation = evaluateGeoGuessrGuesses({
+            guesses: round.guesses || {},
+            requiredTeamIds,
+            targetPosition: round.targetPosition,
+            seed: `${current.sessionId}:${current.turnNumber}`,
+            autoFillMissing: true,
+          });
+          const pointsAwarded = Number(challenge.successPoints) || 15;
+          const nextTeamProgress = { ...current.teamProgress };
+
+          evaluation.winnerTeamIds.forEach((winnerId) => {
+            const prev = nextTeamProgress[winnerId] || {};
+            const nextChallengePoints = (Number(prev.challengePoints) || 0) + pointsAwarded;
+            nextTeamProgress[winnerId] = {
+              ...prev,
+              challengePoints: nextChallengePoints,
+              score: getTeamScore({
+                challengePoints: nextChallengePoints,
+                currentLeg: prev.currentLeg,
+                finishPosition: prev.finishPosition,
+              }),
+            };
+          });
+
+          return {
+            ...current,
+            revision: (current.revision || 0) + 1,
+            teamProgress: nextTeamProgress,
+            challengeRound: {
+              ...round,
+              stage: 'result',
+              guesses: evaluation.guesses,
+              winnerTeamIds: evaluation.winnerTeamIds,
+              bestDistanceKm: evaluation.bestDistanceKm,
+              pointsAwarded,
+            },
+            updatedAt,
+          };
+        }
+
+        return undefined;
+      }
+
+      if (current.activeTeamId !== identity.localTeamId) {
+        return undefined;
+      }
+
+      if ((actionType === 'start' || actionType === 'ready') && (round.stage === 'intro' || round.stage === 'secret')) {
         return {
           ...current,
           revision: (current.revision || 0) + 1,
@@ -224,17 +434,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           updatedAt,
         };
       }
-      if (!['guessed', 'failed', 'timeout'].includes(action) || round.stage !== 'playing') {
+      if (!['guessed', 'failed', 'timeout'].includes(actionType) || round.stage !== 'playing') {
         return undefined;
       }
 
-      const guessed = action === 'guessed';
-      const challenge = getChallengeForStop(
-        current.challengeStop,
-        routeModel.countryStops,
-        current.challengeId
-      );
       if (challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return undefined;
+      const guessed = actionType === 'guessed';
       const pointsAwarded = guessed ? (Number(challenge.successPoints) || 10) : 0;
       const activeProgress = current.teamProgress?.[current.activeTeamId] || {};
       const challengePoints = (Number(activeProgress.challengePoints) || 0) + pointsAwarded;
@@ -257,7 +462,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         challengeRound: {
           ...round,
           stage: 'result',
-          result: guessed ? 'guessed' : action,
+          result: guessed ? 'guessed' : actionType,
           pointsAwarded,
         },
         updatedAt,
@@ -265,7 +470,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel.countryStops]);
+  }, [canControlTurn, enabled, gameID, identity.isTeamLeader, identity.localTeamId, now, routeModel.countryStops]);
 
   const completeChallenge = useCallback(async () => {
     if (!enabled || !gameID || !canControlTurn) return false;

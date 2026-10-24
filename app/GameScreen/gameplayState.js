@@ -44,6 +44,7 @@ export const createInitialGameplay = (gameData, now = Date.now()) => {
     challengeStop: null,
     challengeId: null,
     challengeRound: null,
+    usedMonumentIds: [],
     updatedAt: now,
   };
 };

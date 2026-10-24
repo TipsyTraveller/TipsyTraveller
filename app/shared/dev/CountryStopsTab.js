@@ -153,8 +153,13 @@ export default function CountryStopsTab({ onClose }) {
                     {`${challenge.words?.length || 0} words · list v${challenge.wordListVersion || 1}`}
                   </Text>
                 ) : null}
+                {challenge.type === 'geoGuessr' ? (
+                  <Text style={styles.coordinates}>
+                    {`${challenge.countryMonumentIds?.length || 1} monument(s) · pool v${challenge.monumentPoolVersion || 1}`}
+                  </Text>
+                ) : null}
               </View>
-              {challenge.type === 'countryWordGuess' ? null : (
+              {challenge.type === 'countryWordGuess' || challenge.type === 'geoGuessr' ? null : (
                 <TouchableOpacity onPress={() => removeChallenge(stop, challenge.id)}><Text style={styles.deleteChallenge}>✕</Text></TouchableOpacity>
               )}
             </View>

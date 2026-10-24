@@ -223,20 +223,20 @@ export default function DevPortalModal({ visible, onClose }) {
     onClose();
   };
 
-  const handleTestChallenge = async (stopIndex) => {
+  const handleTestChallenge = async (stopIndex, forceType = null) => {
     const routeInfo = getCurrentRouteInfo();
     const isGameScreen = routeInfo?.name === 'GameScreen';
     const stopName = activeRouteStops[stopIndex]?.name || `stop ${stopIndex}`;
-    showStatus(`Driving active team to ${stopName}...`);
+    showStatus(`Driving active team to ${stopName}${forceType ? ` (${forceType})` : ''}...`);
     onClose();
 
     if (!isGameScreen) {
       await startInstantGameScreen({ teamCount: 2, duration: 'long' });
       setTimeout(() => {
-        devEventBus.emit('dev:testChallenge', { stopIndex });
+        devEventBus.emit('dev:testChallenge', { forceType, stopIndex });
       }, 400);
     } else {
-      devEventBus.emit('dev:testChallenge', { stopIndex });
+      devEventBus.emit('dev:testChallenge', { forceType, stopIndex });
     }
   };
 
@@ -586,6 +586,17 @@ export default function DevPortalModal({ visible, onClose }) {
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                <Text style={styles.sectionHeading}>GeoGuessr Monument Duel</Text>
+                <Text style={styles.sectionDescription}>
+                  Test the head-to-head monument guessing challenge on an interactive 2D map.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.accentButton]}
+                  onPress={() => handleTestChallenge(1, 'geoGuessr')}
+                >
+                  <Text style={styles.actionButtonText}>🌍 Launch GeoGuessr Duel</Text>
+                </TouchableOpacity>
 
                 <Text style={styles.sectionHeading}>Drive To Country & Challenge</Text>
                 <Text style={styles.sectionDescription}>

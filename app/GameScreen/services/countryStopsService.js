@@ -1,10 +1,12 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -18,12 +20,22 @@ import {
   isLegacyCountryCatalogue,
   normalizeCountryStops,
 } from '../constants/countryStops';
+import {
+  DEFAULT_MONUMENT_POOL,
+  MONUMENT_POOL_DOC_ID,
+  MONUMENT_POOL_VERSION,
+  normalizeMonumentPool,
+} from '../constants/monumentPool';
 
 const COUNTRIES_COLLECTION = 'countries';
 const CHALLENGES_COLLECTION = 'challenges';
+const GAME_CONTENT_COLLECTION = 'gameContent';
 const LEGACY_RTDB_CONTENT_PATH = 'gameContent/countryStops';
+const RTDB_MONUMENT_POOL_PATH = 'gameContent/monumentPool';
 const LOCAL_STORAGE_KEY = 'tipsy_authored_country_stops_v2';
+const MONUMENT_POOL_STORAGE_KEY = 'tipsy_monument_pool_v2';
 const REMOVED_IDS_STORAGE_KEY = 'tipsy_removed_country_stop_ids_v1';
+const COMMONS_PHOTO_SOURCE = 'wikimedia-commons-curated-v2';
 
 const stripUndefined = (value) => {
   if (Array.isArray(value)) {
@@ -86,12 +98,104 @@ const writeLocalCache = (stops) => {
   }
 };
 
+const readLocalMonumentPool = () => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(MONUMENT_POOL_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Number(parsed?.version) !== MONUMENT_POOL_VERSION) return null;
+    return normalizeMonumentPool(parsed?.monuments);
+  } catch {
+    return null;
+  }
+};
+
+const writeLocalMonumentPool = (monuments) => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(
+      MONUMENT_POOL_STORAGE_KEY,
+      JSON.stringify({
+        id: MONUMENT_POOL_DOC_ID,
+        version: MONUMENT_POOL_VERSION,
+        monuments,
+      })
+    );
+  } catch {
+    // Ignore storage quota or private-mode errors
+  }
+};
+
 let removedStopIds = readRemovedStopIds();
 let cachedStops = readLocalCache();
+let cachedMonumentPool = readLocalMonumentPool() || DEFAULT_MONUMENT_POOL;
 let seedingPromise = null;
 let countryWordMigrationPromise = null;
 let countryWordMigrationVerified = false;
+let monumentPoolSyncPromise = null;
+let monumentPoolSyncVerified = false;
 const subscribers = new Set();
+
+export const getCachedMonumentPool = () => cachedMonumentPool || DEFAULT_MONUMENT_POOL;
+
+const hasCurrentMonumentPhotos = (data) => (
+  Number(data?.version) === MONUMENT_POOL_VERSION
+  && Array.isArray(data?.monuments)
+  && data.monuments.length >= DEFAULT_MONUMENT_POOL.length
+  && data.monuments.every((monument) => (
+    monument?.photoSource === COMMONS_PHOTO_SOURCE
+    && typeof monument?.imageUrl === 'string'
+    && monument.imageUrl.startsWith('https://')
+  ))
+);
+
+export const ensureMonumentPoolSeeded = async () => {
+  if (monumentPoolSyncVerified) return cachedMonumentPool;
+  if (monumentPoolSyncPromise) return monumentPoolSyncPromise;
+
+  monumentPoolSyncPromise = (async () => {
+    try {
+      const poolRef = doc(firestore, GAME_CONTENT_COLLECTION, MONUMENT_POOL_DOC_ID);
+      const snap = await getDoc(poolRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (hasCurrentMonumentPhotos(data)) {
+          cachedMonumentPool = normalizeMonumentPool(data.monuments);
+          writeLocalMonumentPool(cachedMonumentPool);
+          monumentPoolSyncVerified = true;
+          return cachedMonumentPool;
+        }
+      }
+
+      const updatedAt = Date.now();
+      const normalizedPool = normalizeMonumentPool(DEFAULT_MONUMENT_POOL);
+      const payload = stripUndefined({
+        id: MONUMENT_POOL_DOC_ID,
+        version: MONUMENT_POOL_VERSION,
+        count: normalizedPool.length,
+        monuments: normalizedPool,
+        updatedAt,
+      });
+
+      await setDoc(poolRef, payload, { merge: true });
+      await set(ref(db, RTDB_MONUMENT_POOL_PATH), payload).catch(() => {});
+      cachedMonumentPool = normalizedPool;
+      writeLocalMonumentPool(normalizedPool);
+      monumentPoolSyncVerified = true;
+      return cachedMonumentPool;
+    } catch (error) {
+      console.warn('Unable to sync Firestore monumentPool; using bundled fallback:', error);
+      return cachedMonumentPool || DEFAULT_MONUMENT_POOL;
+    } finally {
+      monumentPoolSyncPromise = null;
+    }
+  })();
+
+  return monumentPoolSyncPromise;
+};
+
+export const getMonumentPool = async () => ensureMonumentPoolSeeded();
 
 const serializeStopDoc = (stop, touchTimestamp = null) => stripUndefined({
   ...stop,
@@ -177,9 +281,13 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         type: challenge.type,
         penaltyTag: challenge.penaltyTag,
         durationSeconds: challenge.durationSeconds,
+        pinDurationSeconds: challenge.pinDurationSeconds,
         successPoints: challenge.successPoints,
         wordListVersion: challenge.wordListVersion,
         words: challenge.words,
+        monumentPoolId: challenge.monumentPoolId,
+        monumentPoolVersion: challenge.monumentPoolVersion,
+        countryMonumentIds: challenge.countryMonumentIds,
         order: index,
         updatedAt,
       }),
@@ -198,6 +306,10 @@ const getCountryWordChallenge = (stop) => (
   toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'countryWordGuess')
 );
 
+const getGeoGuessrChallenge = (stop) => (
+  toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'geoGuessr')
+);
+
 const hasCurrentCountryWordContent = (challenge, expected) => (
   challenge?.id === expected?.id
   && Number(challenge?.wordListVersion) === Number(expected?.wordListVersion)
@@ -205,19 +317,34 @@ const hasCurrentCountryWordContent = (challenge, expected) => (
   && JSON.stringify(challenge.words) === JSON.stringify(expected.words)
 );
 
+const hasCurrentGeoGuessrContent = (challenge, expected) => (
+  challenge?.id === expected?.id
+  && Number(challenge?.monumentPoolVersion) === Number(expected?.monumentPoolVersion)
+  && Array.isArray(challenge?.countryMonumentIds)
+  && JSON.stringify(challenge.countryMonumentIds) === JSON.stringify(expected.countryMonumentIds)
+);
+
 const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
   if (countryWordMigrationPromise) return countryWordMigrationPromise;
 
   countryWordMigrationPromise = (async () => {
     try {
+      await ensureMonumentPoolSeeded();
       const normalizedStops = applyCurrentDefaultPositions(rawCountryDocs);
       const rawStopsById = new Map(rawCountryDocs.map((stop) => [stop.id, stop]));
       const embeddedContentIsCurrent = normalizedStops.every((stop) => {
-        const expected = getCountryWordChallenge(stop);
-        return !expected || hasCurrentCountryWordContent(
-          getCountryWordChallenge(rawStopsById.get(stop.id)),
-          expected
+        const expectedWord = getCountryWordChallenge(stop);
+        const expectedGeo = getGeoGuessrChallenge(stop);
+        const rawStop = rawStopsById.get(stop.id);
+        const wordCurrent = !expectedWord || hasCurrentCountryWordContent(
+          getCountryWordChallenge(rawStop),
+          expectedWord
         );
+        const geoCurrent = !expectedGeo || hasCurrentGeoGuessrContent(
+          getGeoGuessrChallenge(rawStop),
+          expectedGeo
+        );
+        return wordCurrent && geoCurrent;
       });
       if (countryWordMigrationVerified && embeddedContentIsCurrent) return 0;
 
@@ -227,12 +354,20 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
         docSnap.data(),
       ]));
       const targets = normalizedStops.filter((stop) => {
-        const expected = getCountryWordChallenge(stop);
-        if (!expected) return false;
-        const rawCountryChallenge = getCountryWordChallenge(rawStopsById.get(stop.id));
-        const challengeDoc = challengeDocsById.get(`${stop.id}__${expected.id}`);
-        return !hasCurrentCountryWordContent(rawCountryChallenge, expected)
-          || !hasCurrentCountryWordContent(challengeDoc, expected);
+        const rawStop = rawStopsById.get(stop.id);
+        const expectedWord = getCountryWordChallenge(stop);
+        const expectedGeo = getGeoGuessrChallenge(stop);
+
+        const wordMismatch = expectedWord && (
+          !hasCurrentCountryWordContent(getCountryWordChallenge(rawStop), expectedWord)
+          || !hasCurrentCountryWordContent(challengeDocsById.get(`${stop.id}__${expectedWord.id}`), expectedWord)
+        );
+        const geoMismatch = expectedGeo && (
+          !hasCurrentGeoGuessrContent(getGeoGuessrChallenge(rawStop), expectedGeo)
+          || !hasCurrentGeoGuessrContent(challengeDocsById.get(`${stop.id}__${expectedGeo.id}`), expectedGeo)
+        );
+
+        return Boolean(wordMismatch || geoMismatch);
       });
 
       if (!targets.length) {
@@ -252,10 +387,10 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
       });
       await batch.commit();
       countryWordMigrationVerified = true;
-      console.info(`Synchronized country word lists for ${targets.length} Firestore countries.`);
+      console.info(`Synchronized built-in challenges for ${targets.length} Firestore countries.`);
       return targets.length;
     } catch (migrationError) {
-      console.warn('Unable to synchronize country word lists to Firestore:', migrationError);
+      console.warn('Unable to synchronize built-in challenges to Firestore:', migrationError);
       return 0;
     } finally {
       countryWordMigrationPromise = null;
@@ -269,6 +404,7 @@ const seedFirestoreCatalogueIfNeeded = async () => {
   if (seedingPromise) return seedingPromise;
   seedingPromise = (async () => {
     try {
+      await ensureMonumentPoolSeeded();
       let initialStops = cachedStops;
       if (!initialStops || initialStops.length < 2) {
         try {
@@ -321,6 +457,7 @@ const loadLegacyRtdbStops = async () => {
 
 export const getCountryStops = async () => {
   try {
+    ensureMonumentPoolSeeded().catch(() => {});
     const countriesQuery = query(collection(firestore, COUNTRIES_COLLECTION), orderBy('order', 'asc'));
     const snapshot = await getDocs(countriesQuery);
     const docs = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));

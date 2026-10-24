@@ -181,6 +181,24 @@ export const getChallengeTimer = (challenge) => {
   return match ? `${match[1]} SEC` : null;
 };
 
+import {
+  DEFAULT_MONUMENT_POOL,
+  GEO_GUESSR_CHALLENGE_ID,
+  GEO_GUESSR_CHALLENGE_TYPE,
+  GEO_GUESSR_PHOTO_SECONDS,
+  GEO_GUESSR_PIN_SECONDS,
+  GEO_GUESSR_SUCCESS_POINTS,
+  selectMonumentFromPool,
+} from './monumentPool.js';
+
+export {
+  GEO_GUESSR_CHALLENGE_ID,
+  GEO_GUESSR_CHALLENGE_TYPE,
+  GEO_GUESSR_PHOTO_SECONDS,
+  GEO_GUESSR_PIN_SECONDS,
+  GEO_GUESSR_SUCCESS_POINTS,
+};
+
 export const COUNTRY_WORD_CHALLENGE_TYPE = 'countryWordGuess';
 export const COUNTRY_WORD_EXPLANATION_SECONDS = 7;
 
@@ -194,10 +212,42 @@ export const getTeamPlayers = (teamMembers, teamId) => {
   return Object.values(members).filter((member) => member?.name);
 };
 
-export const getChallengeIdForStop = (stop, seed = '', { teamPlayerCount = 0 } = {}) => {
+export const isBotOnlyTeam = (teamMembers, teamId) => {
+  const players = getTeamPlayers(teamMembers, teamId);
+  if (!players.length) return false;
+  return players.every((player) => (
+    !player.deviceID || String(player.deviceID).startsWith('bot-') || String(player.deviceID).startsWith('local-')
+  ));
+};
+
+/**
+ * Returns true when the active team lands on a stop already occupied by another
+ * team, or passes over (kickflips) another parked team along their move.
+ */
+export const didTriggerRoadsideDuel = ({ fromLeg = 0, targetLeg = 0, teamId, teamProgress = {} }) => {
+  if (targetLeg <= 0) return false;
+  return Object.entries(teamProgress || {}).some(([otherTeamId, progress]) => {
+    if (!otherTeamId.startsWith('team') || otherTeamId === teamId || progress?.isDone) {
+      return false;
+    }
+    const otherLeg = Number(progress?.currentLeg) || 0;
+    if (otherLeg <= 0) return false;
+    return otherLeg === targetLeg || (otherLeg > fromLeg && otherLeg < targetLeg);
+  });
+};
+
+export const getChallengeIdForStop = (
+  stop,
+  seed = '',
+  { teamPlayerCount = 0, forceType = null } = {}
+) => {
   const challenges = Array.isArray(stop?.challenges)
     ? stop.challenges
     : Object.values(stop?.challenges || {});
+  if (forceType) {
+    const forced = challenges.find((challenge) => challenge?.type === forceType);
+    if (forced?.id) return forced.id;
+  }
   const eligibleChallenges = challenges.filter((challenge) => (
     challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || teamPlayerCount >= 2
   ));
@@ -218,6 +268,59 @@ export const getCountryWordRound = (challenge, players, seed = '') => {
     startedAt: null,
     result: null,
     pointsAwarded: 0,
+  };
+};
+
+export const getGeoGuessrRound = ({
+  challenge,
+  isRoadsideDuel = false,
+  monumentPool = DEFAULT_MONUMENT_POOL,
+  requiredTeamIds = ['team1', 'team2'],
+  seed = '',
+  startedAt = Date.now(),
+  stopCountryId = null,
+  usedMonumentIds = [],
+}) => {
+  if (challenge?.type !== GEO_GUESSR_CHALLENGE_TYPE) return null;
+
+  const { monument, nextUsedMonumentIds } = selectMonumentFromPool({
+    pool: monumentPool,
+    usedMonumentIds,
+    excludeCountryId: stopCountryId,
+    seed,
+  });
+
+  return {
+    nextUsedMonumentIds,
+    round: {
+      stage: 'photo',
+      isRoadsideDuel: Boolean(isRoadsideDuel),
+      monumentId: monument.id,
+      monumentName: monument.name,
+      monumentCity: monument.city,
+      monumentCountryId: monument.countryId,
+      monumentCountryName: monument.countryName,
+      monumentClue: monument.clue,
+      monumentCategory: monument.category,
+      monumentPalette: monument.palette,
+      monumentImageUrl: monument.imageUrl,
+      monumentImageSourceUrl: monument.imageSourceUrl,
+      monumentImageAuthor: monument.imageAuthor,
+      monumentImageLicense: monument.imageLicense,
+      targetPosition: monument.position,
+      photoStartedAt: startedAt + 1650,
+      photoDurationSeconds: Number(challenge.durationSeconds) || GEO_GUESSR_PHOTO_SECONDS,
+      pinStartedAt: null,
+      pinDurationSeconds: Number(challenge.pinDurationSeconds) || GEO_GUESSR_PIN_SECONDS,
+      requiredTeamIds: Array.isArray(requiredTeamIds) && requiredTeamIds.length
+        ? requiredTeamIds
+        : ['team1', 'team2'],
+      activePinTeamIndex: 0,
+      guesses: {},
+      winnerTeamIds: [],
+      bestDistanceKm: null,
+      pointsAwarded: 0,
+    },
   };
 };
 

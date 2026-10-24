@@ -783,6 +783,25 @@ Challenges are stored as a pool on each authored country stop. Each has:
 
 Every bundled country has exactly one `Guess the Country Word` entry alongside its original challenge. Each entry supplies six distinct medium-to-hard country-themed words or phrases, a 30-second duration, a 10-point success value, and a versioned word-list marker. Obvious answers such as the country name, capital, or best-known basic food were replaced by more specific geography, culture, history, architecture, and traditions. The challenge is excluded from selection when the active team contains fewer than two players. When selected, the action ID deterministically chooses both an explainer and a secret word. The active team leader's device runs `intro -> playing -> result`: it asks the group to pass the phone to the chosen player (`PASS THE PHONE` with `START`). Pressing `START` immediately begins the 30-second timer and opens an explanation popup overlay briefing the explainer on what to do. For the first 7 seconds, the explanation popup counts down while the timer ticks; once the explanation countdown finishes, the popup dismisses to reveal the secret word with the remaining time (~23 seconds), creating pressure to think and explain on the spot. The round records `guessed`, `failed`, or `timeout`. Other clients show a non-secret in-progress message until the result is available.
 
+### GeoGuessr Monument Duel
+
+Every bundled country stop also contains a `GeoGuessr Monument Duel` entry (`geo-guessr-duel`, `type: 'geoGuessr'`). It introduces an interactive, multi-team geographic guessing minigame inspired by GeoGuessr:
+
+1. **Monument Pool (`constants/monumentPool.js`)**:
+   - Contains a comprehensive catalogue of 67 European monuments (`DEFAULT_MONUMENT_POOL`) covering every single one of the 51 countries in `EUROPE_COUNTRIES`.
+   - Each monument entry defines `id`, `countryId`, `countryName`, `city`, `name`, `clue`, `category` (`cathedral`, `castle`, `ancient`, `tower`, `mountain`, `coast`, `palace`, `monument`), `palette`, `svgPosition` in board map coordinates (`[svgX, svgY]`), `position` in 3D world units (`{ x, y }`), and a curated Wikimedia Commons photo URL plus source page, author, and license metadata.
+   - Stored and synchronized as a versioned single document in Cloud Firestore (`gameContent/monumentPool`), with Realtime Database fallback (`gameContent/monumentPool`) and local cache (`tipsy_monument_pool_v2`). Version 2 requires every bundled monument to have a curated real-photo record; loading the content service replaces an older pool with the complete version-2 catalogue.
+   - **Non-Repeating Pool Guarantee**: In multiplayer, the `gameplay` record tracks `usedMonumentIds: [...]` (`usedMonumentIdsRef` locally). Whenever a duel occurs, `selectMonumentFromPool` picks a monument not yet used in the session and excludes the landed country (`excludeCountryId: stop.id`) so the current destination never spoils the location.
+
+2. **Trigger Mechanisms**:
+   - **Stop Pool Chance**: Every country stop includes the duel in its challenge selection pool (1-in-3 chance alongside the stop's custom challenge and `Guess the Country Word`).
+   - **Guaranteed Roadside Duel**: Whenever the active team lands directly on a stop already occupied by another team, or hops/passes over another parked team along their leg (`didTriggerRoadsideDuel`), a Roadside Duel is guaranteed. The ticket stub badge displays `Roadside Duel` instead of `Country Challenge`.
+
+3. **Gameplay and Pinning Flow (`components/GeoGuessrDuelView.js`)**:
+   - **Stage 1: Photo & Clue (`photo`, 18s)**: All teams inspect a real mystery monument photo with its architectural clue and a compact Commons author/license credit. The former vector monument drawing is no longer used as a fallback; a failed download is shown honestly as an unavailable photo so an illustration can never be mistaken for the real clue.
+   - **Stage 2: Map Pinning (`pinning`, 20s)**: The ticket expands to nearly the full safe landscape viewport and hides its narrow country stub so the interactive 2D SVG map receives almost all available space. The map (`EUROPE_MAP_PATH_DATA`, `minX: 440, minY: 190, width: 290, height: 218`) is extracted directly from `assets/map.svg`, supports 1x–4x zoom controls and drag-to-pan navigation, and converts a final tap through the active viewport back into board coordinates. Guess, result, and target pins use smaller scale-compensated radii so they remain precise instead of growing with the zoom. Each team leader presses `LOCK IN PIN` after placing or adjusting a guess. Bot-only teams automatically place realistic proximity pins (`generateFallbackPin`). On single-device local games, the phone is passed sequentially between teams.
+   - **Stage 3: Result & Leaderboard (`result`)**: Once all teams lock in or the 20-second timer expires, the true monument location is revealed with a glowing gold ring. Dashed lines connect each team's pin to the monument, displaying exact calculated kilometer distances (`calculateBoardDistanceKm`). The closest team wins `+15` points (`challengePoints`), while all losing teams take 2 sips.
+
 In multiplayer, `challengeRound` stores the selected player, secret word, stage, server-adjusted start timestamp, result, and awarded points. Stage changes and the score award use Realtime Database transactions. The score award is idempotent because only a `playing` round can transition to `result`. Local development games use the same state sequence without Firebase.
 
 For the challenge ticket, `getChallengeForStop` reads the two-letter country `code`, representative `city`, and optional `landmark` from the stop snapshot, falling back to `STOP_VISUALS` for legacy default stop IDs. Stops without a landmark render a flexible spacer instead. The flag strip reads its colors from `COUNTRY_FLAGS`/`getCountryFlag` by country name; the bundled 51-country catalogue has a palette for every country. The popup derives two more labels from the challenge text: `getPenaltyTag` (for example `2 SIPS` or `DOWN IT`, or an explicit `penaltyTag` on a challenge) and `getChallengeTimer` (for example `20 SEC`, shown only when the text names a number of seconds).
@@ -821,9 +840,10 @@ TipsyTraveller uses a hybrid Firebase data architecture exported from `firebaseC
 1. **Cloud Firestore (`firestore`)** owns structured, queryable game content:
    - `countries/{stopId}`: Ordered country stops (`id`, `name`, `code`, `city`, `landmark`, `order`, `position`, `positionVersion`, `accent`, `challenges`, `updatedAt`). Single-document writes (`writeBatch` / `merge: true`) allow moving a single marker or updating one stop without rewriting the entire 51-country catalogue.
    - `challenges/{challengeDocId}`: Normalized per-challenge documents (`id`, `countryId`, `countryName`, `title`, `prompt`, `penalty`, `type`, `durationSeconds`, `successPoints`, `wordListVersion`, `words`, `order`, `updatedAt`) indexed by `countryId` for filtered queries (`getChallengesForCountry`).
-2. **Firebase Realtime Database (`db`)** owns live ephemeral multiplayer state (`games/{gameID}` and `players/{gameID}`) and keeps a mirrored fallback copy of `gameContent/countryStops`.
+   - `gameContent/monumentPool`: Single comprehensive document storing the 67 European monuments (`version`, `monuments`, `updatedAt`) across all 51 countries. Each version-2 monument includes a working `imageUrl` and the `imageSourceUrl`, `imageAuthor`, `imageLicense`, and `photoSource` fields used for attribution and migration validation.
+2. **Firebase Realtime Database (`db`)** owns live ephemeral multiplayer state (`games/{gameID}` and `players/{gameID}`) and keeps a mirrored fallback copy of `gameContent/countryStops` and `gameContent/monumentPool`.
 
-If the `countries` Firestore collection is empty on load, `services/countryStopsService.js` automatically seeds the 51-country European catalogue (or migrates existing `gameContent/countryStops` edits) via a Firestore batch write. When the collection already exists, the service compares both the embedded country challenge and normalized challenge document against `wordListVersion`; missing or outdated word lists are updated together in one batch without recreating removed countries. All edits also update `localStorage` (`tipsy_authored_country_stops_v2`) and per-stop `updatedAt` timestamps so optimistic local edits never snap back while a network write is in flight.
+If the `countries` Firestore collection is empty on load, `services/countryStopsService.js` automatically seeds the 51-country European catalogue (or migrates existing `gameContent/countryStops` edits) via a Firestore batch write. When the collection already exists, the service compares both the embedded country challenge and normalized challenge document against `wordListVersion`; missing or outdated word lists are updated together in one batch without recreating removed countries. Similarly, `ensureMonumentPoolSeeded()` synchronizes the 67-monument version-2 photo catalogue into `gameContent/monumentPool` if the document is absent, older, incomplete, or contains entries without curated HTTPS photo records. All edits also update `localStorage` (`tipsy_authored_country_stops_v2` and `tipsy_monument_pool_v2`) and per-stop `updatedAt` timestamps so optimistic local edits never snap back while a network write is in flight.
 
 The Realtime Database expects this conceptual structure:
 
@@ -880,6 +900,7 @@ The Realtime Database expects this conceptual structure:
         "challengeStop": null,
         "challengeId": null,
         "challengeRound": null,
+        "usedMonumentIds": ["fr-eiffel-tower"],
         "updatedAt": 1792195200000
       }
     }
@@ -899,6 +920,21 @@ The Realtime Database expects this conceptual structure:
             "prompt": "Act out an order without words.",
             "penalty": "Take 1 sip if nobody guesses."
           }
+        }
+      }
+    },
+    "monumentPool": {
+      "version": 2,
+      "monuments": {
+        "fr-eiffel-tower": {
+          "id": "fr-eiffel-tower",
+          "countryName": "France",
+          "name": "Eiffel Tower",
+          "imageUrl": "https://thumb.wikimedia.org/...",
+          "imageSourceUrl": "https://commons.wikimedia.org/wiki/File:...",
+          "imageAuthor": "Wikimedia contributor",
+          "imageLicense": "CC BY-SA 4.0",
+          "photoSource": "wikimedia-commons-curated-v2"
         }
       }
     }
