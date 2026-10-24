@@ -7,6 +7,7 @@ import CountryMarkers from './CountryMarkers';
 import DottedRouteLine from './DottedRouteLine';
 import GamePieces from './GamePieces';
 import MapPlane, { OCEAN_COLOR } from './MapPlane';
+import RoadblockFigure from './RoadblockFigure';
 import { MAP_CY, MAP_Z } from '../constants/mapCoordinates';
 
 const MapFallback = () => (
@@ -100,6 +101,7 @@ const GameScene = memo(({
   pathRevealDuration,
   placementActive,
   pieceRefs,
+  roadblocks = [],
   rollAction,
   targetRef,
   teamProgress,
@@ -144,6 +146,16 @@ const GameScene = memo(({
       toLeg={moveTargetLeg}
       routeModel={routeModel}
     />
+    {roadblocks && roadblocks.length > 0 && (
+      <group name="roadblocks">
+        {roadblocks.map((roadblock) => (
+          <RoadblockFigure
+            key={roadblock.id || `${roadblock.position?.[0]}-${roadblock.position?.[1]}`}
+            {...roadblock}
+          />
+        ))}
+      </group>
+    )}
     <Suspense fallback={<GamePiecesFallback gamePieces={gamePieces} routeModel={routeModel} teamProgress={teamProgress} />}>
       <GamePieces
         activeCarProgressRef={activeCarProgressRef}

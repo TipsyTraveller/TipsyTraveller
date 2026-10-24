@@ -29,6 +29,7 @@ import { getDefaultModelOption, getModelOption } from './constants/modelOptions'
 import { devEventBus } from '../shared/dev/devEventBus';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
 import { getPathRevealDuration, createRouteModel } from './constants/route';
+import { createRoadblockOnRoute } from './constants/roadblocks';
 import {
   COUNTRY_POSITION_VERSION,
   getStopsForDuration,
@@ -89,6 +90,7 @@ const GameScreen = ({ route }) => {
   const [placementRequest, setPlacementRequest] = useState(null);
   const [placementPosition, setPlacementPosition] = useState(null);
   const [isDevDrive, setIsDevDrive] = useState(false);
+  const [roadblocks, setRoadblocks] = useState([]);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const usedMonumentIdsRef = useRef([]);
@@ -291,6 +293,7 @@ const GameScreen = ({ route }) => {
     setMoveTargets({});
     setCurrentChallenge(null);
     setIsDevDrive(false);
+    setRoadblocks([]);
     setTeamProgress(createInitialTeamProgress(gamePieces));
   };
 
@@ -661,6 +664,10 @@ const GameScreen = ({ route }) => {
   requestRollRef.current = requestRoll;
   const handleRestartRef = useRef(handleRestart);
   handleRestartRef.current = handleRestart;
+  const activeProgressRef = useRef(activeProgress);
+  activeProgressRef.current = activeProgress;
+  const routeModelRef = useRef(routeModel);
+  routeModelRef.current = routeModel;
 
   useEffect(() => {
     if (Platform.OS !== 'web' || multiplayerEnabled) return undefined;
@@ -693,6 +700,32 @@ const GameScreen = ({ route }) => {
       if (multiplayerEnabled) return;
       stableDevDriveToStop(stopIndex, forceType || null);
     });
+    const unsubSpawnRoadblock = devEventBus.on('dev:spawnRoadblock', (data = {}) => {
+      const activeModel = routeModelRef.current;
+      const currentLeg = activeProgressRef.current?.currentLeg ?? 0;
+      const leg = data.legIndex ?? Math.min(currentLeg + 1, activeModel.finalStopIndex);
+      const newRoadblock = createRoadblockOnRoute(activeModel, leg, data.progressAlongLeg ?? 0.5, data);
+      setRoadblocks((prev) => {
+        const filtered = prev.filter((r) => r.id !== newRoadblock.id);
+        return [...filtered, newRoadblock];
+      });
+    });
+    const unsubClearRoadblocks = devEventBus.on('dev:clearRoadblocks', () => {
+      setRoadblocks([]);
+    });
+    const unsubToggleRoadblock = devEventBus.on('dev:toggleRoadblock', (data = {}) => {
+      const activeModel = routeModelRef.current;
+      const currentLeg = activeProgressRef.current?.currentLeg ?? 0;
+      const leg = data.legIndex ?? Math.min(currentLeg + 1, activeModel.finalStopIndex);
+      const targetId = `roadblock-leg-${leg}`;
+      setRoadblocks((prev) => {
+        const exists = prev.some((r) => r.id === targetId);
+        if (exists) {
+          return prev.filter((r) => r.id !== targetId);
+        }
+        return [...prev, createRoadblockOnRoute(activeModel, leg, data.progressAlongLeg ?? 0.5, data)];
+      });
+    });
     const unsubPlacement = devEventBus.on('dev:beginCountryPlacement', (request) => {
       if (Platform.OS !== 'web' || multiplayerEnabled) return;
       setDevRouteStops((current) => {
@@ -711,10 +744,16 @@ const GameScreen = ({ route }) => {
       setPlacementRequest(request);
       setPlacementPosition(null);
     });
-    const unsubRestart = devEventBus.on('dev:restart', () => handleRestartRef.current?.());
+    const unsubRestart = devEventBus.on('dev:restart', () => {
+      setRoadblocks([]);
+      handleRestartRef.current?.();
+    });
     return () => {
       unsubRoll();
       unsubChallenge();
+      unsubSpawnRoadblock();
+      unsubClearRoadblocks();
+      unsubToggleRoadblock();
       unsubPlacement();
       unsubRestart();
     };
@@ -810,6 +849,7 @@ const GameScreen = ({ route }) => {
         placementActive={Boolean(placementRequest) && !placementPosition}
         onMapPointSelected={handleMapPointSelected}
         pieceRefs={pieceRefs.current}
+        roadblocks={roadblocks}
         rollAction={multiplayerEnabled ? multiplayer.gameplay?.currentAction : null}
         targetRef={targetRef}
         teamProgress={teamProgress}

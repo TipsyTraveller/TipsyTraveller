@@ -246,6 +246,18 @@ export default function DevPortalModal({ visible, onClose }) {
     onClose();
   };
 
+  const handleToggleRoadblock = (legIndex = null) => {
+    devEventBus.emit('dev:toggleRoadblock', { legIndex });
+    showStatus('Toggled roadblock on route!');
+    onClose();
+  };
+
+  const handleClearRoadblocks = () => {
+    devEventBus.emit('dev:clearRoadblocks');
+    showStatus('Cleared all roadblocks!');
+    onClose();
+  };
+
   // --- Handlers: Identity & Tools ---
   const handleRegenerateDeviceId = async () => {
     const newId = await regenerateDeviceId();
@@ -616,6 +628,25 @@ export default function DevPortalModal({ visible, onClose }) {
                     </TouchableOpacity>
                     );
                   })}
+                </View>
+
+                <Text style={styles.sectionHeading}>🚧 Roadblock Obstacles</Text>
+                <Text style={styles.sectionDescription}>
+                  Spawn or clear low-poly roadblocks across route legs to signify closed roads where teams must go around.
+                </Text>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.accentButton]}
+                    onPress={() => handleToggleRoadblock(null)}
+                  >
+                    <Text style={styles.actionButtonText}>🚧 Spawn / Toggle Roadblock</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.dangerButton]}
+                    onPress={handleClearRoadblocks}
+                  >
+                    <Text style={styles.actionButtonText}>🧹 Clear Roadblocks</Text>
+                  </TouchableOpacity>
                 </View>
 
                 <Text style={styles.sectionHeading}>Board Controls</Text>

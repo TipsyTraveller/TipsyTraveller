@@ -545,6 +545,7 @@ Canvas
 ├── Suspense(MapFallback)
 │   └── MapPlane
 ├── DottedRouteLine (persistent route line plus animated current-move ribbon)
+├── RoadblockFigure (optional low-poly roadblocks with hazard stripes, strobe beacons, detour sign, and cones)
 ├── Suspense(GamePiecesFallback)
 │   └── GamePieces
 │       └── GamePiece × 2 or 3
@@ -661,6 +662,18 @@ Each ordered stop is a Catmull-Rom control point. Its parameter-space index is m
 - Marker geometry is centered horizontally and aligned at its bottom tip (`box.min.y`) with a Three.js bounding box so the pin stands above the map surface.
 - Sized to remain readable without covering smaller countries or nearby stops: inactive markers scale at `0.095` and active destination markers scale at `0.12`, floating with corresponding ground shadow and ring meshes.
 - Markers at occupied stops are omitted from both the GLTF render and loading fallback. When the last parked car leaves a stop, its marker fades in over the first 40% of that route leg (capped at `0.7` world units); the destination marker fades out across the matching final approach and is omitted once the car arrives. If another car remains parked at either stop, its marker stays hidden. Marker meshes use per-instance cloned materials so these opacity transitions do not affect other stops. The Dev Portal's actively edited marker remains visible even when that stop is occupied.
+
+### Roadblock obstacles
+
+`RoadblockFigure` (`components/RoadblockFigure.js`) renders a stylized, procedural low-poly roadworks barrier on the 3D board to signal closed roads where vehicles must navigate around:
+
+- **Construction barricade**: A Type II/III sawhorse barricade with two dark-navy A-frame stanchions (`#223144`), cross-tie spreaders, and ballast sandbag counterweights (`#D4B895`) on the feet.
+- **Diagonal warning stripes**: Dual horizontal planks display alternating 45-degree hazard stripes in Safety Orange-Red (`#E8412F`) and Warm Cream (`#FFF1CD`). Striping is procedurally triangulated into exact polygon facets at runtime, requiring zero external texture downloads or canvas dependencies for cross-platform fidelity on Hermes, iOS, Android, and Web.
+- **Hazard strobe beacons**: Two amber warning lamps atop the barrier stanchions feature an arcade emergency double-flash cadence in `useFrame` (`emissiveIntensity` pulsed between 0.2 and 2.8) alongside expanding corona glow spheres.
+- **Detour direction sign**: A gold caution diamond (`#FFD700`) with a dark border and a stylized low-poly detour arrow (`right`, `left`, or `both`) indicates the detour direction around the obstacle.
+- **Traffic cones**: Chunky flanking low-poly pylons in Safety Orange (`#FF5722`) with reflective cream collars (`#FFF1CD`) and dark rubber bases.
+- **Spawn pop-in**: Bounces into place using spring overshoot easing (`easeOutBack`) and an expanding ground ripple ring.
+- **On-route placement**: `createRoadblockOnRoute(routeModel, legIndex, progressAlongLeg, options)` calculates the tangent angle along the route curve and orients the roadblock perpendicular to oncoming vehicles. Developers can toggle and clear roadblocks from the Dev Portal's Board & Game Tools tab (`dev:toggleRoadblock`, `dev:clearRoadblocks`, `dev:spawnRoadblock`).
 
 ### Camera
 
@@ -1560,6 +1573,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
 | `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |
+| `components/RoadblockFigure.js` | Procedural low-poly sawhorse roadblock barrier with hazard stripes, strobe beacons, detour sign, and traffic cones |
 | `components/ModelTestPanel.js` | Unused development model switcher |
 
 ### Game constants
@@ -1567,6 +1581,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | File | Responsibility |
 |---|---|
 | `constants/mapCoordinates.js` | Board dimensions and UV-to-world conversion |
+| `constants/roadblocks.js` | Roadblock color palette and route-relative roadblock placement generator |
 | `constants/route.js` | Builds runtime curves, lengths, tangent helpers, and stop distances from ordered stop data |
 | `constants/countryStops.js` | Default catalogue, normalization, duration counts, and old-room fallback |
 | `constants/movement.js` | Shared vehicle speed used by rendering and synchronized action timing |
