@@ -106,7 +106,7 @@ This document distinguishes between the visible product concept and what the cur
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools backed by Cloud Firestore (`countries` and `challenges` collections) with local cache and Realtime Database fallback.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Firebase-synchronized team scores and finish positions, with a final ranked winner board.
-- A route preview card on GameScreen entry showing the selected itinerary, stop count, 1–3 roll range, route/word-challenge scoring, and finish bonuses.
+- A thin light-blue route line that connects every selected stop on the board from the moment GameScreen opens.
 - Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll action while waiting for a throw.
 - Active-game re-entry through the room PIN with canonical state restoration.
 - Dedicated interactive Player Account screen (`AccountScreen`) with username persistence, party titles/badges, preferred vehicles, tour career statistics, and anonymous device ID management.
@@ -466,7 +466,7 @@ Purpose: run the board state machine, assemble team pieces, and connect 3D event
 - Subscribes to the room gameplay record and renders synchronized rolls, movement targets, landings, challenges, turn switching, finish state, and restart.
 - Limits roll and challenge controls to the active team's leader and restart to the host; other devices render the same action in spectator mode.
 - Keeps development mock games local so the Dev Portal does not require Firebase.
-- Opens with a route preview that lists every stop, explains the 1–3 dice range and scoring, and lets players inspect the selected trip before the first roll.
+- Shows the complete selected itinerary directly on the board as a thin light-blue route line before the first roll.
 - Unlocks orientation on unmount.
 - The native HUD and race tracker respect landscape safe-area insets, while long challenge cards become scrollable and use a compact layout on short landscape viewports.
 - Shows a shadow-free, 56-pixel-wide mini race tracker only during the `waiting` phase. It sits four pixels inside the device's right safe-area inset, maps each team's current stop to the route's arc-length progress, and renders enlarged team-colored car silhouettes without icon background boxes. Co-located cars overlap slightly, while the active team's car scales up and stacks above the others. The tracker marks the finish with a checkered flag and incorporates the compact roll action. A native-driver opacity animation fades it in over 180 ms and out over 140 ms; touch and accessibility focus are disabled as soon as it begins hiding during dice animation, vehicle movement, challenges, loading, and game completion. The completed-game restart action lives in `GameHud` instead.
@@ -544,7 +544,7 @@ Canvas
 ├── Lights
 ├── Suspense(MapFallback)
 │   └── MapPlane
-├── DottedRouteLine (animated route ribbon, caps, chevrons, and waypoint rings)
+├── DottedRouteLine (persistent route line plus animated current-move ribbon)
 ├── Suspense(GamePiecesFallback)
 │   └── GamePieces
 │       └── GamePiece × 2 or 3
@@ -644,9 +644,9 @@ The global curve is used for:
 
 Each ordered stop is a Catmull-Rom control point. Its parameter-space index is mapped through the curve's 1,400-sample cumulative arc-length table to produce a monotonic route progress value. Those progress values are multiplied by the total curve length to create the movement distances used by rendering and synchronized timing. This avoids ambiguous nearest-point matches when an edited route crosses itself or revisits a coordinate.
 
-### Animated route line
+### Route line
 
-Instead of static dots across the entire map, `DottedRouteLine` precomputes a single sleek semi-transparent ribbon geometry (`#2C3E50`, `opacity: 0.6`) along the runtime route curve and uses `BufferGeometry.setDrawRange` so no geometry buffers are reallocated per frame:
+`DottedRouteLine` precomputes two sleek ribbon geometries along the runtime route curve. A very thin, semi-transparent medium-blue line (`#5FAFD0`, `opacity: 0.62`) connects every selected stop as soon as the board opens, so players can read the itinerary without a separate route-preview overlay. A slightly wider dark-blue ribbon (`#2F8FB7`, `opacity: 0.9`) uses `BufferGeometry.setDrawRange` for the active move, so no geometry buffers are reallocated per frame:
 
 - When a dice roll determines the move target, the ribbon smoothly draws out (`easeInOutCubic`) from the active vehicle’s current stop to the target stop before the vehicle begins driving.
 - As the vehicle drives along the path, `activeCarProgressRef` advances the tail of the ribbon with the vehicle so the path is consumed cleanly into the destination stop.
@@ -1284,7 +1284,7 @@ There is currently no automated test runner, lint script, or checked-in Jest con
 
 1. Temporarily change `START_ON_DEV_GAME_SCREEN` to `__DEV__ && true`.
 2. Run `npm start`, scan the QR code, and open the project in Expo Go.
-3. Confirm the map, pins, GLTF vehicles, and 3D die render cleanly without static route dots.
+3. Confirm the map, pins, GLTF vehicles, and 3D die render cleanly with a thin light-blue line connecting every route stop.
 4. Drag and throw the die.
 5. Confirm the landed die flies toward the screen, presents the rolled face toward the camera, fades out cleanly before the vehicle starts driving, and the animated route path lays out from the active vehicle to the destination stop.
 6. Confirm the active vehicle smoothly accelerates, follows the animated route path, and brakes into the destination stop while consuming the path.
@@ -1309,7 +1309,7 @@ Use at least two separate installations or clear/device-specific storage careful
 8. Select a model from each leader device.
 9. Inspect Firebase to confirm `teamModels` values.
 10. Confirm every client enters `GameScreen` with Team 1 active.
-11. Confirm the route preview lists the itinerary selected by duration, begins in Belgium, ends in Greece, and matches the board markers.
+11. Confirm the persistent board route matches the itinerary selected by duration, begins in Belgium, and ends in Greece.
 12. Create another room with the same duration and confirm its snapshot can use a different corridor and/or intermediate countries without changing the stop count.
 13. Confirm only Team 1's leader can roll, every result is between 1 and 3, and every device shows the same result and vehicle movement.
 14. Confirm each reached stop adds 10 route points on every client.
@@ -1512,7 +1512,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/CameraController.js` | Overview/follow camera interpolation |
 | `components/GameHud.js` | Active-team, route, and phase text |
 | `components/RaceProgressTracker.js` | Waiting-phase right-side team route progress, finish-line, and roll overlay |
-| `components/RoutePreview.js` | Game-entry itinerary and scoring overview |
+| `components/RoutePreview.js` | Legacy route-preview card retained for possible reuse; it is not mounted by `GameScreen` |
 | `components/ChallengePopup.js` | Country challenge card overlay |
 | `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
 | `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |
