@@ -13,7 +13,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
 import { setOverviewCameraPose } from '../constants/camera';
-import { getChallengeTimer, getCountryFlag, getPenaltyTag } from '../constants/challenges';
+import {
+  COUNTRY_WORD_EXPLANATION_SECONDS,
+  getChallengeTimer,
+  getCountryFlag,
+  getPenaltyTag,
+} from '../constants/challenges';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
 // Reference phone (landscape 844 x 390): card is 75% wide and 85% tall.
@@ -135,6 +140,7 @@ const ChallengePopup = ({
   const [tearing, setTearing] = useState(false);
   const [ready, setReady] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(30);
+  const [explanationSeconds, setExplanationSeconds] = useState(COUNTRY_WORD_EXPLANATION_SECONDS);
   const timeoutReportedRef = useRef(false);
   const challengeActionRef = useRef(onChallengeAction);
   challengeActionRef.current = onChallengeAction;
@@ -204,13 +210,17 @@ const ChallengePopup = ({
     timeoutReportedRef.current = false;
     if (!visible || !isCountryWordChallenge || challengeStage !== 'playing') {
       setRemainingSeconds(challengeDuration);
+      setExplanationSeconds(COUNTRY_WORD_EXPLANATION_SECONDS);
       return undefined;
     }
 
     const updateTimer = () => {
       const elapsed = Math.max(0, getNow() - (Number(challenge.startedAt) || getNow()));
-      const nextRemaining = Math.max(0, Math.ceil(challengeDuration - (elapsed / 1000)));
+      const elapsedSeconds = elapsed / 1000;
+      const nextRemaining = Math.max(0, Math.ceil(challengeDuration - elapsedSeconds));
+      const nextExplanation = Math.max(0, Math.ceil(COUNTRY_WORD_EXPLANATION_SECONDS - elapsedSeconds));
       setRemainingSeconds(nextRemaining);
+      setExplanationSeconds(nextExplanation);
       if (nextRemaining === 0 && canComplete && !timeoutReportedRef.current) {
         timeoutReportedRef.current = true;
         challengeActionRef.current?.('timeout');
@@ -383,6 +393,11 @@ const ChallengePopup = ({
   const roomy = cardHeight >= 280;
   const landmarkWidth = Math.max(96, Math.min(160, cardHeight * 0.36));
 
+  const isExplaining = canComplete
+    && isCountryWordChallenge
+    && challengeStage === 'playing'
+    && explanationSeconds > 0;
+
   const renderCountryWordContent = () => {
     if (!canComplete && challengeStage !== 'result') {
       return (
@@ -395,27 +410,19 @@ const ChallengePopup = ({
       );
     }
 
-    if (challengeStage === 'intro') {
+    if (challengeStage === 'intro' || challengeStage === 'secret') {
       return (
         <View style={styles.wordCenteredContent}>
           <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>PASS THE PHONE</Text>
           <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>
             Give the phone to {challenge.selectedPlayerName}. Keep the screen hidden from the rest of the team.
           </Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Reveal the secret word" style={({ pressed }) => [styles.wordActionButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('ready')}>
-            <Text style={styles.wordActionText}>I'M READY</Text>
-          </Pressable>
-        </View>
-      );
-    }
-
-    if (challengeStage === 'secret') {
-      return (
-        <View style={styles.wordCenteredContent}>
-          <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>YOUR SECRET WORD</Text>
-          <View style={styles.secretWordBox}><Text style={styles.secretWord}>{challenge.secretWord}</Text></View>
-          <Text style={styles.wordRules}>Describe it without saying any part of the word, translating it, or spelling it.</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Start the 30 second guessing timer" style={({ pressed }) => [styles.wordActionButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('start')}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Start the challenge with ${challenge.selectedPlayerName}`}
+            style={({ pressed }) => [styles.wordActionButton, pressed && styles.completeButtonPressed]}
+            onPress={() => onChallengeAction?.('start')}
+          >
             <Text style={styles.wordActionText}>START</Text>
           </Pressable>
         </View>
@@ -425,14 +432,47 @@ const ChallengePopup = ({
     if (challengeStage === 'playing') {
       return (
         <View style={styles.wordCenteredContent}>
-          <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>GUESS THE WORD</Text>
-          <Text style={styles.hiddenWord}>SECRET WORD HIDDEN</Text>
+          <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>
+            {isExplaining ? 'GET READY' : 'GUESS THE WORD'}
+          </Text>
+          <View style={styles.secretWordBox}>
+            <Text style={styles.secretWord}>
+              {isExplaining ? '••••••••••' : challenge.secretWord}
+            </Text>
+          </View>
+          <Text style={styles.wordRules}>
+            {isExplaining
+              ? 'Read the instructions! Word reveals shortly.'
+              : 'Describe it without saying any part of the word, translating it, or spelling it.'}
+          </Text>
           <Text style={styles.countdown}>{`00:${String(remainingSeconds).padStart(2, '0')}`}</Text>
           <View style={styles.wordResultActions}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Mark the word as guessed" style={({ pressed }) => [styles.wordActionButton, styles.guessedButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('guessed')}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Mark the word as guessed"
+              disabled={isExplaining}
+              style={({ pressed }) => [
+                styles.wordActionButton,
+                styles.guessedButton,
+                isExplaining && styles.completeButtonDisabled,
+                pressed && !isExplaining && styles.completeButtonPressed,
+              ]}
+              onPress={() => onChallengeAction?.('guessed')}
+            >
               <Text style={styles.wordActionText}>GUESSED</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="Mark the word as not guessed" style={({ pressed }) => [styles.wordActionButton, styles.failedButton, pressed && styles.completeButtonPressed]} onPress={() => onChallengeAction?.('failed')}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Mark the word as not guessed"
+              disabled={isExplaining}
+              style={({ pressed }) => [
+                styles.wordActionButton,
+                styles.failedButton,
+                isExplaining && styles.completeButtonDisabled,
+                pressed && !isExplaining && styles.completeButtonPressed,
+              ]}
+              onPress={() => onChallengeAction?.('failed')}
+            >
               <Text style={styles.wordActionText}>NOT GUESSED</Text>
             </Pressable>
           </View>
@@ -557,6 +597,62 @@ const ChallengePopup = ({
               </View>
             </Animated.View>
           </View>
+          {isExplaining && (
+            <View style={styles.explanationOverlay} pointerEvents="auto">
+              <View style={styles.explanationDim} />
+              <View style={[styles.explanationModalWrap, compact && styles.explanationModalWrapCompact]}>
+                <View style={styles.explanationShadow} />
+                <View style={[styles.explanationCard, compact && styles.explanationCardCompact]}>
+                  <View style={styles.explanationHeader}>
+                    <View style={styles.explanationBadge}>
+                      <Text style={styles.explanationBadgeText}>RULES</Text>
+                    </View>
+                    <Text numberOfLines={1} style={styles.explanationPlayer}>
+                      {challenge.selectedPlayerName ? `${challenge.selectedPlayerName.toUpperCase()}'S TURN` : 'YOUR TURN'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.explanationTitle, compact && styles.explanationTitleCompact]}>
+                    WHAT YOU HAVE TO DO
+                  </Text>
+
+                  <View style={styles.explanationList}>
+                    <View style={styles.explanationItem}>
+                      <Text style={styles.bulletPoint}>▸</Text>
+                      <Text style={[styles.explanationText, compact && styles.explanationTextCompact]}>
+                        Describe the secret word to your team.
+                      </Text>
+                    </View>
+                    <View style={styles.explanationItem}>
+                      <Text style={styles.bulletPoint}>▸</Text>
+                      <Text style={[styles.explanationText, compact && styles.explanationTextCompact]}>
+                        Do NOT say any part of the word or translate it.
+                      </Text>
+                    </View>
+                    <View style={styles.explanationItem}>
+                      <Text style={styles.bulletPoint}>▸</Text>
+                      <Text style={[styles.explanationText, compact && styles.explanationTextCompact]}>
+                        No rhyming, gestures, or spelling.
+                      </Text>
+                    </View>
+                    <View style={styles.explanationItem}>
+                      <Text style={styles.bulletPoint}>▸</Text>
+                      <Text style={[styles.explanationText, compact && styles.explanationTextCompact]}>
+                        Get your team to guess before time runs out!
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.explanationFooter}>
+                    <View style={styles.countdownBadge}>
+                      <Text style={styles.countdownBadgeLabel}>WORD REVEALS IN</Text>
+                      <Text style={styles.countdownBadgeNumber}>{explanationSeconds}s</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
         </Animated.View>
         <CardBack compact={compact} style={backFaceAnimatedStyle} />
       </Animated.View>
@@ -1065,6 +1161,149 @@ const styles = StyleSheet.create({
     width: 4,
     height: 8,
     backgroundColor: '#111111',
+  },
+  explanationOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  explanationDim: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(8, 12, 18, 0.75)',
+    borderRadius: 12,
+  },
+  explanationModalWrap: {
+    width: '90%',
+    maxWidth: 460,
+    maxHeight: '94%',
+  },
+  explanationModalWrapCompact: {
+    width: '92%',
+    maxWidth: 440,
+    maxHeight: '96%',
+  },
+  explanationShadow: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    right: -6,
+    bottom: -6,
+    backgroundColor: '#111111',
+    borderRadius: 12,
+  },
+  explanationCard: {
+    borderRadius: 12,
+    borderWidth: 4,
+    borderColor: '#111111',
+    backgroundColor: '#FFF1CD',
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    overflow: 'hidden',
+  },
+  explanationCardCompact: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  explanationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  explanationBadge: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    backgroundColor: '#1BA39C',
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#111111',
+  },
+  explanationBadgeText: {
+    color: '#111111',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  explanationPlayer: {
+    color: '#4A5A6B',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  explanationTitle: {
+    marginTop: 8,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 14,
+    lineHeight: 18,
+    textTransform: 'uppercase',
+  },
+  explanationTitleCompact: {
+    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  explanationList: {
+    marginTop: 8,
+    gap: 4,
+  },
+  explanationItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  bulletPoint: {
+    color: '#D71920',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 9,
+    lineHeight: 14,
+  },
+  explanationText: {
+    flex: 1,
+    color: '#111111',
+    fontFamily: 'dogicapixel',
+    fontSize: 9,
+    lineHeight: 14,
+  },
+  explanationTextCompact: {
+    fontSize: 8,
+    lineHeight: 12,
+  },
+  explanationFooter: {
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  countdownBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#FAF3E0',
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#111111',
+  },
+  countdownBadgeLabel: {
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  countdownBadgeNumber: {
+    color: '#D71920',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 14,
+    lineHeight: 18,
   },
 });
 

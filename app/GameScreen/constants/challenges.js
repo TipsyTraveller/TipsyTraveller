@@ -182,6 +182,7 @@ export const getChallengeTimer = (challenge) => {
 };
 
 export const COUNTRY_WORD_CHALLENGE_TYPE = 'countryWordGuess';
+export const COUNTRY_WORD_EXPLANATION_SECONDS = 7;
 
 const hashSeed = (seed) => String(seed).split('').reduce((total, character) => (
   ((total * 31) + character.charCodeAt(0)) >>> 0
