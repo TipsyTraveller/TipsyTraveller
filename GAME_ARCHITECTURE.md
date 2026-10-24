@@ -62,8 +62,8 @@ Firebase Realtime Database provides room creation, joining, team rosters, lobby 
 
 | Area | Technology |
 |---|---|
-| Application framework | Expo SDK 57 |
-| UI framework | React Native 0.86 / React 19.2 |
+| Application framework | Expo SDK 58 |
+| UI framework | React Native 0.88 / React 19.3 |
 | JavaScript engine | Hermes |
 | Native architecture | React Native New Architecture enabled |
 | Navigation | React Navigation stack |
@@ -492,7 +492,7 @@ Purpose: configure audio, haptic, drinking rules, and 3D board preferences, plus
 - Challenge Timer: switch between "Relaxed" (untimed) and "Speed Run" (45-second timer).
 - Gameplay & 3D Board: toggle Fast Dice Animations (quick settle without waiting for complete physics bounce), Camera Follow Vehicle (smooth cinematic 3D camera tracking of the active vehicle), and Auto-Advance Turn.
 - How To Play Quick Guide: interactive accordion covering dice & turns, destination challenges, the mid-air kickflip pass, and tour completion.
-- About TipsyTraveller: version info (1.0.0), platform stack (Expo SDK 57, React Three Fiber, Firebase), and credits.
+- About TipsyTraveller: version info (1.0.0), platform stack (Expo SDK 58, React Three Fiber, Firebase), and credits.
 - Revert all settings back to default values with one tap.
 
 ---
@@ -1149,7 +1149,7 @@ edges on physical devices.
 - Tablet support on iOS.
 - Edge-to-edge layout on Android, as required by the current React Native/Expo Android runtime.
 - Expo Font, Screen Orientation, Asset, Splash Screen, and Status Bar plugins.
-- Expo SDK 57 uses React Native's New Architecture; the checked-in native projects keep their corresponding native flags enabled.
+- Expo SDK 58 uses React Native's New Architecture; the checked-in native projects keep their corresponding native flags enabled.
 - App icons, splash image, bundle identifiers, and EAS project ID.
 
 ### iOS
@@ -1161,10 +1161,11 @@ The iOS project uses:
 - New Architecture.
 - Deployment target 16.4.
 - Expo dev-client local-network access.
+- Expo SDK 58's precompiled core modules and prebuilt React Native artifacts when available.
 
-The `Podfile` forces every pod target and resource bundle to deployment target 16.4, the minimum supported by Expo SDK 57.
+The `Podfile` forces every pod target and resource bundle to deployment target 16.4, the minimum supported by Expo SDK 58.
 
-`AppDelegate.swift` starts React Native through Expo’s factory. A custom `SceneDelegate` adopts that existing window and forwards URLs and universal links. This preserves Expo’s AppDelegate startup model while supporting the scene lifecycle required when building against the iOS 27 SDK.
+`AppDelegate.swift` configures Expo’s React Native factory. Expo SDK 58's `ExpoAppSceneDelegate` creates the window and starts React Native through the scene lifecycle required when building against the iOS 27 SDK.
 
 `Info.plist` registers the SceneDelegate and the app URL schemes.
 
@@ -1178,6 +1179,8 @@ The Android project uses:
 - AndroidX.
 - Edge-to-edge rendering.
 - Expo splash-screen registration.
+- R8 shrinking and optimization for release builds.
+- Gradle 9.4.1 through the checked-in wrapper.
 - Debug signing for both debug and current release configuration.
 
 The current release build uses the debug keystore. A real production release must use a private production signing key.
@@ -1194,7 +1197,7 @@ The current release build uses the debug keystore. A real production release mus
 
 ### Prerequisites
 
-- Node.js and npm.
+- Node.js 22.13 or newer on the 22 line, 24.3 or newer on the 24 line, or Node.js 26 and npm.
 - Xcode with an iOS runtime for iOS development.
 - CocoaPods dependencies installed through the project workflow.
 - Android Studio/SDK for Android development.
@@ -1212,7 +1215,7 @@ npm install
 npm start
 ```
 
-This is the primary demo workflow. It starts Expo SDK 57 Metro explicitly in
+This is the primary demo workflow. It starts Expo SDK 58 Metro explicitly in
 Expo Go mode, advertises it over the local network, and prints a QR code. Keep
 the terminal open, put the Mac and phone on the same Wi-Fi network, and scan the
 QR code with the iPhone camera or from Expo Go on Android.
@@ -1234,11 +1237,11 @@ npm run ios:native
 The custom `scripts/run-ios.sh` does the following:
 
 1. Checks whether Metro is already healthy on port 8081.
-2. Starts the project’s Expo SDK 57 Metro server when needed.
+2. Starts the project’s Expo SDK 58 Metro server when needed.
 3. Waits up to 60 seconds for Metro.
-4. Runs the native build using the project-local Expo SDK 57 CLI.
+4. Runs the native build using the project-local Expo SDK 58 CLI.
 5. Uses a booted simulator or lets Expo choose an available default.
-6. Passes `--no-bundler` so the build uses the already-running SDK 57 Metro server.
+6. Passes `--no-bundler` so the build uses the already-running SDK 58 Metro server.
 7. Forces the simulator development client and Metro to use the same localhost address.
 8. Keeps Metro alive when the script started it.
 
@@ -1351,7 +1354,7 @@ camera motion, GLTF appearance, and final 3D performance.
 
 ### Platform pitfalls
 
-- **Do not spread `StyleSheet.absoluteFillObject` or `StyleSheet.absoluteFill`.** React Native 0.86 no longer exports `absoluteFillObject`, so spreading it gives an empty style on iOS and Android while still working on web. On web, `absoluteFill` is a registered style ID that cannot be spread. Either way an overlay silently stops being absolutely positioned and pushes the board canvas aside instead of covering it. Write `position: 'absolute', top: 0, right: 0, bottom: 0, left: 0` explicitly, or pass `style={StyleSheet.absoluteFill}` without spreading.
+- **Do not spread `StyleSheet.absoluteFillObject` or `StyleSheet.absoluteFill`.** Current React Native no longer exports `absoluteFillObject`, so spreading it gives an empty style on iOS and Android while still working on web. On web, `absoluteFill` is a registered style ID that cannot be spread. Either way an overlay silently stops being absolutely positioned and pushes the board canvas aside instead of covering it. Write `position: 'absolute', top: 0, right: 0, bottom: 0, left: 0` explicitly, or pass `style={StyleSheet.absoluteFill}` without spreading.
 
 ### Gameplay and synchronization
 
@@ -1400,7 +1403,7 @@ camera motion, GLTF appearance, and final 3D performance.
 3. There is no environment-based Firebase project selection.
 4. The iOS launcher uses the project-local Expo CLI, so it does not download a second CLI version.
 5. Native directories are checked in, so Expo config changes must be kept consistent with native project files.
-6. `expo-doctor` reports its non-CNG sync warning because the native directories are intentionally checked in; 20 of its 21 checks otherwise pass after the SDK 57 upgrade.
+6. `expo-doctor` reports its non-CNG sync warning because the native directories are intentionally checked in; 19 of its 20 checks otherwise pass after the SDK 58 upgrade.
 
 ---
 
