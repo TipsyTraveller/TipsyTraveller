@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// countries/{countryId}
+//   Public game-content catalogue used by the web Dev Portal.
+//
+// challenges/{challengeId}
+//   Public normalized country challenge content.
+//
+// geoGuessrChallenges/{locationId}
+//   Public, non-PII GeoGuessr location and photo metadata. Required fields
+//   include id, countryId, countryName, name, clue, imageUrl,
+//   imageSourceUrl, imageAuthor, imageLicense, photoSource, type,
+//   monumentPoolVersion, and updatedAt. Clients only read these documents.
+//
+// gameContent/monumentPool
+//   Public, non-PII manifest containing id, version, count, collection,
+//   and updatedAt. Clients only read this document.
+//
+// The unauthenticated writes below for countries and challenges reproduce the
+// rules that predate this file. They remain a known development-only risk until
+// the Dev Portal has Firebase Authentication and a content-admin role.
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Existing development behaviour. Harden these writes with Firebase Auth
+    // and an admin claim before the content editor is used outside a trusted
+    // development environment.
+    match /countries/{countryId} {
+      allow read, write: if true;
+    }
+
+    match /challenges/{challengeId} {
+      allow read, write: if true;
+    }
+
+    // GeoGuessr photos and attribution are public game content. They are seeded
+    // administratively; untrusted clients cannot create, alter, or delete them.
+    match /geoGuessrChallenges/{locationId} {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /gameContent/monumentPool {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

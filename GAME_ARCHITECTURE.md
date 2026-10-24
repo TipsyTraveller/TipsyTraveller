@@ -69,7 +69,7 @@ Firebase Realtime Database provides room creation, joining, team rosters, lobby 
 | Navigation | React Navigation stack |
 | 3D rendering | Three.js, React Three Fiber, Drei, Expo GL |
 | Realtime backend | Firebase Realtime Database (live rooms, lobbies, turns) |
-| Content database | Cloud Firestore (`countries` and `challenges` collections) |
+| Content database | Cloud Firestore (`countries`, `challenges`, and `geoGuessrChallenges` collections, plus the `gameContent/monumentPool` manifest) |
 | Local identity | AsyncStorage |
 | Animation | React Native Animated and Lottie |
 | Orientation | Expo Screen Orientation |
@@ -791,7 +791,7 @@ Every bundled country stop also contains a `GeoGuessr Place Duel` entry (`geo-gu
    - Contains a comprehensive catalogue of 67 European photo locations (`DEFAULT_MONUMENT_POOL`) covering every one of the 51 countries in `EUROPE_COUNTRIES`. The legacy `monument` identifiers remain in code and persisted data to preserve multiplayer compatibility.
    - The catalogue mixes famous landmarks with landscapes, waterfronts, villages, squares, and city scenes. Each entry is normalized with a `subjectType` of `place` or `landmark`; selection alternates between those types when candidates are available, making a broad place scene appear at least every other round instead of leaving the mix to chance.
    - Each entry defines `id`, `countryId`, `countryName`, `city`, `name`, `clue`, `category` (`cathedral`, `castle`, `ancient`, `tower`, `mountain`, `coast`, `palace`, `monument`), `subjectType`, `palette`, `svgPosition` in board map coordinates (`[svgX, svgY]`), `position` in 3D world units (`{ x, y }`), and a curated Wikimedia Commons photo URL plus source page, author, and license metadata.
-   - Stored and synchronized as a versioned single document in Cloud Firestore (`gameContent/monumentPool`), with Realtime Database fallback (`gameContent/monumentPool`) and local cache (`tipsy_monument_pool_v2`). Version 2 requires every bundled location to have a curated real-photo record; normalization derives `subjectType` for existing version-2 documents without requiring a destructive data migration.
+   - Stored in Cloud Firestore as one independently addressable document per location (`geoGuessrChallenges/{locationId}`). Each document carries the complete GeoGuessr location definition and its curated photo URL plus attribution. A small `gameContent/monumentPool` manifest records the collection name, version, count, and update time. This normalized shape avoids Firestore's nested-array restriction while Realtime Database (`gameContent/monumentPool`) and local storage (`tipsy_monument_pool_v2`) retain the array-shaped fallback. Version 2 requires every bundled location to have a curated real-photo record; normalization derives `subjectType` for existing version-2 documents without requiring a destructive data migration.
    - **Non-Repeating Pool Guarantee**: In multiplayer, the `gameplay` record tracks `usedMonumentIds: [...]` (`usedMonumentIdsRef` locally). Whenever a duel occurs, `selectMonumentFromPool` picks a location not yet used in the session and excludes the landed country (`excludeCountryId: stop.id`) so the current destination never spoils the location.
 
 2. **Trigger Mechanisms**:
@@ -841,10 +841,11 @@ TipsyTraveller uses a hybrid Firebase data architecture exported from `firebaseC
 1. **Cloud Firestore (`firestore`)** owns structured, queryable game content:
    - `countries/{stopId}`: Ordered country stops (`id`, `name`, `code`, `city`, `landmark`, `order`, `position`, `positionVersion`, `accent`, `challenges`, `updatedAt`). Single-document writes (`writeBatch` / `merge: true`) allow moving a single marker or updating one stop without rewriting the entire 51-country catalogue.
    - `challenges/{challengeDocId}`: Normalized per-challenge documents (`id`, `countryId`, `countryName`, `title`, `prompt`, `penalty`, `type`, `durationSeconds`, `successPoints`, `wordListVersion`, `words`, `order`, `updatedAt`) indexed by `countryId` for filtered queries (`getChallengesForCountry`).
-   - `gameContent/monumentPool`: Single comprehensive document storing the 67 European photo locations (`version`, `monuments`, `updatedAt`) across all 51 countries. Each version-2 entry includes a working `imageUrl` and the `imageSourceUrl`, `imageAuthor`, `imageLicense`, and `photoSource` fields used for attribution and migration validation; `subjectType` is normalized client-side for existing documents.
+   - `geoGuessrChallenges/{locationId}`: One document for each of the 67 European photo locations. Each document contains its location/clue data, map position, version, working `imageUrl`, and `imageSourceUrl`, `imageAuthor`, `imageLicense`, and `photoSource` attribution fields. Firestore stores the URL and metadata rather than copying the Wikimedia image bytes.
+   - `gameContent/monumentPool`: Lightweight manifest for the normalized GeoGuessr collection (`version`, `count`, `collection`, `updatedAt`).
 2. **Firebase Realtime Database (`db`)** owns live ephemeral multiplayer state (`games/{gameID}` and `players/{gameID}`) and keeps a mirrored fallback copy of `gameContent/countryStops` and `gameContent/monumentPool`.
 
-If the `countries` Firestore collection is empty on load, `services/countryStopsService.js` automatically seeds the 51-country European catalogue (or migrates existing `gameContent/countryStops` edits) via a Firestore batch write. When the collection already exists, the service compares both the embedded country challenge and normalized challenge document against `wordListVersion`; missing or outdated word lists are updated together in one batch without recreating removed countries. Similarly, `ensureMonumentPoolSeeded()` synchronizes the 67-location version-2 photo catalogue into `gameContent/monumentPool` if the document is absent, older, incomplete, or contains entries without curated HTTPS photo records. All edits also update `localStorage` (`tipsy_authored_country_stops_v2` and `tipsy_monument_pool_v2`) and per-stop `updatedAt` timestamps so optimistic local edits never snap back while a network write is in flight.
+If the `countries` Firestore collection is empty on load, `services/countryStopsService.js` automatically seeds the 51-country European catalogue (or migrates existing `gameContent/countryStops` edits) via a Firestore batch write. When the collection already exists, the service compares both the embedded country challenge and normalized challenge document against `wordListVersion`; missing or outdated word lists are updated together in one batch without recreating removed countries. `ensureMonumentPoolSeeded()` retains its compatibility name but now only reads and validates the administratively seeded, client-read-only `geoGuessrChallenges` collection; if any required version-2 photo record is missing or outdated, the app uses its bundled pool instead of attempting a client write. The previous single-document array shape was not Firestore-compatible because each location contains array fields of its own. Country-stop edits continue to update the relevant remote data and local cache, while GeoGuessr reads refresh `localStorage` (`tipsy_monument_pool_v2`).
 
 The Realtime Database expects this conceptual structure:
 
@@ -1029,6 +1030,8 @@ The repository does not include Firebase Realtime Database security rules. Befor
 - Reading rooms without an appropriate join mechanism.
 
 The Firebase web API key in `firebaseConfig.js` identifies the project but is not, by itself, an authorization boundary. Security must be enforced through Authentication and database rules.
+
+Cloud Firestore rules are versioned in `firestore.rules` and deployed through `firebase.json`. GeoGuessr location/photo documents and their manifest are publicly readable game content but deny all client creates, updates, and deletes. The pre-existing `countries` and `challenges` collections retain public writes for compatibility with the unauthenticated web Dev Portal; this is a known development-only risk until Firebase Authentication and an administrator role protect those authoring paths.
 
 ---
 
@@ -1408,7 +1411,7 @@ camera motion, GLTF appearance, and final 3D performance.
 2. Device IDs are locally generated and can be reset or imitated.
 3. Join-code reservation is not atomic.
 4. Host permissions are enforced mainly in UI logic.
-5. Database security rules are not versioned in this repository.
+5. Cloud Firestore rules are versioned in this repository, but Realtime Database rules are not. Firestore authoring for `countries` and `challenges` also remains unauthenticated for compatibility with the development portal.
 6. `playerCounter` is not consistently updated for host creation and network joins; most balancing logic correctly counts team objects directly instead.
 7. Empty teams begin as empty strings, so the Firebase value type changes when players are added.
 8. The web-only content editor writes the shared `gameContent/countryStops` catalogue without an authenticated content-admin role; deployed database rules must restrict this path before the portal is used outside trusted development.
@@ -1573,7 +1576,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `constants/modelOptions.js` | Vehicle registry and transforms |
 | `constants/boardAssets.js` | Map and marker GLB sources plus `preloadBoardAssets()` |
 | `constants/challenges.js` | Flag presentation, challenge selection, and legacy fallback content |
-| `services/countryStopsService.js` | Cloud Firestore (`countries` + `challenges`) catalogue reads, single-doc mutations, auto-seeding, local cache, and RTDB fallback |
+| `services/countryStopsService.js` | Cloud Firestore (`countries`, `challenges`, and normalized `geoGuessrChallenges` plus its manifest) catalogue reads, single-doc mutations, auto-seeding, local cache, and RTDB fallback |
 
 ### Shared UI and local storage
 

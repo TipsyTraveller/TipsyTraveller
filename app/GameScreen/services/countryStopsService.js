@@ -1,12 +1,10 @@
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -29,9 +27,8 @@ import {
 
 const COUNTRIES_COLLECTION = 'countries';
 const CHALLENGES_COLLECTION = 'challenges';
-const GAME_CONTENT_COLLECTION = 'gameContent';
+const GEO_GUESSR_CHALLENGES_COLLECTION = 'geoGuessrChallenges';
 const LEGACY_RTDB_CONTENT_PATH = 'gameContent/countryStops';
-const RTDB_MONUMENT_POOL_PATH = 'gameContent/monumentPool';
 const LOCAL_STORAGE_KEY = 'tipsy_authored_country_stops_v2';
 const MONUMENT_POOL_STORAGE_KEY = 'tipsy_monument_pool_v2';
 const REMOVED_IDS_STORAGE_KEY = 'tipsy_removed_country_stop_ids_v1';
@@ -139,16 +136,22 @@ const subscribers = new Set();
 
 export const getCachedMonumentPool = () => cachedMonumentPool || DEFAULT_MONUMENT_POOL;
 
-const hasCurrentMonumentPhotos = (data) => (
-  Number(data?.version) === MONUMENT_POOL_VERSION
-  && Array.isArray(data?.monuments)
-  && data.monuments.length >= DEFAULT_MONUMENT_POOL.length
-  && data.monuments.every((monument) => (
-    monument?.photoSource === COMMONS_PHOTO_SOURCE
-    && typeof monument?.imageUrl === 'string'
-    && monument.imageUrl.startsWith('https://')
-  ))
-);
+const hasCurrentMonumentPhotos = (monuments) => {
+  if (!Array.isArray(monuments)) return false;
+  const monumentsById = new Map(monuments.map((monument) => [monument?.id, monument]));
+  return DEFAULT_MONUMENT_POOL.every(({ id }) => {
+    const monument = monumentsById.get(id);
+    return Number(monument?.monumentPoolVersion) === MONUMENT_POOL_VERSION
+      && monument?.photoSource === COMMONS_PHOTO_SOURCE
+      && typeof monument?.imageUrl === 'string'
+      && monument.imageUrl.startsWith('https://');
+  });
+};
+
+const readFirestoreMonumentPool = async () => {
+  const snapshot = await getDocs(collection(firestore, GEO_GUESSR_CHALLENGES_COLLECTION));
+  return snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
+};
 
 export const ensureMonumentPoolSeeded = async () => {
   if (monumentPoolSyncVerified) return cachedMonumentPool;
@@ -156,36 +159,22 @@ export const ensureMonumentPoolSeeded = async () => {
 
   monumentPoolSyncPromise = (async () => {
     try {
-      const poolRef = doc(firestore, GAME_CONTENT_COLLECTION, MONUMENT_POOL_DOC_ID);
-      const snap = await getDoc(poolRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        if (hasCurrentMonumentPhotos(data)) {
-          cachedMonumentPool = normalizeMonumentPool(data.monuments);
-          writeLocalMonumentPool(cachedMonumentPool);
-          monumentPoolSyncVerified = true;
-          return cachedMonumentPool;
-        }
+      const storedMonuments = await readFirestoreMonumentPool();
+      if (hasCurrentMonumentPhotos(storedMonuments)) {
+        cachedMonumentPool = normalizeMonumentPool(storedMonuments);
+        writeLocalMonumentPool(cachedMonumentPool);
+        monumentPoolSyncVerified = true;
+        return cachedMonumentPool;
       }
 
-      const updatedAt = Date.now();
       const normalizedPool = normalizeMonumentPool(DEFAULT_MONUMENT_POOL);
-      const payload = stripUndefined({
-        id: MONUMENT_POOL_DOC_ID,
-        version: MONUMENT_POOL_VERSION,
-        count: normalizedPool.length,
-        monuments: normalizedPool,
-        updatedAt,
-      });
-
-      await setDoc(poolRef, payload, { merge: true });
-      await set(ref(db, RTDB_MONUMENT_POOL_PATH), payload).catch(() => {});
+      console.warn('Firestore GeoGuessr challenges are incomplete; using the bundled read-only fallback.');
       cachedMonumentPool = normalizedPool;
       writeLocalMonumentPool(normalizedPool);
       monumentPoolSyncVerified = true;
       return cachedMonumentPool;
     } catch (error) {
-      console.warn('Unable to sync Firestore monumentPool; using bundled fallback:', error);
+      console.warn('Unable to sync Firestore GeoGuessr challenges; using bundled fallback:', error);
       return cachedMonumentPool || DEFAULT_MONUMENT_POOL;
     } finally {
       monumentPoolSyncPromise = null;
