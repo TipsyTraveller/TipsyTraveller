@@ -160,7 +160,7 @@ const VehicleModel = memo(({ color = '#d71920', mode = 'board', model }) => {
     >
       <primitive
         object={preparedScene}
-        rotation={[0, model.yaw || 0, 0]}
+        rotation={[0, model?.yaw ?? (Math.PI / 2), 0]}
       />
     </group>
   );

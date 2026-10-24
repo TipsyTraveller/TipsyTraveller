@@ -742,8 +742,9 @@ Each record contains:
 - Human-readable label.
 - Bundled GLB source.
 - Whether to preserve texture-based materials.
+- Yaw rotation offset (`yaw: Math.PI / 2`) aligning the model's forward axis with vehicle heading and showroom preview.
 
-Unknown IDs fall back to the Rally Truck. Every team also defaults to the Rally Truck when no model selection is present.
+Unknown IDs fall back to the Barrel Roadster. Every team also defaults to the Barrel Roadster when no model selection is present.
 
 ### Model preparation
 
