@@ -136,8 +136,8 @@ const GeoGuessrEuropeMap = ({
         <Path
           d={EUROPE_MAP_PATH_DATA}
           fill="#FFF1CD"
-          stroke="#111111"
-          strokeWidth="1.15"
+          stroke="#718091"
+          strokeWidth={0.35 * markerScale}
           strokeLinejoin="round"
         />
 
@@ -325,7 +325,7 @@ export default function GeoGuessrDuelView({
         <View style={styles.headerRow}>
           <View style={[styles.duelBadge, challenge?.isRoadsideDuel && styles.roadsideBadge]}>
             <Text style={styles.duelBadgeText}>
-              {challenge?.isRoadsideDuel ? '⚔ ROADSIDE DUEL · ALL TEAMS' : '🌍 GEOGUESSR DUEL · ALL TEAMS'}
+              {challenge?.isRoadsideDuel ? '⚔ ROADSIDE DUEL · ALL TEAMS' : '🌍 PLACE DUEL · ALL TEAMS'}
             </Text>
           </View>
           <Text style={styles.timerReadout}>{`${remainingSeconds}S LEFT`}</Text>
@@ -354,7 +354,7 @@ export default function GeoGuessrDuelView({
           ) : null}
           <View style={styles.postcardClueBar}>
             <Text numberOfLines={2} style={styles.postcardClueText}>
-              {challenge?.monumentClue || 'Memorize the monument and landscape before the map opens!'}
+              {challenge?.monumentClue || 'Memorize the place and its surroundings before the map opens!'}
             </Text>
             {challenge?.monumentImageAuthor || challenge?.monumentImageLicense ? (
               <Text numberOfLines={1} style={styles.photoCreditText}>
@@ -504,7 +504,7 @@ export default function GeoGuessrDuelView({
       <View style={styles.headerRow}>
         <View style={styles.revealTitleWrap}>
           <Text numberOfLines={1} style={styles.revealMonumentName}>
-            {`★ ${challenge?.monumentName || 'Mystery Monument'}`}
+            {`★ ${challenge?.monumentName || 'Mystery Place'}`}
           </Text>
           <Text numberOfLines={1} style={styles.revealMonumentLocation}>
             {`${challenge?.monumentCity ? `${challenge.monumentCity}, ` : ''}${challenge?.monumentCountryName || ''}`}

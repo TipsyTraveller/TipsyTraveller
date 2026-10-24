@@ -132,8 +132,8 @@ const COUNTRY_MONUMENT_IDS = DEFAULT_MONUMENT_POOL.reduce((acc, item) => {
 const getGeoGuessrChallenge = (countryId) => ({
   id: GEO_GUESSR_CHALLENGE_ID,
   type: GEO_GUESSR_CHALLENGE_TYPE,
-  title: 'GeoGuessr Monument Duel',
-  prompt: 'Study a mystery European monument for 18 seconds, then every team drops a pin on the map. Closest pin wins 15 points!',
+  title: 'GeoGuessr Place Duel',
+  prompt: 'Study a mystery European place—from a landscape or street scene to a famous landmark—then every team drops a pin on the map. Closest pin wins 15 points!',
   penalty: 'Closest team earns +15 points. Every other team takes 2 sips!',
   penaltyTag: '15 PTS',
   durationSeconds: GEO_GUESSR_PHOTO_SECONDS,

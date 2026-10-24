@@ -302,6 +302,7 @@ export const getGeoGuessrRound = ({
       monumentCountryName: monument.countryName,
       monumentClue: monument.clue,
       monumentCategory: monument.category,
+      monumentSubjectType: monument.subjectType,
       monumentPalette: monument.palette,
       monumentImageUrl: monument.imageUrl,
       monumentImageSourceUrl: monument.imageSourceUrl,

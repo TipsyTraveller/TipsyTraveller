@@ -12,6 +12,29 @@ export const GEO_GUESSR_SUCCESS_POINTS = 15;
 // Approximate conversion between board units (20x15 Europe viewport) and real-world km.
 const KM_PER_BOARD_UNIT = 285;
 
+// Keep the legacy monument naming in the stored shape for multiplayer compatibility,
+// while classifying broader views so the duel can alternate between landmarks and places.
+const PLACE_SCENE_IDS = new Set([
+  'mc-monte-carlo-casino',
+  'nl-kinderdijk',
+  'dk-nyhavn',
+  'no-bryggen-bergen',
+  'se-turning-torso',
+  'ee-tallinn-old-town',
+  'cz-charles-bridge',
+  'it-rialto-bridge',
+  'va-st-peters-basilica',
+  'al-berat-windows',
+]);
+const PLACE_SCENE_CATEGORIES = new Set(['mountain', 'coast']);
+
+const getSubjectType = ({ id, category, subjectType }) => {
+  if (subjectType === 'place' || subjectType === 'landmark') return subjectType;
+  return PLACE_SCENE_IDS.has(id) || PLACE_SCENE_CATEGORIES.has(category)
+    ? 'place'
+    : 'landmark';
+};
+
 const toBoardPosition = (svgX, svgY) => {
   const pt = svgPoint(svgX, svgY);
   return {
@@ -74,6 +97,7 @@ const monument = ({
   imageAuthor,
   imageLicense,
   photoSource,
+  subjectType,
 }) => ({
   id,
   countryId,
@@ -90,10 +114,11 @@ const monument = ({
   imageAuthor,
   imageLicense,
   photoSource,
+  subjectType: getSubjectType({ id, category: category || 'castle', subjectType }),
 });
 
-// Comprehensive European Monument Pool covering all 51 countries in the catalogue,
-// plus additional landmarks for larger countries so rounds never feel repetitive.
+// Comprehensive European photo-location pool covering all 51 countries in the catalogue,
+// with a mix of landmarks, landscapes, waterfronts, villages, and city scenes.
 export const DEFAULT_MONUMENT_POOL = [
   monument({
     id: 'is-hallgrimskirkja',
@@ -1193,8 +1218,8 @@ export const normalizeMonumentPool = (rawPool) => {
         countryId: String(item.countryId || fallback.countryId || 'europe'),
         countryName: String(item.countryName || fallback.countryName || 'Europe'),
         city: String(item.city || fallback.city || ''),
-        name: String(item.name || fallback.name || 'Mystery Monument'),
-        clue: String(item.clue || fallback.clue || 'Spot the architectural details and guess where in Europe this monument stands.'),
+        name: String(item.name || fallback.name || 'Mystery Place'),
+        clue: String(item.clue || fallback.clue || 'Study the scene and guess where in Europe this place is.'),
         category: String(item.category || fallback.category || 'castle'),
         palette: Array.isArray(item.palette) && item.palette.length >= 3
           ? item.palette.map(String)
@@ -1208,6 +1233,11 @@ export const normalizeMonumentPool = (rawPool) => {
         imageAuthor: String(item.imageAuthor || fallback.imageAuthor || ''),
         imageLicense: String(item.imageLicense || fallback.imageLicense || ''),
         photoSource: String(item.photoSource || fallback.photoSource || ''),
+        subjectType: getSubjectType({
+          id: String(item.id),
+          category: String(item.category || fallback.category || 'castle'),
+          subjectType: item.subjectType || fallback.subjectType,
+        }),
       };
     });
 
@@ -1227,8 +1257,8 @@ const hashSeed = (seed) => String(seed).split('').reduce((total, character) => (
 ), 0);
 
 /**
- * Picks a monument from the pool that has NOT been used yet in the current game
- * (`usedMonumentIds`), and avoids picking a monument from the country the team just
+ * Picks a photo location from the pool that has NOT been used yet in the current game
+ * (`usedMonumentIds`), and avoids picking a location from the country the team just
  * landed on (`excludeCountryId`) so the destination never spoils the answer.
  */
 export const selectMonumentFromPool = ({
@@ -1257,7 +1287,13 @@ export const selectMonumentFromPool = ({
     if (candidates.length === 0) candidates = monuments;
   }
 
-  const index = hashSeed(`${seed}:monument:${usedSet.size}`) % candidates.length;
+  // Alternate broad place scenes with landmarks. This keeps the challenge approachable
+  // without removing the famous monuments already present in stored game content.
+  const preferredSubjectType = usedSet.size % 2 === 0 ? 'place' : 'landmark';
+  const preferredCandidates = candidates.filter((item) => item.subjectType === preferredSubjectType);
+  if (preferredCandidates.length > 0) candidates = preferredCandidates;
+
+  const index = hashSeed(`${seed}:place:${usedSet.size}`) % candidates.length;
   const selected = candidates[index] || candidates[0];
   const baseUsed = didResetUsed ? [] : [...usedSet];
 

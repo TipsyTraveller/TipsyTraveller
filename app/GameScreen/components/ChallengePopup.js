@@ -587,7 +587,7 @@ const ChallengePopup = ({
                 {isGeoGuessrChallenge && challenge.roadsideDuel
                   ? 'Roadside Duel'
                   : isGeoGuessrChallenge
-                    ? 'Monument Duel'
+                    ? 'Place Duel'
                     : 'Country Challenge'}
               </Text>
               {challenge.landmark ? (

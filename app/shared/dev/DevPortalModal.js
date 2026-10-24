@@ -587,9 +587,9 @@ export default function DevPortalModal({ visible, onClose }) {
                   ))}
                 </View>
 
-                <Text style={styles.sectionHeading}>GeoGuessr Monument Duel</Text>
+                <Text style={styles.sectionHeading}>GeoGuessr Place Duel</Text>
                 <Text style={styles.sectionDescription}>
-                  Test the head-to-head monument guessing challenge on an interactive 2D map.
+                  Test the head-to-head place guessing challenge on an interactive 2D map.
                 </Text>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.accentButton]}
