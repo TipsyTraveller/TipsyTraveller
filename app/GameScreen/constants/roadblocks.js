@@ -213,6 +213,49 @@ export const createRoadblockDetourSegment = ({ event, routeModel, step }) => {
 
   if (!fromStop || !targetStop) return null;
 
+  const fullMovement = createRoadblockMovementPath({ event, routeModel, type: 'detour' });
+
+  if (fullMovement?.stops?.length >= 3) {
+    const fullModel = createRouteModel(fullMovement.stops);
+    const pStart = fullModel.stopProgress[step] ?? 0;
+    const pEnd = fullModel.stopProgress[step + 1] ?? 1;
+    const SAMPLES = 16;
+    const sampledStops = [];
+    const tempPoint = new THREE.Vector3();
+
+    for (let i = 0; i <= SAMPLES; i += 1) {
+      const frac = i / SAMPLES;
+      const progress = pStart + (pEnd - pStart) * frac;
+      fullModel.curve.getPointAt(progress, tempPoint);
+
+      if (i === 0) {
+        sampledStops.push({
+          ...stripStopForGameplay(fromStop),
+          position: { x: tempPoint.x, y: tempPoint.y },
+          order: 0,
+        });
+      } else if (i === SAMPLES) {
+        sampledStops.push({
+          ...stripStopForGameplay(targetStop),
+          position: { x: tempPoint.x, y: tempPoint.y },
+          order: SAMPLES,
+        });
+      } else {
+        sampledStops.push({
+          id: `detour-step-${step}-pt-${i}`,
+          name: '',
+          position: { x: tempPoint.x, y: tempPoint.y },
+          order: i,
+        });
+      }
+    }
+
+    return {
+      type: 'detour',
+      stops: sampledStops,
+    };
+  }
+
   return {
     type: 'detour',
     stops: [fromStop, targetStop]
@@ -224,7 +267,7 @@ export const createRoadblockDetourSegment = ({ event, routeModel, step }) => {
 export const getRoadblockMovementTiming = ({ movementPath, now }) => {
   const movementRoute = createRouteModel(movementPath.stops);
   const movementStartsAt = now
-    + (getPathRevealDuration(movementPath.stops.length - 1) + 0.08) * 1000;
+    + (getPathRevealDuration(1) + 0.08) * 1000;
   return {
     movementStartsAt,
     movementEndsAt: movementStartsAt

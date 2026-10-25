@@ -66,7 +66,7 @@ export const setOverviewCameraPose = ({
   const centerY = (minY + maxY) / 2;
   let lookAtX = centerX;
 
-  if (minX < WEST_OCEAN_THRESHOLD) {
+  if (minX < WEST_OCEAN_THRESHOLD && !focusOffsetX) {
     const viewHalfHeight = overviewBaseOffset.z * scale * HALF_FOV_TAN;
     const viewHalfWidth = viewHalfHeight * aspect;
     const naturalLeftEdge = centerX - viewHalfWidth;

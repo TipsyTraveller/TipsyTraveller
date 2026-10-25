@@ -1041,6 +1041,26 @@ const GameScreen = ({ route }) => {
         )
       : null
   ), [roadblockEvent, routeModel]);
+  const isDetourActive = Boolean(
+    roadblockEvent && (
+      state === 'roadblock' ||
+      roadblockEvent.choice === 'detour' ||
+      roadblockEvent.status === 'travelling' ||
+      roadblockEvent.status === 'detourChallenge'
+    )
+  );
+  const detourStep = Number(roadblockEvent?.detourStep) || 0;
+  const detourCurrentLeg = state === 'roadblock' ? 0 : detourStep;
+  const detourTargetLeg = state === 'roadblock'
+    ? 1
+    : Math.min(detourStep + 1, (detourPreviewModel?.finalStopIndex ?? 3));
+  const detourOccupiedIndexes = useMemo(() => {
+    const set = new Set([0, detourPreviewModel?.finalStopIndex ?? 3]);
+    if (state === 'challenge' && roadblockEvent?.status === 'detourChallenge') {
+      set.add(detourStep + 1);
+    }
+    return set;
+  }, [detourPreviewModel?.finalStopIndex, detourStep, roadblockEvent?.status, state]);
   const visibleRoadblocks = useMemo(
     () => liveRoadblock ? [...roadblocks.filter((item) => item.id !== liveRoadblock.id), liveRoadblock] : roadblocks,
     [liveRoadblock, roadblocks]
@@ -1055,7 +1075,7 @@ const GameScreen = ({ route }) => {
     ? 0.25
     : getPathRevealDuration(
         movementRouteModel
-          ? movementRouteModel.finalStopIndex
+          ? 1
           : (moveTargetLeg !== null ? Math.max(0, moveTargetLeg - moveStartLeg) : 0)
       );
   const cameraMode = state === 'moving' && isCarDriving ? 'follow' : 'done';
@@ -1087,7 +1107,7 @@ const GameScreen = ({ route }) => {
         canvasStyle={styles.canvas}
         currentLeg={currentLeg}
         diceEnabled={canRoll && !placementRequest}
-        diceVisible={!placementRequest}
+        diceVisible={!placementRequest && state !== 'roadblock'}
         driving={state === 'moving'}
         lowPower={state === 'challenge'}
         gamePieces={gamePieces}
@@ -1112,7 +1132,11 @@ const GameScreen = ({ route }) => {
         roadblocks={visibleRoadblocks}
         detourPreviewModel={detourPreviewModel}
         detourPreviewSelected={roadblockEvent?.choice === 'detour'}
-        showDetourPreview={Boolean(roadblockEvent && state === 'roadblock')}
+        showDetourPreview={isDetourActive}
+        isRoadblockState={state === 'roadblock'}
+        detourCurrentLeg={detourCurrentLeg}
+        detourTargetLeg={detourTargetLeg}
+        detourOccupiedIndexes={detourOccupiedIndexes}
         rollAction={multiplayerEnabled ? multiplayer.gameplay?.currentAction : null}
         targetRef={targetRef}
         teamProgress={teamProgress}

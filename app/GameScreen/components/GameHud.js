@@ -29,14 +29,13 @@ const GameHud = ({
 
   return (
   <>
-    {state !== 'done' && (
+    {state !== 'done' && state !== 'roadblock' && (
       <View style={[styles.hudOverlay, { left: insets.left + 10, top: insets.top + 8 }]} pointerEvents="none">
         <Text style={styles.hudTeam}>{activeTeamLabel} · {activeTeamScore} PTS</Text>
         <Text style={styles.hudRoute}>{fromName}  -  {toName}</Text>
         <Text style={styles.hudProgress}>
           {state === 'moving' && `Roll ${lastRoll} - ${remainingMoves} stops left`}
           {state === 'challenge' && 'Complete the country challenge'}
-          {state === 'roadblock' && 'Roadblock — choose your route'}
           {!['moving', 'challenge', 'roadblock'].includes(state) && `Leg ${progress}`}
         </Text>
       </View>
