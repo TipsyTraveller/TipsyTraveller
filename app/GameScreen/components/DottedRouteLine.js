@@ -72,6 +72,7 @@ const DottedRouteLine = memo(({
   pathRevealDuration = 0.75,
   toLeg = 0,
   routeModel,
+  movementRouteModel = null,
 }) => {
   const groupRef = useRef();
   const moveAnimRef = useRef({
@@ -84,8 +85,8 @@ const DottedRouteLine = memo(({
     [routeModel]
   );
   const activeRouteGeometry = useMemo(
-    () => buildRibbonGeometry(ACTIVE_ROUTE_HALF_WIDTH, routeModel, ROUTE_Z + 0.002),
-    [routeModel]
+    () => buildRibbonGeometry(ACTIVE_ROUTE_HALF_WIDTH, movementRouteModel || routeModel, ROUTE_Z + 0.002),
+    [movementRouteModel, routeModel]
   );
 
   useEffect(() => () => baseRouteGeometry.dispose(), [baseRouteGeometry]);
@@ -113,8 +114,9 @@ const DottedRouteLine = memo(({
       moveAnimRef.current.elapsed += delta;
     }
 
-    const startProgress = routeModel.stopProgress[fromLeg] ?? 0;
-    const endProgress = routeModel.stopProgress[toLeg] ?? 1;
+    const activeModel = movementRouteModel || routeModel;
+    const startProgress = movementRouteModel ? 0 : (activeModel.stopProgress[fromLeg] ?? 0);
+    const endProgress = movementRouteModel ? 1 : (activeModel.stopProgress[toLeg] ?? 1);
     const revealDuration = Math.max(pathRevealDuration, 0.4);
     const revealLinear = THREE.MathUtils.clamp(moveAnimRef.current.elapsed / revealDuration, 0, 1);
     const revealEased = easeInOutCubic(revealLinear);

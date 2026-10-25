@@ -8,6 +8,7 @@ import DottedRouteLine from './DottedRouteLine';
 import GamePieces from './GamePieces';
 import MapPlane, { OCEAN_COLOR } from './MapPlane';
 import RoadblockFigure from './RoadblockFigure';
+import DetourRouteLine from './DetourRouteLine';
 import { MAP_CY, MAP_Z } from '../constants/mapCoordinates';
 
 const MapFallback = () => (
@@ -92,6 +93,7 @@ const GameScene = memo(({
   movingMarkerStop = null,
   movingPieceId,
   moveTargets,
+  movementRouteModel = null,
   onDiceRoll,
   onDiceRollStart,
   onDriveStart,
@@ -102,6 +104,9 @@ const GameScene = memo(({
   placementActive,
   pieceRefs,
   roadblocks = [],
+  detourPreviewModel = null,
+  detourPreviewSelected = false,
+  showDetourPreview = false,
   rollAction,
   targetRef,
   teamProgress,
@@ -145,6 +150,12 @@ const GameScene = memo(({
       pathRevealDuration={pathRevealDuration}
       toLeg={moveTargetLeg}
       routeModel={routeModel}
+      movementRouteModel={movementRouteModel}
+    />
+    <DetourRouteLine
+      routeModel={detourPreviewModel}
+      selected={detourPreviewSelected}
+      visible={showDetourPreview}
     />
     {roadblocks && roadblocks.length > 0 && (
       <group name="roadblocks">
@@ -164,6 +175,7 @@ const GameScene = memo(({
         moveStartDelay={moveStartDelay}
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
+        movementRouteModel={movementRouteModel}
         onDriveStart={onDriveStart}
         onLegPass={onLegPass}
         onMoveComplete={onMoveComplete}
@@ -184,7 +196,7 @@ const GameScene = memo(({
       />
     }>
       <CountryMarkers
-        activeCarProgressRef={activeCarProgressRef}
+        activeCarProgressRef={movementRouteModel ? null : activeCarProgressRef}
         currentLeg={currentLeg}
         movementStartLeg={moveFromLeg}
         movementTargetLeg={moveTargetLeg}

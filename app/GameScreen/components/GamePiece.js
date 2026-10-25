@@ -161,6 +161,7 @@ const applyCarTransform = ({
 
 const GamePiece = memo(({
   activeCarProgressRef,
+  completionLeg,
   currentLeg,
   driving,
   onDriveStart,
@@ -362,7 +363,7 @@ const GamePiece = memo(({
         activeCarProgressRef.current = THREE.MathUtils.clamp(targetDistance / routeModel.length, 0, 1);
       }
       waitingForNextLegRef.current = true;
-      onMoveComplete(piece.id, target);
+      onMoveComplete(piece.id, completionLeg ?? target);
     }
   });
 

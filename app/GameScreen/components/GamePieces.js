@@ -30,6 +30,7 @@ const GamePieces = memo(({
   driving,
   gamePieces,
   moveStartDelay,
+  movementRouteModel,
   movingPieceId,
   moveTargets,
   onDriveStart,
@@ -81,6 +82,7 @@ const GamePieces = memo(({
         const progress = teamProgress[piece.id] || { currentLeg: 0, isDone: false };
         const targetLeg = moveTargets[piece.id] ?? progress.currentLeg;
         const isPieceDriving = driving && movingPieceId === piece.id && !progress.isDone;
+        const activeMovementModel = isPieceDriving && movementRouteModel ? movementRouteModel : null;
         const passedVehicleLegs = isPieceDriving
           ? gamePieces.reduce((distances, otherPiece) => {
             if (otherPiece.id === piece.id) return distances;
@@ -109,21 +111,22 @@ const GamePieces = memo(({
           <GamePiece
             key={`${piece.id}-${piece.model.id}`}
             activeCarProgressRef={isPieceDriving ? activeCarProgressRef : null}
-            currentLeg={progress.currentLeg}
+            currentLeg={activeMovementModel ? 0 : progress.currentLeg}
             driving={isPieceDriving}
             moveStartDelay={moveStartDelay}
             onDriveStart={isPieceDriving ? onDriveStart : null}
-            onLegPass={isPieceDriving ? onLegPass : null}
+            onLegPass={isPieceDriving && !activeMovementModel ? onLegPass : null}
             onMoveComplete={onMoveComplete}
             parkingOffsetFactor={parkingOffsetFactor}
-            passedVehicleLegs={passedVehicleLegs}
+            passedVehicleLegs={activeMovementModel ? NO_PASSED_LEGS : passedVehicleLegs}
             pathRevealDuration={pathRevealDuration}
             piece={piece}
             pieceRef={pieceRefs[piece.id]}
-            targetLeg={targetLeg}
+            targetLeg={activeMovementModel ? activeMovementModel.finalStopIndex : targetLeg}
+            completionLeg={targetLeg}
             teamCount={gamePieces.length}
             teamIndex={index}
-            routeModel={routeModel}
+            routeModel={activeMovementModel || routeModel}
           />
         );
       })}

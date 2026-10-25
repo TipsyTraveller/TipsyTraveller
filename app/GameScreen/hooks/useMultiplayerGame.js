@@ -27,6 +27,12 @@ import {
   generateFallbackPin,
 } from '../constants/monumentPool';
 import { getCachedMonumentPool } from '../services/countryStopsService';
+import {
+  createRoadblockEvent,
+  createRoadblockMovementPath,
+  getRoadblockMovementTiming,
+  shouldTriggerRoadblock,
+} from '../constants/roadblocks';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
   if (!deviceID) return { localTeamId: null, isTeamLeader: false };
@@ -124,20 +130,127 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         return undefined;
       }
 
+      const roadblock = shouldTriggerRoadblock({ action, gameplay: current })
+        ? createRoadblockEvent({ action, routeModel, turnNumber: current.turnNumber })
+        : null;
+      const nextAction = roadblock
+        ? { ...action, movementStartsAt: null, movementEndsAt: null }
+        : action;
+
       return {
         ...current,
-        phase: 'moving',
+        phase: roadblock ? 'roadblock' : 'moving',
         revision: (current.revision || 0) + 1,
-        currentAction: action,
+        currentAction: nextAction,
         challengeStop: null,
         challengeId: null,
         challengeRound: null,
+        roadblock,
+        roadblockHistory: roadblock
+          ? [...(Array.isArray(current.roadblockHistory) ? current.roadblockHistory : []), {
+              id: roadblock.id,
+              teamId: roadblock.teamId,
+              turnNumber: roadblock.turnNumber,
+            }].slice(-8)
+          : (current.roadblockHistory || []),
         updatedAt: action.startedAt,
       };
     });
 
     return result.committed;
   }, [canControlTurn, deviceID, enabled, gameID, gameplay, identity.localTeamId, now, routeModel]);
+
+  const resolveRoadblock = useCallback(async (choice) => {
+    const isTimeout = choice === 'timeout';
+    if (!enabled || !gameID || (!canControlTurn && !isTimeout)) return false;
+
+    const resolvedAt = now();
+    const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
+      const roadblock = current?.roadblock;
+      const action = current?.currentAction;
+      if (
+        !current
+        || current.phase !== 'roadblock'
+        || !roadblock
+        || !action
+        || (!isTimeout && current.activeTeamId !== identity.localTeamId)
+      ) {
+        return undefined;
+      }
+
+      if (choice === 'challenge' && roadblock.status === 'choice') {
+        return {
+          ...current,
+          revision: (current.revision || 0) + 1,
+          roadblock: {
+            ...roadblock,
+            status: 'challenge',
+            challengeStartedAt: resolvedAt,
+          },
+          updatedAt: resolvedAt,
+        };
+      }
+
+      if (isTimeout) {
+        const durationMs = (Number(roadblock.challenge?.durationSeconds) || 15) * 1000;
+        if (
+          roadblock.status !== 'challenge'
+          || resolvedAt < (Number(roadblock.challengeStartedAt) || 0) + durationMs
+        ) {
+          return undefined;
+        }
+      }
+
+      const takesDetour = choice === 'detour' || isTimeout;
+      const brokeThrough = choice === 'completed' && roadblock.status === 'challenge';
+      if (!takesDetour && !brokeThrough) return undefined;
+
+      const movementPath = createRoadblockMovementPath({
+        event: roadblock,
+        routeModel,
+        type: takesDetour ? 'detour' : 'direct',
+      });
+      const timing = getRoadblockMovementTiming({ movementPath, now: resolvedAt });
+
+      return {
+        ...current,
+        phase: 'moving',
+        revision: (current.revision || 0) + 1,
+        currentAction: {
+          ...action,
+          ...timing,
+          movementPath,
+          roadblockChoice: takesDetour ? 'detour' : 'challenge',
+        },
+        roadblock: {
+          ...roadblock,
+          status: 'resolved',
+          choice: takesDetour ? 'detour' : 'challenge',
+          resolvedAt,
+        },
+        updatedAt: resolvedAt,
+      };
+    });
+
+    return result.committed;
+  }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
+
+  useEffect(() => {
+    const roadblock = gameplay?.roadblock;
+    if (!enabled || gameplay?.phase !== 'roadblock' || roadblock?.status !== 'challenge') {
+      return undefined;
+    }
+
+    const durationMs = (Number(roadblock.challenge?.durationSeconds) || 15) * 1000;
+    const timeoutAt = (Number(roadblock.challengeStartedAt) || now()) + durationMs;
+    const timeout = setTimeout(() => {
+      resolveRoadblock('timeout').catch((error) => {
+        console.log('Unable to finalize roadblock challenge timeout', error);
+      });
+    }, Math.max(0, timeoutAt - now()) + 120);
+
+    return () => clearTimeout(timeout);
+  }, [enabled, gameplay, now, resolveRoadblock]);
 
   const completeMovement = useCallback(async (actionId) => {
     if (!enabled || !gameID || !actionId) return false;
@@ -218,6 +331,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           challengeId,
           challengeRound,
           usedMonumentIds,
+          roadblock: null,
           updatedAt: completedAt,
         };
       }
@@ -234,6 +348,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         challengeStop: null,
         challengeId: null,
         challengeRound: null,
+        roadblock: null,
         updatedAt: completedAt,
       };
     });
@@ -502,6 +617,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         challengeStop: null,
         challengeId: null,
         challengeRound: null,
+        roadblock: null,
         updatedAt: now(),
       };
     });
@@ -532,6 +648,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     isHost,
     isLoading,
     restart,
+    resolveRoadblock,
     serverNow: now,
     submitRoll,
     updateCountryWordChallenge,

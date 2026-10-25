@@ -7,7 +7,7 @@ import {
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
 import { getPathRevealDuration } from './constants/route';
 
-export const GAMEPLAY_SCHEMA_VERSION = 4;
+export const GAMEPLAY_SCHEMA_VERSION = 5;
 export const POINTS_PER_STOP = 10;
 export const FINISH_BONUSES = [30, 15, 5];
 
@@ -44,6 +44,8 @@ export const createInitialGameplay = (gameData, now = Date.now()) => {
     challengeStop: null,
     challengeId: null,
     challengeRound: null,
+    roadblock: null,
+    roadblockHistory: [],
     usedMonumentIds: [],
     updatedAt: now,
   };
@@ -95,6 +97,7 @@ export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, routeMod
     value: safeValue,
     fromLeg,
     targetLeg,
+    finalStopIndex: routeModel.finalStopIndex,
     inputMethod,
     ...getRollTiming({ fromLeg, routeModel, targetLeg, now }),
   };

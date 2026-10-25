@@ -2,7 +2,7 @@
 
 > Detailed reference for the current implementation of TipsyTraveller.
 >
-> Last reviewed against the source code: 24 October 2026.
+> Last reviewed against the source code: 25 October 2026.
 
 ## Table of contents
 
@@ -106,6 +106,7 @@ This document distinguishes between the visible product concept and what the cur
 - Web-only country-stop authoring in the Dev Portal, including map placement, reordering, removal, and per-stop challenge pools backed by Cloud Firestore (`countries` and `challenges` collections) with local cache and Realtime Database fallback.
 - Firebase-synchronized turns, die results, route progress, challenges, completion, and host restart.
 - Firebase-synchronized team scores and finish positions, with a final ranked winner board.
+- Firebase-synchronized random roadblocks for teams leading by at least two stops, with a difficult break-through challenge or a longer detour through countries outside the room itinerary.
 - A thin light-blue route line that connects every selected stop on the board from the moment GameScreen opens.
 - Compact right-side race progress tracker with every team's vehicle position, the finish line, and the roll action while waiting for a throw.
 - Active-game re-entry through the room PIN with canonical state restoration.
@@ -192,6 +193,14 @@ The editable master catalogue lives in Cloud Firestore (`countries/{stopId}` and
 - Ordinary challenge penalties are social instructions only. The `Guess the Country Word` challenge records `guessed`, `failed`, or `timeout` and awards 10 points for a successful guess.
 - A team's live score is `currentLeg × 10 + challengePoints`, plus its podium bonus after finishing. Finish order is assigned transactionally and remains the competition tiebreaker represented by the bonus.
 
+### Roadblock events
+
+- A roadblock is eligible only when the active team is at least two route stops ahead of the closest unfinished opponent, has already reached route leg 2, and is not moving to the finish.
+- Eligible rolls use a deterministic 38% check based on the synchronized action ID. The same team cannot receive another roadblock for at least three turns.
+- The roll pauses in a synchronized `roadblock` phase before vehicle movement. Every client sees the same smaller 3D barrier, the same difficult challenge, and a gold preview route through two countries omitted from the room's original itinerary.
+- The active team leader may start the timed difficult challenge. Marking it complete removes the barrier and travels along the original route. Choosing the detour, or letting the challenge timer expire, keeps the barrier in place and moves the vehicle along the visibly longer alternate curve before returning to the rolled destination.
+- Detour countries are temporary waypoints for that move. They do not rewrite the immutable room route snapshot, award extra route points, or open extra country challenges. This keeps canonical progress and scoring compatible with existing rooms.
+
 ---
 
 ## 4. Application flow
@@ -247,6 +256,8 @@ stateDiagram-v2
     waiting --> rolling: 3D die picked up/thrown
     waiting --> moving: HUD Roll Dice button
     rolling --> moving: die animation reports result
+    rolling --> roadblock: eligible lead + deterministic chance
+    roadblock --> moving: challenge complete or detour chosen
     moving --> challenge: vehicle lands before finish
     moving --> waiting: vehicle finishes; another team remains
     moving --> done: vehicle finishes; all teams done
@@ -261,6 +272,7 @@ stateDiagram-v2
 |---|---|---|
 | `waiting` | Active team may roll | 3D die and tracker roll button enabled |
 | `rolling` | 3D die is animating | Additional rolls blocked |
+| `roadblock` | Leading team chooses a hard challenge or previewed detour | Active team leader chooses; other clients spectate |
 | `moving` | Active vehicle is travelling | Roll controls blocked |
 | `challenge` | Landing challenge is visible | Only challenge completion advances play |
 | `done` | Every team has finished | Restart button enabled |
@@ -356,6 +368,7 @@ This keeps long text, buttons, and accessibility semantics out of WebGL while re
 | Die result/action | Firebase gameplay record | Yes | Yes |
 | Team route progress | Firebase gameplay record | Yes | Yes |
 | Current challenge stop | Firebase gameplay record | Yes | Yes |
+| Roadblock choice, challenge, and detour waypoints | Firebase gameplay record | Yes | Yes |
 | Per-frame animation state | `GameScreen` / Three.js refs | No | No |
 
 ---
@@ -674,6 +687,9 @@ Each ordered stop is a Catmull-Rom control point. Its parameter-space index is m
 - **Traffic cones**: Chunky flanking low-poly pylons in Safety Orange (`#FF5722`) with reflective cream collars (`#FFF1CD`) and dark rubber bases.
 - **Spawn pop-in**: Bounces into place using spring overshoot easing (`easeOutBack`) and an expanding ground ripple ring.
 - **On-route placement**: `createRoadblockOnRoute(routeModel, legIndex, progressAlongLeg, options)` calculates the tangent angle along the route curve and orients the roadblock perpendicular to oncoming vehicles. Developers can toggle and clear roadblocks from the Dev Portal's Board & Game Tools tab (`dev:toggleRoadblock`, `dev:clearRoadblocks`, `dev:spawnRoadblock`).
+- **Board scale**: Runtime roadblocks use a `0.52` scale so the barrier remains legible beside a vehicle without covering nearby country borders or dominating the regional camera.
+- **Gameplay route preview**: An eligible event adds a gold alternate ribbon and waypoint discs through two currently hidden catalogue countries. The preview is visible while the team chooses. After detour selection the active movement ribbon follows that alternate curve; after challenge success the obstacle disappears and movement follows the original route.
+- **Dev flow**: The Board tools include `Test Roadblock Event`, which forces the complete local choice flow without first manufacturing a two-stop lead. The existing visual-only toggle remains available for scale and placement checks.
 
 ### Camera
 
@@ -890,7 +906,7 @@ The Realtime Database expects this conceptual structure:
         }
       ],
       "gameplay": {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "sessionId": "m8abc123-roomrun",
         "revision": 4,
         "phase": "moving",
@@ -915,6 +931,8 @@ The Realtime Database expects this conceptual structure:
         "challengeStop": null,
         "challengeId": null,
         "challengeRound": null,
+        "roadblock": null,
+        "roadblockHistory": [],
         "usedMonumentIds": ["fr-eiffel-tower"],
         "updatedAt": 1792195200000
       }
@@ -1021,7 +1039,7 @@ Listeners are detached when the lobby unmounts.
 `.info/serverTimeOffset`. The gameplay listener drives the local board toward
 the shared phase and progress. A monotonically increasing revision and unique
 action ID make transitions and animations idempotent. Roll, movement-complete,
-challenge-stage, challenge-complete, and restart writes use Realtime Database transactions.
+roadblock-choice, challenge-stage, challenge-complete, and restart writes use Realtime Database transactions.
 Movement completion updates route points without overwriting earned challenge points. A successful country-word round transactionally adds its configured points. Reaching Greece
 transactionally assigns the next finish position and its podium bonus, so
 simultaneous clients cannot award two teams the same place.
@@ -1378,6 +1396,8 @@ Use at least two separate installations or clear/device-specific storage careful
 20. Close one non-active client, complete another turn, rejoin through the room PIN, and confirm it opens the active game at the canonical Firebase state.
 21. Finish the tour and confirm all clients show the same finish order, podium bonuses, challenge points, total scores, and winner.
 22. Restart from the host and confirm every device resets to Team 1 at Belgium with zero points without changing that room's snapshotted route.
+23. Put Team 1 at least two stops ahead, roll repeatedly until a roadblock appears, and confirm every client shows the same obstacle, challenge, hidden-country detour preview, and leader-only controls.
+24. Complete the hard challenge and confirm the obstacle disappears before the car follows the original route. In a separate event, take the detour and confirm the car follows the longer previewed curve, lands at the original rolled stop, and receives only the normal route score.
 
 ### Reconnection test
 
@@ -1574,6 +1594,8 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | `components/CountryStopPlacementForm.js` | Web map-placement instructions and new-stop/challenge form |
 | `components/CityLandmark.js` | Pixel-style city landmark SVGs for the challenge ticket stub |
 | `components/RoadblockFigure.js` | Procedural low-poly sawhorse roadblock barrier with hazard stripes, strobe beacons, detour sign, and traffic cones |
+| `components/RoadblockOverlay.js` | Leader-only roadblock choice, timed hard challenge, spectator state, and hidden-country detour summary |
+| `components/DetourRouteLine.js` | Gold 3D preview ribbon and waypoint discs for temporary roadblock detours |
 | `components/ModelTestPanel.js` | Unused development model switcher |
 
 ### Game constants
@@ -1581,7 +1603,7 @@ Then add component/integration tests for navigation and Firebase adapters. Extra
 | File | Responsibility |
 |---|---|
 | `constants/mapCoordinates.js` | Board dimensions and UV-to-world conversion |
-| `constants/roadblocks.js` | Roadblock color palette and route-relative roadblock placement generator |
+| `constants/roadblocks.js` | Eligibility/cooldown rules, deterministic challenges, hidden-country detour selection, movement timing, palette, and 3D placement |
 | `constants/route.js` | Builds runtime curves, lengths, tangent helpers, and stop distances from ordered stop data |
 | `constants/countryStops.js` | Default catalogue, normalization, duration counts, and old-room fallback |
 | `constants/movement.js` | Shared vehicle speed used by rendering and synchronized action timing |

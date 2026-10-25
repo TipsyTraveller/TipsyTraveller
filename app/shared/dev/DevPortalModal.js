@@ -252,6 +252,12 @@ export default function DevPortalModal({ visible, onClose }) {
     onClose();
   };
 
+  const handleTestRoadblock = () => {
+    devEventBus.emit('dev:testRoadblock');
+    showStatus('Started the complete roadblock choice flow!');
+    onClose();
+  };
+
   const handleClearRoadblocks = () => {
     devEventBus.emit('dev:clearRoadblocks');
     showStatus('Cleared all roadblocks!');
@@ -632,8 +638,14 @@ export default function DevPortalModal({ visible, onClose }) {
 
                 <Text style={styles.sectionHeading}>🚧 Roadblock Obstacles</Text>
                 <Text style={styles.sectionDescription}>
-                  Spawn or clear low-poly roadblocks across route legs to signify closed roads where teams must go around.
+                  Test the full choice flow, or place the 3D obstacle by itself for visual checks.
                 </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.primaryButton]}
+                  onPress={handleTestRoadblock}
+                >
+                  <Text style={styles.actionButtonText}>🧭 Test Roadblock Event</Text>
+                </TouchableOpacity>
                 <View style={styles.buttonRow}>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.accentButton]}

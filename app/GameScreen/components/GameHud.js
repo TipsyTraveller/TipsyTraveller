@@ -36,7 +36,8 @@ const GameHud = ({
         <Text style={styles.hudProgress}>
           {state === 'moving' && `Roll ${lastRoll} - ${remainingMoves} stops left`}
           {state === 'challenge' && 'Complete the country challenge'}
-          {!['moving', 'challenge'].includes(state) && `Leg ${progress}`}
+          {state === 'roadblock' && 'Roadblock — choose your route'}
+          {!['moving', 'challenge', 'roadblock'].includes(state) && `Leg ${progress}`}
         </Text>
       </View>
     )}
