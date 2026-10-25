@@ -162,7 +162,7 @@ const DottedRouteLine = memo(({
         />
       </mesh>
       <group ref={groupRef} visible={false}>
-        <mesh geometry={activeRouteGeometry} renderOrder={4} frustumCulled={false}>
+        <mesh geometry={activeRouteGeometry} renderOrder={5} frustumCulled={false}>
           <meshBasicMaterial
             color={ACTIVE_ROUTE_COLOR}
             depthWrite={false}

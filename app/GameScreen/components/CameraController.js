@@ -9,7 +9,9 @@ import {
 } from '../constants/camera';
 
 const FOLLOW_DAMPING = 4.5;
-const OVERVIEW_DAMPING = 3.2;
+const OVERVIEW_DAMPING = 2.6;
+const PARAMS_DAMPING = 2.2;
+const MAX_FRAME_DELTA = 0.033; // 30fps floor to prevent delta spikes from causing sudden jumps
 
 const CameraController = ({
   mode,
@@ -25,10 +27,41 @@ const CameraController = ({
   const desiredCameraPosition = useMemo(() => new THREE.Vector3(), []);
   const desiredLookAt = useMemo(() => new THREE.Vector3(), []);
 
+  // Smoothly interpolated camera parameters to prevent sudden 1-step snaps
+  const smoothFocusOffset = useRef(0);
+  const smoothScaleMultiplier = useRef(1);
+  const smoothMaxScale = useRef(0.82);
+
   useFrame((_state, delta) => {
+    // Clamp delta to prevent frame stutters / GC hitches from causing sudden teleports
+    const safeDelta = Math.min(delta, MAX_FRAME_DELTA);
+
+    const isLandscape = size?.width && size?.height ? size.width > size.height : true;
+    const targetFocusOffset = isLandscape ? overviewFocusOffset : 0;
+    const targetScaleMultiplier = overviewScaleMultiplier;
+    const targetMaxScale = overviewPositions.length ? 1.38 : 0.82;
+
+    // Smoothly transition parameters with exponential decay to avoid abrupt jumps
+    const paramAlpha = 1 - Math.exp(-PARAMS_DAMPING * safeDelta);
+    smoothFocusOffset.current = THREE.MathUtils.lerp(
+      smoothFocusOffset.current,
+      targetFocusOffset,
+      paramAlpha
+    );
+    smoothScaleMultiplier.current = THREE.MathUtils.lerp(
+      smoothScaleMultiplier.current,
+      targetScaleMultiplier,
+      paramAlpha
+    );
+    smoothMaxScale.current = THREE.MathUtils.lerp(
+      smoothMaxScale.current,
+      targetMaxScale,
+      paramAlpha
+    );
+
     const isFollow = mode === 'follow' && Boolean(targetRef?.current);
     const damping = isFollow ? FOLLOW_DAMPING : OVERVIEW_DAMPING;
-    const alpha = 1 - Math.exp(-damping * delta);
+    const alpha = 1 - Math.exp(-damping * safeDelta);
 
     if (isFollow) {
       const targetPosition = targetRef.current.position;
@@ -40,11 +73,11 @@ const CameraController = ({
       aspect: size?.width && size?.height ? size.width / size.height : camera.aspect,
       cameraPosition: desiredCameraPosition,
       extraPositions: overviewPositions,
-      focusOffsetX: overviewFocusOffset,
+      focusOffsetX: smoothFocusOffset.current,
       lookAt: desiredLookAt,
-      maxScale: overviewPositions.length ? 1.6 : undefined,
+      maxScale: smoothMaxScale.current,
       pieceRefs,
-      scaleMultiplier: overviewScaleMultiplier,
+      scaleMultiplier: smoothScaleMultiplier.current,
       targetPosition: overviewTargetPosition,
     })) {
       camera.position.lerp(desiredCameraPosition, alpha);

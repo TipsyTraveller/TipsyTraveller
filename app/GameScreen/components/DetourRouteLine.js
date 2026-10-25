@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
 
 const SEGMENTS = 180;
-const ROUTE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.02;
+const ROUTE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.0125;
 
 const createLabelTexture = (countryName) => {
   if (typeof document === 'undefined' || !countryName) return null;
@@ -83,7 +83,7 @@ const DetourRouteLine = memo(({ routeModel, selected = false, visible = false })
 
   return (
     <group name="roadblock-detour-preview">
-      <mesh geometry={geometry} renderOrder={8} frustumCulled={false}>
+      <mesh geometry={geometry} renderOrder={3.5} frustumCulled={false}>
         <meshBasicMaterial
           color={selected ? '#FFD700' : '#FFB11B'}
           depthWrite={false}

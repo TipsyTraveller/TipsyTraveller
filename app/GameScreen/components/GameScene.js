@@ -108,6 +108,10 @@ const GameScene = memo(({
   detourPreviewModel = null,
   detourPreviewSelected = false,
   showDetourPreview = false,
+  detourCurrentLeg = 0,
+  detourOccupiedIndexes,
+  detourTargetLeg = 1,
+  isRoadblockState = false,
   rollAction,
   targetRef,
   teamProgress,
@@ -191,12 +195,12 @@ const GameScene = memo(({
     {showDetourPreview && detourPreviewModel && (
       <Suspense fallback={null}>
         <CountryMarkers
-          currentLeg={0}
-          occupiedMarkerIndexes={new Set([0, detourPreviewModel.finalStopIndex])}
+          currentLeg={detourCurrentLeg ?? 0}
+          occupiedMarkerIndexes={detourOccupiedIndexes || new Set([0, detourPreviewModel.finalStopIndex])}
           routeModel={detourPreviewModel}
           showLabels
           showStopNumbers={false}
-          targetLeg={1}
+          targetLeg={detourTargetLeg ?? 1}
         />
       </Suspense>
     )}
@@ -224,9 +228,9 @@ const GameScene = memo(({
     </Suspense>
     <CameraController
       mode={cameraMode}
-      overviewFocusOffset={showDetourPreview ? 0.42 : 0}
+      overviewFocusOffset={isRoadblockState ? 0.62 : 0}
       overviewPositions={showDetourPreview ? (detourPreviewModel?.route || []) : []}
-      overviewScaleMultiplier={showDetourPreview ? 1.72 : 1}
+      overviewScaleMultiplier={isRoadblockState ? 1.32 : 1}
       overviewTargetPosition={
         movingMarkerIndex >= 0 && routeModel.route[movingMarkerIndex]
           ? routeModel.route[movingMarkerIndex]
