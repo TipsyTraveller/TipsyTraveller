@@ -1087,7 +1087,7 @@ const GameScreen = ({ route }) => {
         canvasStyle={styles.canvas}
         currentLeg={currentLeg}
         diceEnabled={canRoll && !placementRequest}
-        diceVisible={!placementRequest}
+        diceVisible={!placementRequest && state !== 'roadblock'}
         driving={state === 'moving'}
         lowPower={state === 'challenge'}
         gamePieces={gamePieces}

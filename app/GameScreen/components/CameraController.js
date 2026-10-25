@@ -42,7 +42,7 @@ const CameraController = ({
       extraPositions: overviewPositions,
       focusOffsetX: overviewFocusOffset,
       lookAt: desiredLookAt,
-      maxScale: overviewPositions.length ? 1.35 : undefined,
+      maxScale: overviewPositions.length ? 1.6 : undefined,
       pieceRefs,
       scaleMultiplier: overviewScaleMultiplier,
       targetPosition: overviewTargetPosition,

@@ -224,9 +224,9 @@ const GameScene = memo(({
     </Suspense>
     <CameraController
       mode={cameraMode}
-      overviewFocusOffset={showDetourPreview ? 0.38 : 0}
+      overviewFocusOffset={showDetourPreview ? 0.42 : 0}
       overviewPositions={showDetourPreview ? (detourPreviewModel?.route || []) : []}
-      overviewScaleMultiplier={showDetourPreview ? 1.48 : 1}
+      overviewScaleMultiplier={showDetourPreview ? 1.72 : 1}
       overviewTargetPosition={
         movingMarkerIndex >= 0 && routeModel.route[movingMarkerIndex]
           ? routeModel.route[movingMarkerIndex]

@@ -10,7 +10,7 @@ const RoadblockOverlay = memo(({
   visible,
 }) => {
   const { height, width } = useWindowDimensions();
-  const isPhoneLandscape = height < 600 && width > height;
+  const isLandscape = width > height;
   const [secondsLeft, setSecondsLeft] = useState(null);
   const timeoutSentRef = useRef(false);
   const isChallenge = event?.status === 'challenge';
@@ -43,8 +43,8 @@ const RoadblockOverlay = memo(({
   if (!visible || !event) return null;
 
   return (
-    <View style={[styles.backdrop, isPhoneLandscape && styles.backdropLandscape]} pointerEvents="box-none">
-      <View style={[styles.card, isPhoneLandscape && styles.cardLandscape]}>
+    <View style={[styles.backdrop, isLandscape ? styles.backdropLandscape : styles.backdropPortrait]} pointerEvents="box-none">
+      <View style={[styles.card, isLandscape ? styles.cardLandscape : styles.cardPortrait]}>
         <View style={styles.warningStrip} />
         <View style={styles.headerRow}>
           <Text style={styles.icon}>🚧</Text>
@@ -60,7 +60,7 @@ const RoadblockOverlay = memo(({
             <Text style={styles.body}>{event.challenge?.prompt}</Text>
             <Text style={styles.note}>Complete it before time runs out to break through. A miss sends the team onto the detour.</Text>
             {canChoose ? (
-              <View style={[styles.actions, isPhoneLandscape && styles.actionsLandscape]}>
+              <View style={[styles.actions, isLandscape && styles.actionsLandscape]}>
                 <Pressable style={({ pressed }) => [styles.button, styles.primary, pressed && styles.pressed]} onPress={() => onAction?.('completed')}>
                   <Text style={styles.primaryText}>WE DID IT · BREAK THROUGH</Text>
                 </Pressable>
@@ -79,7 +79,7 @@ const RoadblockOverlay = memo(({
               <Text style={styles.detourHint}>These countries were hidden from the original itinerary. Each detour stop has its own challenge.</Text>
             </View>
             {canChoose ? (
-              <View style={[styles.actions, isPhoneLandscape && styles.actionsLandscape]}>
+              <View style={[styles.actions, isLandscape && styles.actionsLandscape]}>
                 <Pressable style={({ pressed }) => [styles.button, styles.primary, pressed && styles.pressed]} onPress={() => onAction?.('challenge')}>
                   <Text style={styles.primaryText}>BREAK THROUGH · HARD CHALLENGE</Text>
                 </Pressable>
@@ -100,17 +100,23 @@ RoadblockOverlay.displayName = 'RoadblockOverlay';
 const styles = StyleSheet.create({
   backdrop: {
     position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
-    alignItems: 'center', justifyContent: 'center', padding: 18,
+    padding: 12,
   },
-  backdropLandscape: { alignItems: 'flex-start', paddingLeft: 14, paddingRight: 14 },
+  backdropLandscape: { alignItems: 'flex-start', justifyContent: 'center' },
+  backdropPortrait: { alignItems: 'center', justifyContent: 'flex-end' },
   card: {
-    width: '72%', maxWidth: 720, minWidth: 520,
     backgroundColor: '#FFF1CD', borderColor: '#15222E', borderWidth: 4,
-    padding: 18, paddingTop: 22,
     shadowColor: '#15222E', shadowOffset: { width: 8, height: 8 }, shadowOpacity: 0.55, shadowRadius: 0,
     elevation: 12,
   },
-  cardLandscape: { width: '47%', minWidth: 0, maxWidth: 430, padding: 13, paddingTop: 18 },
+  cardLandscape: {
+    width: '35%', minWidth: 270, maxWidth: 360, maxHeight: '92%',
+    padding: 12, paddingTop: 17,
+  },
+  cardPortrait: {
+    width: '96%', minWidth: 0, maxWidth: 720,
+    padding: 14, paddingTop: 19,
+  },
   warningStrip: { position: 'absolute', top: 0, left: 0, right: 0, height: 10, backgroundColor: '#E8412F' },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerCopy: { flex: 1 },
