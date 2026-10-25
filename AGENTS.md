@@ -1,131 +1,86 @@
 # TipsyTraveller repository instructions
 
-These instructions apply to the entire repository. Add a nested `AGENTS.md` only
-when a subdirectory needs stricter or more specific guidance.
+These rules apply repository-wide. Add nested `AGENTS.md` files only for genuinely
+different subdirectory requirements.
 
-## Required project context
+## Efficient default workflow
 
-Before planning, reviewing, designing, or changing the application:
+1. Identify the application area affected by the request.
+2. Locate relevant files with filenames or targeted searches.
+3. Read only the necessary source files and relevant sections linked from
+   `docs/ARCHITECTURE.md`; do not automatically read all documentation.
+4. Make the smallest complete change and avoid unrelated refactoring.
+5. Run focused verification proportionate to the change.
+6. Update only relevant documentation when the policy below requires it.
+7. Give a concise final summary: changed files, checks run, and material caveats.
 
-1. Read `GAME_ARCHITECTURE.md` completely enough to understand the relevant
-   product behavior, architectural boundaries, known limitations, and safe
-   extension points.
-2. Inspect the relevant live implementation and configuration files before
-   drawing conclusions or editing code.
-3. Treat the live code and configuration as authoritative when they conflict
-   with `GAME_ARCHITECTURE.md`. Report the mismatch and update the document as
-   part of the same task when the requested scope permits it.
-4. Preserve the established product terminology, game rules, visual identity,
-   navigation contracts, and data shapes unless the user explicitly requests a
-   change.
+Prefer targeted searches or section reads over reading large files in full. Do not
+reread files already available in the current context. Small UI changes normally
+require only the affected components and direct dependencies. Consult the relevant
+architecture docs for multiplayer state, navigation, game rules, data contracts,
+3D rendering, native configuration, or other cross-cutting changes. Investigate
+more deeply whenever correctness requires it; token efficiency never justifies
+guessing, skipping relevant dependencies or verification, or breaking behavior.
+Do not broadly explore the repository or write a lengthy plan for a trivial change.
 
-Do not assume that earlier chats are available. Durable project knowledge and
-decisions belong in repository files.
+## Architecture and compatibility
 
-## Project summary
+- Source code and configuration are authoritative when documentation is stale.
+- Preserve established terminology, game rules, visual identity, navigation, and
+  data shapes unless the requested change requires otherwise.
+- React Native owns screens, overlays, text-heavy controls, and accessible input;
+  React Three Fiber/Three.js/Expo GL own spatial 3D board rendering.
+- Keep game rules and turn transitions in `app/GameScreen/`; keep 3D components
+  focused on rendering, animation, and reporting events.
+- Keep routes, challenges, camera/dice values, teams, and vehicle metadata
+  data-driven under `app/GameScreen/constants/` where practical.
+- Preserve navigation parameter shapes and Firebase data compatibility, or update
+  every producer and consumer together and document the migration.
+- Firebase owns canonical multiplayer turn state; per-frame animation stays local.
+  Use transactional or otherwise concurrency-safe authoritative transitions.
+- Treat the local device ID as convenience identity, not authentication. A Firebase
+  web API key is not an authorization boundary. Never commit secrets or signing data.
+- Do not claim deployed rules, remote state, or production behavior were verified
+  unless they were actually inspected or tested.
+- Reuse existing components and dependencies. Add packages only for clear value.
+- Prioritize iOS and Android. Web is secondary but useful for testing. Account for
+  asset size, texture limits, draw calls, loading cost, and per-frame allocation.
+- Keep Expo configuration and checked-in native projects consistent when applicable.
 
-TipsyTraveller is an Expo/React Native mobile party board game. React Native
-owns screens and overlays; React Three Fiber/Three.js/Expo GL own the 3D board;
-Firebase Realtime Database owns room, lobby, and vehicle-selection data;
-AsyncStorage owns the anonymous local device identity.
+## Documentation policy
 
-The room, lobby, vehicle selection, and turn-level board state are realtime.
-Firebase owns the canonical turn, roll, route progress, challenge, and game
-completion state; React and Three.js keep per-frame animation local. Do not
-describe animation frames as server-driven or dice generation as trusted
-backend logic unless that implementation has actually been changed and verified.
-
-Primary reference areas:
-
-- `app/app/`: root navigation and the development game shortcut.
-- `app/GameScreen/`: local game controller, 3D scene, overlays, and game data.
-- `app/CreateGame/`, `app/HostName/`, `app/JoinGame/`, `app/Lobby/`, and
-  `app/CharacterSelection/`: room setup and multiplayer pre-game flow.
-- `app/shared/`: reusable UI and styling.
-- `firebaseConfig.js`: Firebase initialization.
-- `assets/`: maps, models, fonts, images, and animations.
-- `ios/` and `android/`: checked-in native projects and compatibility changes.
-
-## Architecture and implementation rules
-
-- Keep game rules and turn transitions in `GameScreen`; keep 3D rendering
-  components focused on rendering, animation, and reporting events.
-- Keep route definitions, challenge content, camera values, dice bounds, team
-  definitions, and vehicle metadata data-driven under
-  `app/GameScreen/constants/`.
-- Keep text-heavy controls and accessible interaction in React Native overlays;
-  use WebGL for spatial board content.
-- Reuse existing components, constants, styles, and model metadata before
-  introducing parallel abstractions.
-- Preserve navigation parameter shapes and Firebase data compatibility, or
-  update every producer and consumer together and document the migration.
-- Treat iOS and Android as primary targets. Web is a secondary compatibility
-  target, and physical devices are the reference for final 3D performance.
-- Account for asset size, texture limits, draw calls, model-loading cost, and
-  per-frame allocations when changing the 3D scene.
-- Keep Expo configuration and checked-in native projects consistent when a
-  change affects both.
-- Do not add dependencies unless they provide clear value that existing
-  dependencies or a small local implementation cannot provide.
-- Do not perform unrelated cleanup or broad rewrites as part of a focused task.
-
-## Firebase, identity, and security
-
-- Treat the locally generated device ID as convenience identity, not
-  authentication or authorization.
-- Do not treat the Firebase web API key as a secret or as an authorization
-  boundary. Authorization must come from Firebase Authentication, database
-  rules, or trusted backend logic.
-- Use transactional or otherwise concurrency-safe writes for authoritative
-  multiplayer state transitions.
-- Never commit credentials, private signing material, service-account files,
-  secrets, or local environment files.
-- Do not claim that database rules, remote Firebase state, or production
-  behavior have been verified unless they were actually inspected or tested.
+- `docs/ARCHITECTURE.md` is the concise index; open only the topic needed.
+- Update documentation only when a change materially affects architecture, gameplay
+  rules, API/data/navigation contracts, state ownership, or important workflows.
+- Do not update docs for minor styling, animation tuning, routine bug fixes, or
+  implementation details that do not change documented behavior.
+- Modify only the relevant document and section. Never regenerate all docs for a
+  small feature or rewrite unrelated documentation.
+- Keep docs concise and about the current implementation. Avoid repetitive details,
+  visual-change history, and development diaries. Clearly label proposals.
+- If docs conflict with observed code, follow the code and update the relevant doc
+  when the task scope permits.
 
 ## Verification
 
-There is currently no checked-in automated test, lint, or type-check command.
-Choose verification proportionate to the change and report exactly what ran.
+- Run checks proportionate to risk and report exactly what ran.
+- Documentation-only: review the diff, validate changed links, and run
+  `git diff --check`.
+- JavaScript: perform focused static review and a relevant smoke test when practical.
+- Use `docs/TESTING.md` for affected board, navigation, multiplayer, reconnection,
+  native, or 3D flows. `localhost:8081` web may be used when appropriate.
+- Physical devices are authoritative for native/GPU performance. Never claim an
+  unrun check passed or infer device performance from web/simulator testing.
+- Do not add a test framework, formatter, linter, or dependency for one focused task.
 
-- For documentation-only changes, run `git diff --check` and review the diff.
-- For JavaScript changes, at minimum perform a focused static review and run an
-  available relevant application smoke test when practical.
-- Use the manual test flows in `GAME_ARCHITECTURE.md` for changes affecting the
-  board, navigation, multiplayer setup, reconnection, or 3D performance.
-- Test native or GPU-sensitive work on the affected platform; do not infer
-  physical-device performance from the simulator.
-- testing can be done in web version localhost:8081
-- If a check cannot be run, say why. Never present an unrun check as passing.
-- Do not quietly introduce a test framework, formatter, linter, or large
-  dependency merely to validate one unrelated change.
+## Git and delivery
 
-## Documentation maintenance
-
-Update `GAME_ARCHITECTURE.md` in the same task whenever a change materially
-affects any of the following:
-
-- Player-visible rules, flows, or implementation status.
-- State ownership, architectural boundaries, or component responsibilities.
-- Navigation contracts or Firebase data shape and synchronization.
-- Routes, challenges, vehicles, rendering, assets, or native configuration.
-- Development/build commands, verification steps, known limitations, or safe
-  extension points.
-
-Document only observed behavior. Keep proposed behavior clearly labeled as a
-proposal, and update the document's "Last reviewed against the source code"
-date only after reconciling the relevant sections with the implementation.
-
-## Working-tree and delivery discipline
-
-- Preserve user changes and unrelated uncommitted work.
-- Inspect the working tree before editing and before handing off.
-- Do not commit, push, deploy, alter remote services, or change production data
-  unless the user explicitly requests that action.
-- Keep each task scoped to the requested outcome and summarize changed files,
-  behavioral impact, verification evidence, and remaining risks.
-- For every feature that you are asked to implement or change make a new working branch. Use a simplistic name with no codex in front or feature just a simple text or feature nr for rexample
-
-
-## COMMITS
-commit withouth any co author, use git naming conventions and use a small commit message max 1 scentence that summerizes the feature
+- Inspect and preserve existing changes and unrelated uncommitted work.
+- Create a new branch for a genuinely new feature or independent task. Reuse the
+  current feature branch for follow-ups, small UI adjustments, bug fixes, and
+  refinements; do not create a branch per prompt or switch unnecessarily.
+- Use short descriptive branch names without `codex/` or `feature/` prefixes.
+- Never commit, push, deploy, alter remote services, or change production data unless
+  explicitly requested. Do not automatically commit.
+- If asked to commit, use a short conventional commit message of at most one sentence
+  and no co-author attribution.
