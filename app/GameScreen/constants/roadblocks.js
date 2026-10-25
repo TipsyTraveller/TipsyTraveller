@@ -97,7 +97,23 @@ const stripStopForGameplay = (stop) => ({
     x: Number(stop.position.x),
     y: Number(stop.position.y),
   },
+  ...(Array.isArray(stop.challenges) && stop.challenges.length
+    ? { challenges: stop.challenges }
+    : {}),
 });
+
+const withDetourChallenge = (stop, actionId, index) => {
+  const challenges = (Array.isArray(stop?.challenges) ? stop.challenges : [])
+    .filter((challenge) => !['countryWordGuess', 'geoGuessr'].includes(challenge?.type));
+  const selected = challenges.length
+    ? challenges[hashSeed(`${actionId}:detour-challenge:${index}`) % challenges.length]
+    : null;
+
+  return {
+    ...stop,
+    challenges: selected ? [selected] : [],
+  };
+};
 
 export const selectDetourStops = ({ actionId, fromStop, routeStops, targetStop }) => {
   const routeIds = new Set((routeStops || []).map((stop) => stop.id));
@@ -140,7 +156,9 @@ export const selectDetourStops = ({ actionId, fromStop, routeStops, targetStop }
     if (reverseDistance < forwardDistance) selected.reverse();
   }
 
-  return selected.map(stripStopForGameplay);
+  return selected.map((stop, index) => stripStopForGameplay(
+    withDetourChallenge(stop, actionId, index)
+  ));
 };
 
 export const createRoadblockEvent = ({ action, routeModel, turnNumber }) => {
@@ -181,6 +199,25 @@ export const createRoadblockMovementPath = ({ event, routeModel, type }) => {
   return {
     type,
     stops: stops.map(stripStopForGameplay).map((stop, index) => ({ ...stop, order: index })),
+  };
+};
+
+export const createRoadblockDetourSegment = ({ event, routeModel, step }) => {
+  const detourStops = event?.detourStops || [];
+  const fromStop = step === 0
+    ? routeModel.countryStops[event.fromLeg]
+    : detourStops[step - 1];
+  const targetStop = step < detourStops.length
+    ? detourStops[step]
+    : routeModel.countryStops[event.targetLeg];
+
+  if (!fromStop || !targetStop) return null;
+
+  return {
+    type: 'detour',
+    stops: [fromStop, targetStop]
+      .map(stripStopForGameplay)
+      .map((stop, index) => ({ ...stop, order: index })),
   };
 };
 

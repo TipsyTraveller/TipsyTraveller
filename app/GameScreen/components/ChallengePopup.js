@@ -35,8 +35,11 @@ const projectionCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 const projectedPoint = new THREE.Vector3();
 const projectionLookAt = new THREE.Vector3();
 
-const getMarkerScreenOffset = (routeModel, stopIndex, pieceRefs, width, height) => {
-  const stopPosition = routeModel.route[stopIndex] || routeModel.route[1] || routeModel.route[0];
+const getMarkerScreenOffset = (routeModel, stopIndex, markerPosition, pieceRefs, width, height) => {
+  const stopPosition = markerPosition
+    || routeModel.route[stopIndex]
+    || routeModel.route[1]
+    || routeModel.route[0];
   if (!stopPosition || !width || !height) {
     return { x: 0, y: 0 };
   }
@@ -303,6 +306,7 @@ const ChallengePopup = ({
   const markerOffset = getMarkerScreenOffset(
     routeModel,
     challenge.stopIndex,
+    challenge.markerPosition,
     pieceRefs,
     width,
     height
@@ -610,7 +614,9 @@ const ChallengePopup = ({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={canFinishChallenge
-                    ? 'Complete challenge and start next turn'
+                    ? (challenge.isDetour
+                      ? 'Complete challenge and continue detour'
+                      : 'Complete challenge and start next turn')
                     : canComplete
                       ? 'Complete the challenge before starting the next turn'
                       : `Waiting for ${teamLabel} to complete the challenge`}
@@ -622,7 +628,9 @@ const ChallengePopup = ({
                     pressed && styles.completeButtonPressed,
                   ]}
                 >
-                  <Text style={styles.completeButtonText}>{canFinishChallenge ? 'Next Turn' : 'Watching'}</Text>
+                  <Text style={styles.completeButtonText}>
+                    {canFinishChallenge ? (challenge.isDetour ? 'Continue Detour' : 'Next Turn') : 'Watching'}
+                  </Text>
                   {canFinishChallenge ? null : (
                     <Text style={styles.completeButtonSubText}>{canComplete ? 'Finish the challenge' : `Waiting for ${teamLabel}`}</Text>
                   )}

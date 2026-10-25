@@ -76,7 +76,7 @@ const RoadblockOverlay = memo(({
             <View style={styles.detourPanel}>
               <Text style={styles.detourLabel}>DETOUR PREVIEW</Text>
               <Text style={styles.detourRoute}>{detourNames || 'Scenic route'}</Text>
-              <Text style={styles.detourHint}>These countries were hidden from the original itinerary.</Text>
+              <Text style={styles.detourHint}>These countries were hidden from the original itinerary. Each detour stop has its own challenge.</Text>
             </View>
             {canChoose ? (
               <View style={[styles.actions, isPhoneLandscape && styles.actionsLandscape]}>

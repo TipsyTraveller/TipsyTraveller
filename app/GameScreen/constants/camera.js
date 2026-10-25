@@ -16,8 +16,12 @@ const overviewBaseOffset = DONE_POS.clone().sub(DONE_LOOK);
 export const setOverviewCameraPose = ({
   aspect = 2.0,
   cameraPosition,
+  extraPositions = [],
+  focusOffsetX = 0,
   lookAt,
+  maxScale = OVERVIEW_MAX_SCALE,
   pieceRefs,
+  scaleMultiplier = 1,
   targetPosition,
 }) => {
   let minX = targetPosition?.x ?? Infinity;
@@ -27,7 +31,17 @@ export const setOverviewCameraPose = ({
   let z = targetPosition?.z ?? MAP_Z;
   let pointCount = targetPosition ? 1 : 0;
 
-  for (const pieceId in pieceRefs) {
+  for (const position of extraPositions) {
+    if (!position) continue;
+    minX = Math.min(minX, position.x);
+    maxX = Math.max(maxX, position.x);
+    minY = Math.min(minY, position.y);
+    maxY = Math.max(maxY, position.y);
+    z = Math.max(z, position.z ?? MAP_Z);
+    pointCount += 1;
+  }
+
+  for (const pieceId in (pieceRefs || {})) {
     const position = pieceRefs[pieceId]?.current?.position;
     if (!position) continue;
 
@@ -43,9 +57,9 @@ export const setOverviewCameraPose = ({
 
   const spread = Math.max(maxX - minX, maxY - minY);
   const scale = THREE.MathUtils.clamp(
-    OVERVIEW_BASE_SCALE + spread * OVERVIEW_SPREAD_SCALE,
+    (OVERVIEW_BASE_SCALE + spread * OVERVIEW_SPREAD_SCALE) * scaleMultiplier,
     OVERVIEW_BASE_SCALE,
-    OVERVIEW_MAX_SCALE
+    maxScale
   );
 
   const centerX = (minX + maxX) / 2;
@@ -64,6 +78,13 @@ export const setOverviewCameraPose = ({
       const shift = Math.min(excessOcean, maxShift);
       lookAtX = centerX + shift;
     }
+  }
+
+
+  if (focusOffsetX) {
+    const viewHalfHeight = overviewBaseOffset.z * scale * HALF_FOV_TAN;
+    const viewHalfWidth = viewHalfHeight * aspect;
+    lookAtX -= viewHalfWidth * focusOffsetX;
   }
 
   lookAt.set(lookAtX, centerY, z);

@@ -32,6 +32,7 @@ import useMultiplayerGame from './hooks/useMultiplayerGame';
 import { getPathRevealDuration, createRouteModel } from './constants/route';
 import {
   createRoadblockEvent,
+  createRoadblockDetourSegment,
   createRoadblockMovementPath,
   createRoadblockOnRoute,
   shouldTriggerRoadblock,
@@ -207,7 +208,7 @@ const GameScreen = ({ route }) => {
     }
 
     if (gameplay.phase === 'moving' && action) {
-      const visualActionKey = `${action.id}:moving`;
+      const visualActionKey = `${action.id}:moving:${action.detourStep ?? 'main'}:${action.detourSegmentType || 'direct'}`;
       if (visualActionIdRef.current === visualActionKey) return;
 
       visualActionIdRef.current = visualActionKey;
@@ -229,14 +230,21 @@ const GameScreen = ({ route }) => {
     }
 
     setIsCarDriving(false);
-    setMovingPieceId(null);
+    setMovingPieceId(gameplay.challengeStopData ? action?.teamId || null : null);
     setRemainingMoves(0);
 
     if (gameplay.phase === 'challenge') {
       setLastRoll(action?.value ?? null);
+      const challengeStops = gameplay.challengeStopData
+        ? [gameplay.challengeStopData]
+        : routeStops;
+      const challengeStopIndex = gameplay.challengeStopData ? 0 : gameplay.challengeStop;
       setCurrentChallenge({
-        ...getChallengeForStop(gameplay.challengeStop, routeStops, gameplay.challengeId),
+        ...getChallengeForStop(challengeStopIndex, challengeStops, gameplay.challengeId),
         ...(gameplay.challengeRound || {}),
+        ...(gameplay.challengeStopData
+          ? { markerPosition: gameplay.challengeStopData.position, isDetour: true }
+          : {}),
       });
       setState('challenge');
       return;
@@ -351,6 +359,31 @@ const GameScreen = ({ route }) => {
       multiplayer.completeChallenge().catch((error) => {
         console.log('Unable to complete synchronized challenge', error);
       });
+      return;
+    }
+
+    if (localRoadblock?.choice === 'detour' && localRoadblock.status === 'detourChallenge') {
+      const completedStep = Number(localRoadblock.detourStep) || 0;
+      const nextStep = completedStep + 1;
+      const movementPath = createRoadblockDetourSegment({
+        event: localRoadblock,
+        routeModel,
+        step: nextStep,
+      });
+      if (!movementPath || !localPendingAction) return;
+      const headingToDestination = nextStep >= (localRoadblock.detourStops?.length || 0);
+      setCurrentChallenge(null);
+      setLocalMovementPath(movementPath);
+      setLocalPendingAction({
+        ...localPendingAction,
+        detourStep: nextStep,
+        detourSegmentType: headingToDestination ? 'destination' : 'waypoint',
+      });
+      setLocalRoadblock({ ...localRoadblock, status: 'travelling', detourStep: nextStep });
+      setMovingPieceId(localPendingAction.teamId);
+      setMoveStartDelay(0);
+      setIsCarDriving(false);
+      setState('moving');
       return;
     }
 
@@ -617,16 +650,22 @@ const GameScreen = ({ route }) => {
     const brokeThrough = choice === 'completed' && localRoadblock.status === 'challenge';
     if (!takesDetour && !brokeThrough) return;
 
-    const movementPath = createRoadblockMovementPath({
-      event: localRoadblock,
-      routeModel,
-      type: takesDetour ? 'detour' : 'direct',
-    });
+    const movementPath = takesDetour
+      ? createRoadblockDetourSegment({ event: localRoadblock, routeModel, step: 0 })
+      : createRoadblockMovementPath({ event: localRoadblock, routeModel, type: 'direct' });
+    if (!movementPath) return;
     setLocalMovementPath(movementPath);
+    setLocalPendingAction({
+      ...localPendingAction,
+      roadblockChoice: takesDetour ? 'detour' : 'challenge',
+      detourStep: takesDetour ? 0 : null,
+      detourSegmentType: takesDetour ? 'waypoint' : null,
+    });
     setLocalRoadblock({
       ...localRoadblock,
-      status: 'resolved',
+      status: takesDetour ? 'travelling' : 'resolved',
       choice: takesDetour ? 'detour' : 'challenge',
+      detourStep: takesDetour ? 0 : null,
       resolvedAt: Date.now(),
     });
     setMovingPieceId(localPendingAction.teamId);
@@ -670,6 +709,35 @@ const GameScreen = ({ route }) => {
       setIsDevDrive(false);
     }
 
+    if (multiplayerEnabled) {
+      setIsCarDriving(false);
+      multiplayer.completeMovement(multiplayer.gameplay?.currentAction?.id).catch((error) => {
+        console.log('Unable to complete synchronized movement', error);
+      });
+      return;
+    }
+
+    const isLocalDetourWaypoint = localRoadblock?.choice === 'detour'
+      && localRoadblock.status === 'travelling'
+      && localPendingAction?.detourSegmentType === 'waypoint';
+
+    if (isLocalDetourWaypoint) {
+      const detourStep = Number(localPendingAction.detourStep) || 0;
+      const stop = localRoadblock.detourStops?.[detourStep];
+      if (!stop) return;
+      const challengeId = stop.challenges?.[0]?.id || null;
+      setIsCarDriving(false);
+      setRemainingMoves(0);
+      setLocalRoadblock({ ...localRoadblock, status: 'detourChallenge', detourStep });
+      setCurrentChallenge({
+        ...getChallengeForStop(0, [stop], challengeId),
+        markerPosition: stop.position,
+        isDetour: true,
+      });
+      setState('challenge');
+      return;
+    }
+
     const hasFinishedRoute = landedLeg >= routeModel.finalStopIndex;
     const finishPosition = hasFinishedRoute ? getFinishPosition(teamProgress) : null;
     const previousProgress = teamProgress[pieceId] || {};
@@ -692,13 +760,6 @@ const GameScreen = ({ route }) => {
     setLocalMovementPath(null);
     setLocalPendingAction(null);
     setLocalRoadblock(null);
-
-    if (multiplayerEnabled) {
-      multiplayer.completeMovement(multiplayer.gameplay?.currentAction?.id).catch((error) => {
-        console.log('Unable to complete synchronized movement', error);
-      });
-      return;
-    }
 
     const nextActiveTeamIndex = getNextActiveTeamIndex(gamePieces, nextTeamProgress, activeTeamIndex);
     if (hasFinishedRoute && !activeDevDrive) {
@@ -779,11 +840,42 @@ const GameScreen = ({ route }) => {
     setState('moving');
   };
 
+  const handleSkipChallenge = () => {
+    if (multiplayerEnabled) {
+      if (multiplayer.gameplay?.phase === 'challenge') {
+        multiplayer.completeChallenge({ force: true }).catch((error) => {
+          console.log('Unable to skip synchronized challenge', error);
+        });
+        return;
+      }
+      if (
+        multiplayer.gameplay?.phase === 'roadblock'
+        && multiplayer.gameplay?.roadblock?.status === 'challenge'
+      ) {
+        multiplayer.resolveRoadblock('completed').catch((error) => {
+          console.log('Unable to skip synchronized roadblock challenge', error);
+        });
+        return;
+      }
+      return;
+    }
+
+    if (state === 'challenge' || currentChallenge) {
+      handleChallengeComplete();
+      return;
+    }
+    if (state === 'roadblock' && localRoadblock?.status === 'challenge') {
+      handleRoadblockAction('completed');
+    }
+  };
+
   const stableDevDriveToStop = useLatestCallback(startDevDriveToStop);
   const requestRollRef = useRef(requestRoll);
   requestRollRef.current = requestRoll;
   const handleRestartRef = useRef(handleRestart);
   handleRestartRef.current = handleRestart;
+  const handleSkipChallengeRef = useRef(handleSkipChallenge);
+  handleSkipChallengeRef.current = handleSkipChallenge;
   const activeProgressRef = useRef(activeProgress);
   activeProgressRef.current = activeProgress;
   const routeModelRef = useRef(routeModel);
@@ -819,6 +911,9 @@ const GameScreen = ({ route }) => {
     const unsubChallenge = devEventBus.on('dev:testChallenge', ({ stopIndex, forceType }) => {
       if (multiplayerEnabled) return;
       stableDevDriveToStop(stopIndex, forceType || null);
+    });
+    const unsubSkipChallenge = devEventBus.on('dev:skipChallenge', () => {
+      handleSkipChallengeRef.current?.();
     });
     const unsubSpawnRoadblock = devEventBus.on('dev:spawnRoadblock', (data = {}) => {
       const activeModel = routeModelRef.current;
@@ -876,6 +971,7 @@ const GameScreen = ({ route }) => {
     return () => {
       unsubRoll();
       unsubChallenge();
+      unsubSkipChallenge();
       unsubSpawnRoadblock();
       unsubTestRoadblock();
       unsubClearRoadblocks();
@@ -963,6 +1059,9 @@ const GameScreen = ({ route }) => {
           : (moveTargetLeg !== null ? Math.max(0, moveTargetLeg - moveStartLeg) : 0)
       );
   const cameraMode = state === 'moving' && isCarDriving ? 'follow' : 'done';
+  const parkAtMovementEnd = state === 'challenge'
+    && roadblockEvent?.choice === 'detour'
+    && roadblockEvent.status === 'detourChallenge';
   const targetRef = pieceRefs.current[focusedPiece?.id];
   const hudCurrentLeg = state === 'moving' ? passedLeg : currentLeg;
   const fromName = routeModel.stopNames[hudCurrentLeg];
@@ -1000,6 +1099,7 @@ const GameScreen = ({ route }) => {
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
         movementRouteModel={movementRouteModel}
+        parkAtMovementEnd={parkAtMovementEnd}
         onDiceRollStart={stableDiceRollStart}
         onDiceRoll={stableBoardDiceRoll}
         onDriveStart={stableDriveStart}

@@ -101,6 +101,7 @@ const CountryMarker = ({
   fadeStartDistance,
   isDimmed = false,
   isMoving = false,
+  showLabel = false,
   position,
   routeLength,
   stopNumber,
@@ -113,10 +114,10 @@ const CountryMarker = ({
   const { scene } = useGLTF(MARKER_MODEL_SOURCE);
 
   const labelTexture = useMemo(() => {
-    if (!isMoving && !hovered) return null;
+    if (!isMoving && !hovered && !showLabel) return null;
     const label = stopNumber ? `${stopNumber}. ${countryName}` : countryName;
     return createCountryBadgeTexture(label, isMoving);
-  }, [countryName, hovered, isMoving, stopNumber]);
+  }, [countryName, hovered, isMoving, showLabel, stopNumber]);
 
   useEffect(() => () => labelTexture?.dispose?.(), [labelTexture]);
 
@@ -291,8 +292,11 @@ const CountryMarker = ({
       <group position={[0, 0, -0.05]} rotation={[Math.PI / 2, 0, 0]}>
         <primitive object={marker} />
       </group>
-      {(isMoving || hovered) && labelTexture && (
-        <sprite position={[0, 0, 0.72]} scale={[1.1, 0.28, 1]}>
+      {(isMoving || hovered || showLabel) && labelTexture && (
+        <sprite
+          position={[0, 0, showLabel ? 1.55 : 0.72]}
+          scale={showLabel ? [8.6, 2.15, 1] : [1.1, 0.28, 1]}
+        >
           <spriteMaterial map={labelTexture} depthTest={false} transparent={true} />
         </sprite>
       )}
@@ -309,6 +313,8 @@ const CountryMarkers = memo(({
   movingMarkerStop = null,
   occupiedMarkerIndexes = NO_OCCUPIED_MARKERS,
   routeModel,
+  showLabels = false,
+  showStopNumbers = true,
   targetLeg,
   vehicleInMotion = false,
 }) => {
@@ -337,7 +343,7 @@ const CountryMarkers = memo(({
             : (index === movementTargetLeg ? 'approaching' : null))
           : null;
         const countryName = stopData?.name || routeModel.stopNames?.[index] || '';
-        const stopNumber = index + 1;
+        const stopNumber = showStopNumbers ? index + 1 : null;
 
         return (
           <CountryMarker
@@ -351,6 +357,7 @@ const CountryMarkers = memo(({
             fadeStartDistance={fadeStartDistance}
             isDimmed={isDimmed}
             isMoving={isMoving}
+            showLabel={showLabels}
             position={position}
             routeLength={routeModel.length}
             stopNumber={stopNumber}

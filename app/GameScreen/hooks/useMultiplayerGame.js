@@ -29,6 +29,7 @@ import {
 import { getCachedMonumentPool } from '../services/countryStopsService';
 import {
   createRoadblockEvent,
+  createRoadblockDetourSegment,
   createRoadblockMovementPath,
   getRoadblockMovementTiming,
   shouldTriggerRoadblock,
@@ -143,6 +144,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         revision: (current.revision || 0) + 1,
         currentAction: nextAction,
         challengeStop: null,
+        challengeStopData: null,
         challengeId: null,
         challengeRound: null,
         roadblock,
@@ -205,11 +207,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       const brokeThrough = choice === 'completed' && roadblock.status === 'challenge';
       if (!takesDetour && !brokeThrough) return undefined;
 
-      const movementPath = createRoadblockMovementPath({
-        event: roadblock,
-        routeModel,
-        type: takesDetour ? 'detour' : 'direct',
-      });
+      const movementPath = takesDetour
+        ? createRoadblockDetourSegment({ event: roadblock, routeModel, step: 0 })
+        : createRoadblockMovementPath({ event: roadblock, routeModel, type: 'direct' });
+      if (!movementPath) return undefined;
       const timing = getRoadblockMovementTiming({ movementPath, now: resolvedAt });
 
       return {
@@ -221,10 +222,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           ...timing,
           movementPath,
           roadblockChoice: takesDetour ? 'detour' : 'challenge',
+          detourStep: takesDetour ? 0 : null,
+          detourSegmentType: takesDetour ? 'waypoint' : null,
         },
         roadblock: {
           ...roadblock,
-          status: 'resolved',
+          status: takesDetour ? 'travelling' : 'resolved',
           choice: takesDetour ? 'detour' : 'challenge',
           resolvedAt,
         },
@@ -268,6 +271,33 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       const teamIds = getRequiredTeamIds(gameDataRef.current);
+      const isDetourWaypoint = action.roadblockChoice === 'detour'
+        && action.detourSegmentType === 'waypoint'
+        && current.roadblock?.choice === 'detour';
+
+      if (isDetourWaypoint) {
+        const detourStep = Number(action.detourStep) || 0;
+        const stop = current.roadblock.detourStops?.[detourStep];
+        if (!stop) return undefined;
+        const challengeId = stop.challenges?.[0]?.id || null;
+
+        return {
+          ...current,
+          phase: 'challenge',
+          revision: (current.revision || 0) + 1,
+          challengeStop: null,
+          challengeStopData: stop,
+          challengeId,
+          challengeRound: null,
+          roadblock: {
+            ...current.roadblock,
+            status: 'detourChallenge',
+            detourStep,
+          },
+          updatedAt: completedAt,
+        };
+      }
+
       const hasFinishedRoute = action.targetLeg >= routeModel.finalStopIndex;
       const finishPosition = hasFinishedRoute
         ? getFinishPosition(current.teamProgress)
@@ -328,6 +358,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           revision: (current.revision || 0) + 1,
           teamProgress,
           challengeStop: action.targetLeg,
+          challengeStopData: null,
           challengeId,
           challengeRound,
           usedMonumentIds,
@@ -346,6 +377,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         teamProgress,
         currentAction: null,
         challengeStop: null,
+        challengeStopData: null,
         challengeId: null,
         challengeRound: null,
         roadblock: null,
@@ -377,8 +409,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       const challenge = getChallengeForStop(
-        current.challengeStop,
-        routeModel.countryStops,
+        current.challengeStopData ? 0 : current.challengeStop,
+        current.challengeStopData ? [current.challengeStopData] : routeModel.countryStops,
         current.challengeId
       );
       const updatedAt = now();
@@ -587,17 +619,55 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     return result.committed;
   }, [canControlTurn, enabled, gameID, identity.isTeamLeader, identity.localTeamId, now, routeModel.countryStops]);
 
-  const completeChallenge = useCallback(async () => {
-    if (!enabled || !gameID || !canControlTurn) return false;
+  const completeChallenge = useCallback(async (options = {}) => {
+    const { force = false } = options;
+    if (!enabled || !gameID || (!canControlTurn && !force)) return false;
 
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       if (
         !current
         || current.phase !== 'challenge'
-        || current.activeTeamId !== identity.localTeamId
-        || (current.challengeRound && current.challengeRound.stage !== 'result')
+        || (!force && current.activeTeamId !== identity.localTeamId)
+        || (!force && current.challengeRound && current.challengeRound.stage !== 'result')
       ) {
         return undefined;
+      }
+
+      if (current.roadblock?.choice === 'detour' && current.roadblock.status === 'detourChallenge') {
+        const completedStep = Number(current.roadblock.detourStep) || 0;
+        const nextStep = completedStep + 1;
+        const movementPath = createRoadblockDetourSegment({
+          event: current.roadblock,
+          routeModel,
+          step: nextStep,
+        });
+        if (!movementPath || !current.currentAction) return undefined;
+        const updatedAt = now();
+        const timing = getRoadblockMovementTiming({ movementPath, now: updatedAt });
+        const headingToDestination = nextStep >= (current.roadblock.detourStops?.length || 0);
+
+        return {
+          ...current,
+          phase: 'moving',
+          revision: (current.revision || 0) + 1,
+          currentAction: {
+            ...current.currentAction,
+            ...timing,
+            movementPath,
+            detourStep: nextStep,
+            detourSegmentType: headingToDestination ? 'destination' : 'waypoint',
+          },
+          challengeStop: null,
+          challengeStopData: null,
+          challengeId: null,
+          challengeRound: null,
+          roadblock: {
+            ...current.roadblock,
+            status: 'travelling',
+            detourStep: nextStep,
+          },
+          updatedAt,
+        };
       }
 
       const teamIds = getRequiredTeamIds(gameDataRef.current);
@@ -615,6 +685,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         revision: (current.revision || 0) + 1,
         currentAction: null,
         challengeStop: null,
+        challengeStopData: null,
         challengeId: null,
         challengeRound: null,
         roadblock: null,
@@ -623,7 +694,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [canControlTurn, enabled, gameID, identity.localTeamId, now]);
+  }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
 
   const restart = useCallback(async () => {
     if (!enabled || !gameID || !isHost) return false;

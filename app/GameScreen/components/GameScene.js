@@ -94,6 +94,7 @@ const GameScene = memo(({
   movingPieceId,
   moveTargets,
   movementRouteModel = null,
+  parkAtMovementEnd = false,
   onDiceRoll,
   onDiceRollStart,
   onDriveStart,
@@ -176,6 +177,7 @@ const GameScene = memo(({
         movingPieceId={movingPieceId}
         moveTargets={moveTargets}
         movementRouteModel={movementRouteModel}
+        parkAtMovementEnd={parkAtMovementEnd}
         onDriveStart={onDriveStart}
         onLegPass={onLegPass}
         onMoveComplete={onMoveComplete}
@@ -186,6 +188,18 @@ const GameScene = memo(({
         vehicleInMotion={vehicleInMotion}
       />
     </Suspense>
+    {showDetourPreview && detourPreviewModel && (
+      <Suspense fallback={null}>
+        <CountryMarkers
+          currentLeg={0}
+          occupiedMarkerIndexes={new Set([0, detourPreviewModel.finalStopIndex])}
+          routeModel={detourPreviewModel}
+          showLabels
+          showStopNumbers={false}
+          targetLeg={1}
+        />
+      </Suspense>
+    )}
     <Suspense fallback={
       <CountryMarkersFallback
         currentLeg={currentLeg}
@@ -210,6 +224,9 @@ const GameScene = memo(({
     </Suspense>
     <CameraController
       mode={cameraMode}
+      overviewFocusOffset={showDetourPreview ? 0.38 : 0}
+      overviewPositions={showDetourPreview ? (detourPreviewModel?.route || []) : []}
+      overviewScaleMultiplier={showDetourPreview ? 1.48 : 1}
       overviewTargetPosition={
         movingMarkerIndex >= 0 && routeModel.route[movingMarkerIndex]
           ? routeModel.route[movingMarkerIndex]

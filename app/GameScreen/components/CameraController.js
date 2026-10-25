@@ -11,7 +11,15 @@ import {
 const FOLLOW_DAMPING = 4.5;
 const OVERVIEW_DAMPING = 3.2;
 
-const CameraController = ({ mode, overviewTargetPosition, pieceRefs, targetRef }) => {
+const CameraController = ({
+  mode,
+  overviewFocusOffset = 0,
+  overviewPositions = [],
+  overviewScaleMultiplier = 1,
+  overviewTargetPosition,
+  pieceRefs,
+  targetRef,
+}) => {
   const { camera, size } = useThree();
   const lookAt = useRef(DONE_LOOK.clone());
   const desiredCameraPosition = useMemo(() => new THREE.Vector3(), []);
@@ -31,8 +39,12 @@ const CameraController = ({ mode, overviewTargetPosition, pieceRefs, targetRef }
     } else if (setOverviewCameraPose({
       aspect: size?.width && size?.height ? size.width / size.height : camera.aspect,
       cameraPosition: desiredCameraPosition,
+      extraPositions: overviewPositions,
+      focusOffsetX: overviewFocusOffset,
       lookAt: desiredLookAt,
+      maxScale: overviewPositions.length ? 1.35 : undefined,
       pieceRefs,
+      scaleMultiplier: overviewScaleMultiplier,
       targetPosition: overviewTargetPosition,
     })) {
       camera.position.lerp(desiredCameraPosition, alpha);

@@ -37,6 +37,7 @@ const GamePieces = memo(({
   onLegPass,
   onMoveComplete,
   pathRevealDuration,
+  parkAtMovementEnd = false,
   pieceRefs,
   teamProgress,
   routeModel,
@@ -82,7 +83,9 @@ const GamePieces = memo(({
         const progress = teamProgress[piece.id] || { currentLeg: 0, isDone: false };
         const targetLeg = moveTargets[piece.id] ?? progress.currentLeg;
         const isPieceDriving = driving && movingPieceId === piece.id && !progress.isDone;
-        const activeMovementModel = isPieceDriving && movementRouteModel ? movementRouteModel : null;
+        const activeMovementModel = piece.id === movingPieceId && movementRouteModel
+          ? movementRouteModel
+          : null;
         const passedVehicleLegs = isPieceDriving
           ? gamePieces.reduce((distances, otherPiece) => {
             if (otherPiece.id === piece.id) return distances;
@@ -111,7 +114,9 @@ const GamePieces = memo(({
           <GamePiece
             key={`${piece.id}-${piece.model.id}`}
             activeCarProgressRef={isPieceDriving ? activeCarProgressRef : null}
-            currentLeg={activeMovementModel ? 0 : progress.currentLeg}
+            currentLeg={activeMovementModel
+              ? (parkAtMovementEnd && !isPieceDriving ? activeMovementModel.finalStopIndex : 0)
+              : progress.currentLeg}
             driving={isPieceDriving}
             moveStartDelay={moveStartDelay}
             onDriveStart={isPieceDriving ? onDriveStart : null}
