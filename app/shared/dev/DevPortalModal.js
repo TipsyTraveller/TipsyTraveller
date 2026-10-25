@@ -59,6 +59,10 @@ export default function DevPortalModal({ visible, onClose }) {
     if (visible) {
       loadDeviceId();
       detectActiveGamePin();
+      const routeInfo = getCurrentRouteInfo();
+      if (routeInfo?.name === 'GameScreen') {
+        setActiveTab('board');
+      }
       AsyncStorage.getItem('dev_portal_button_corner')
         .then((saved) => {
           if (saved) setButtonCorner(saved);
@@ -238,6 +242,12 @@ export default function DevPortalModal({ visible, onClose }) {
     } else {
       devEventBus.emit('dev:testChallenge', { forceType, stopIndex });
     }
+  };
+
+  const handleSkipChallenge = () => {
+    devEventBus.emit('dev:skipChallenge');
+    showStatus('Skipped challenge!');
+    onClose();
   };
 
   const handleRestartBoard = () => {
@@ -620,6 +630,12 @@ export default function DevPortalModal({ visible, onClose }) {
                 <Text style={styles.sectionDescription}>
                   Drive active team to destination and open its country challenge.
                 </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.accentButton, { marginBottom: 10 }]}
+                  onPress={handleSkipChallenge}
+                >
+                  <Text style={styles.actionButtonText}>⏭️ Skip Active Challenge</Text>
+                </TouchableOpacity>
                 <View style={styles.challengeGrid}>
                   {activeRouteStops.slice(1).map((stop, index) => {
                     const stopIndex = index + 1;
@@ -662,12 +678,20 @@ export default function DevPortalModal({ visible, onClose }) {
                 </View>
 
                 <Text style={styles.sectionHeading}>Board Controls</Text>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.primaryButton]}
-                  onPress={handleRestartBoard}
-                >
-                  <Text style={styles.actionButtonText}>🔄 Reset Board State</Text>
-                </TouchableOpacity>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.accentButton]}
+                    onPress={handleSkipChallenge}
+                  >
+                    <Text style={styles.actionButtonText}>⏭️ Skip Challenge</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.primaryButton]}
+                    onPress={handleRestartBoard}
+                  >
+                    <Text style={styles.actionButtonText}>🔄 Reset Board State</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
