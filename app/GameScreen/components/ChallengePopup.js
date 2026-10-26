@@ -450,8 +450,8 @@ const ChallengePopup = ({
     cardWidth = cardHeight * PHONE_CARD_RATIO;
   }
   if (expandedGeoMap) {
-    cardWidth = Math.max(320, width - insets.left - insets.right - 24);
-    cardHeight = Math.max(220, height - insets.top - insets.bottom - 20);
+    cardWidth = Math.max(320, width - insets.left - insets.right - 12);
+    cardHeight = Math.max(220, height - insets.top - insets.bottom - 8);
   }
   const roomy = cardHeight >= 280;
   const landmarkWidth = Math.max(96, Math.min(160, cardHeight * 0.36));
@@ -558,10 +558,10 @@ const ChallengePopup = ({
       style={[
         styles.overlay,
         {
-          paddingTop: Math.max(12, insets.top + 8),
-          paddingBottom: Math.max(12, insets.bottom + 8),
-          paddingLeft: Math.max(14, insets.left + 8),
-          paddingRight: Math.max(14, insets.right + 8),
+          paddingTop: expandedGeoMap ? Math.max(4, insets.top + 4) : Math.max(12, insets.top + 8),
+          paddingBottom: expandedGeoMap ? Math.max(4, insets.bottom + 4) : Math.max(12, insets.bottom + 8),
+          paddingLeft: expandedGeoMap ? Math.max(6, insets.left + 4) : Math.max(14, insets.left + 8),
+          paddingRight: expandedGeoMap ? Math.max(6, insets.right + 4) : Math.max(14, insets.right + 8),
         },
       ]}
       pointerEvents="auto"

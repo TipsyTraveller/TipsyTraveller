@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 import {
-  EUROPE_MAP_BORDER_PATH_DATA,
   EUROPE_MAP_FILL_PATH_DATA,
   EUROPE_SVG_VIEWBOX,
 } from '../constants/europeMapPaths';
+import { EUROPE_MAP_OVERVIEW_PATH_DATA } from '../constants/europeMapOverviewPath';
 import {
   boardToSvgCoords,
   GEO_GUESSR_IMAGE_HEADERS,
@@ -23,7 +23,12 @@ const TEAM_COLORS = {
 
 const MIN_MAP_ZOOM = 1;
 const MAX_MAP_ZOOM = 4;
+const INITIAL_MAP_ZOOM = 2.4;
+const RESULT_MAP_ZOOM = 1.8;
+const RESULT_MAP_PADDING = 0.09;
+const DETAILED_MAP_ZOOM_THRESHOLD = 2.25;
 const MAP_GESTURE_MOVE_THRESHOLD = 5;
+const MAP_ASPECT_RATIO = EUROPE_SVG_VIEWBOX.width / EUROPE_SVG_VIEWBOX.height;
 
 const getTouchPoint = (touch) => ({
   localX: Number.isFinite(touch?.locationX) ? touch.locationX : 0,
@@ -62,13 +67,42 @@ const GeoGuessrEuropeMap = ({
   targetPosition,
 }) => {
   const [mapLayout, setMapLayout] = useState({ width: 1, height: 1 });
-  const [mapView, setMapView] = useState({ centerX: 0.5, centerY: 0.5, zoom: 1 });
+  const [mapView, setMapView] = useState({
+    centerX: 0.5,
+    centerY: 0.5,
+    zoom: revealTarget ? RESULT_MAP_ZOOM : INITIAL_MAP_ZOOM,
+  });
   const mapViewRef = useRef(mapView);
+  const mapSvgRef = useRef(null);
   const gesture = useRef(null);
+  const pendingMapView = useRef(null);
+  const mapUpdateFrame = useRef(null);
+  const resultMapPoints = useMemo(() => (
+    [targetPosition, ...Object.values(guesses || {})]
+      .filter((position) => (
+        Number.isFinite(Number(position?.x)) && Number.isFinite(Number(position?.y))
+      ))
+      .map((position) => {
+        const { svgX, svgY } = boardToSvgCoords(position);
+        return {
+          x: (svgX - EUROPE_SVG_VIEWBOX.minX) / EUROPE_SVG_VIEWBOX.width,
+          y: (svgY - EUROPE_SVG_VIEWBOX.minY) / EUROPE_SVG_VIEWBOX.height,
+        };
+      })
+  ), [guesses, targetPosition]);
+
+  const getViewportSize = (zoom) => {
+    const layoutAspectRatio = mapLayout.width / Math.max(1, mapLayout.height);
+    return {
+      width: Math.max(1, layoutAspectRatio / MAP_ASPECT_RATIO) / zoom,
+      height: Math.max(1, MAP_ASPECT_RATIO / layoutAspectRatio) / zoom,
+    };
+  };
 
   const clampCenter = (centerX, centerY, zoom) => {
-    const halfWidth = 0.5 / zoom;
-    const halfHeight = 0.5 / zoom;
+    const viewport = getViewportSize(zoom);
+    const halfWidth = Math.min(0.5, viewport.width / 2);
+    const halfHeight = Math.min(0.5, viewport.height / 2);
     return {
       centerX: Math.max(halfWidth, Math.min(1 - halfWidth, centerX)),
       centerY: Math.max(halfHeight, Math.min(1 - halfHeight, centerY)),
@@ -76,14 +110,89 @@ const GeoGuessrEuropeMap = ({
     };
   };
 
-  const setZoom = (nextZoom) => {
-    const zoom = Math.max(MIN_MAP_ZOOM, Math.min(MAX_MAP_ZOOM, nextZoom));
-    setMapView((current) => clampCenter(current.centerX, current.centerY, zoom));
+  const getNativeViewBox = (view) => {
+    const viewport = getViewportSize(view.zoom);
+    const width = EUROPE_SVG_VIEWBOX.width * viewport.width;
+    const height = EUROPE_SVG_VIEWBOX.height * viewport.height;
+    return {
+      minX: EUROPE_SVG_VIEWBOX.minX + view.centerX * EUROPE_SVG_VIEWBOX.width - width / 2,
+      minY: EUROPE_SVG_VIEWBOX.minY + view.centerY * EUROPE_SVG_VIEWBOX.height - height / 2,
+      vbWidth: width,
+      vbHeight: height,
+      align: 'none',
+      meetOrSlice: 2,
+    };
   };
 
+  const getResultMapView = () => {
+    if (!resultMapPoints.length) {
+      return { centerX: 0.5, centerY: 0.5, zoom: RESULT_MAP_ZOOM };
+    }
+
+    const xValues = resultMapPoints.map((point) => point.x);
+    const yValues = resultMapPoints.map((point) => point.y);
+    const minX = Math.min(...xValues);
+    const maxX = Math.max(...xValues);
+    const minY = Math.min(...yValues);
+    const maxY = Math.max(...yValues);
+    const baseViewport = getViewportSize(MIN_MAP_ZOOM);
+    const requiredWidth = Math.max(0.2, maxX - minX + RESULT_MAP_PADDING * 2);
+    const requiredHeight = Math.max(0.2, maxY - minY + RESULT_MAP_PADDING * 2);
+    const zoom = Math.max(MIN_MAP_ZOOM, Math.min(
+      RESULT_MAP_ZOOM,
+      baseViewport.width / requiredWidth,
+      baseViewport.height / requiredHeight
+    ));
+
+    return clampCenter((minX + maxX) / 2, (minY + maxY) / 2, zoom);
+  };
+
+  const commitMapView = (nextView) => {
+    if (mapUpdateFrame.current !== null) {
+      cancelAnimationFrame(mapUpdateFrame.current);
+      mapUpdateFrame.current = null;
+      pendingMapView.current = null;
+    }
+    mapViewRef.current = nextView;
+    setMapView(nextView);
+  };
+
+  const scheduleMapView = (nextView) => {
+    const crossedDetailThreshold = (
+      mapViewRef.current.zoom >= DETAILED_MAP_ZOOM_THRESHOLD
+    ) !== (nextView.zoom >= DETAILED_MAP_ZOOM_THRESHOLD);
+    mapViewRef.current = nextView;
+    pendingMapView.current = nextView;
+    if (crossedDetailThreshold) setMapView(nextView);
+    if (mapUpdateFrame.current !== null) return;
+    mapUpdateFrame.current = requestAnimationFrame(() => {
+      mapUpdateFrame.current = null;
+      if (!pendingMapView.current) return;
+      const pendingView = pendingMapView.current;
+      pendingMapView.current = null;
+      mapSvgRef.current?.setNativeProps(getNativeViewBox(pendingView));
+    });
+  };
+
+  const setZoom = (nextZoom) => {
+    const zoom = Math.max(MIN_MAP_ZOOM, Math.min(MAX_MAP_ZOOM, nextZoom));
+    const current = mapViewRef.current;
+    commitMapView(clampCenter(current.centerX, current.centerY, zoom));
+  };
+
+  useEffect(() => () => {
+    if (mapUpdateFrame.current !== null) cancelAnimationFrame(mapUpdateFrame.current);
+  }, []);
+
   useEffect(() => {
-    mapViewRef.current = mapView;
-  }, [mapView]);
+    if (!revealTarget) {
+      commitMapView({ centerX: 0.5, centerY: 0.5, zoom: INITIAL_MAP_ZOOM });
+    }
+  }, [revealTarget]);
+
+  useEffect(() => {
+    if (revealTarget) commitMapView(getResultMapView());
+  }, [mapLayout.height, mapLayout.width, resultMapPoints, revealTarget]);
 
   const startGesture = (nativeEvent, inheritedMultiTouch = false) => {
     const metrics = getTouchMetrics(nativeEvent);
@@ -121,30 +230,32 @@ const GeoGuessrEuropeMap = ({
     const width = Math.max(1, mapLayout.width);
     const height = Math.max(1, mapLayout.height);
     const { startMetrics, startView } = activeGesture;
+    const startViewport = getViewportSize(startView.zoom);
 
     if (metrics.touchCount >= 2 && startMetrics.distance > 0) {
       const zoom = Math.max(
         MIN_MAP_ZOOM,
         Math.min(MAX_MAP_ZOOM, startView.zoom * (metrics.distance / startMetrics.distance))
       );
+      const zoomViewport = getViewportSize(zoom);
       const startOffsetX = (startMetrics.centroid.localX / width) - 0.5;
       const startOffsetY = (startMetrics.centroid.localY / height) - 0.5;
       const currentOffsetX = (metrics.centroid.localX / width) - 0.5;
       const currentOffsetY = (metrics.centroid.localY / height) - 0.5;
-      const anchorX = startView.centerX + startOffsetX / startView.zoom;
-      const anchorY = startView.centerY + startOffsetY / startView.zoom;
-      setMapView(clampCenter(
-        anchorX - currentOffsetX / zoom,
-        anchorY - currentOffsetY / zoom,
+      const anchorX = startView.centerX + startOffsetX * startViewport.width;
+      const anchorY = startView.centerY + startOffsetY * startViewport.height;
+      scheduleMapView(clampCenter(
+        anchorX - currentOffsetX * zoomViewport.width,
+        anchorY - currentOffsetY * zoomViewport.height,
         zoom
       ));
       return;
     }
 
     if (startView.zoom > MIN_MAP_ZOOM) {
-      setMapView(clampCenter(
-        startView.centerX - deltaX / (width * startView.zoom),
-        startView.centerY - deltaY / (height * startView.zoom),
+      scheduleMapView(clampCenter(
+        startView.centerX - (deltaX / width) * startViewport.width,
+        startView.centerY - (deltaY / height) * startViewport.height,
         startView.zoom
       ));
     }
@@ -153,13 +264,20 @@ const GeoGuessrEuropeMap = ({
   const handleResponderRelease = (event) => {
     const activeGesture = gesture.current;
     gesture.current = null;
-    if (!canPlacePin || !onSelectPosition || activeGesture?.moved || activeGesture?.usedMultiTouch) return;
+    if (activeGesture?.moved || activeGesture?.usedMultiTouch) {
+      commitMapView(mapViewRef.current);
+      return;
+    }
+    if (!canPlacePin || !onSelectPosition) return;
     const { locationX, locationY } = event.nativeEvent;
     if (!Number.isFinite(locationX) || !Number.isFinite(locationY)) return;
     const width = Math.max(1, mapLayout.width);
     const height = Math.max(1, mapLayout.height);
-    const normX = mapView.centerX + ((locationX / width) - 0.5) / mapView.zoom;
-    const normY = mapView.centerY + ((locationY / height) - 0.5) / mapView.zoom;
+    const currentView = mapViewRef.current;
+    const viewport = getViewportSize(currentView.zoom);
+    const normX = currentView.centerX + ((locationX / width) - 0.5) * viewport.width;
+    const normY = currentView.centerY + ((locationY / height) - 0.5) * viewport.height;
+    if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
     onSelectPosition(normalizedMapToBoard(normX, normY));
   };
 
@@ -178,8 +296,9 @@ const GeoGuessrEuropeMap = ({
     [gamePieces]
   );
 
-  const visibleWidth = EUROPE_SVG_VIEWBOX.width / mapView.zoom;
-  const visibleHeight = EUROPE_SVG_VIEWBOX.height / mapView.zoom;
+  const viewport = getViewportSize(mapView.zoom);
+  const visibleWidth = EUROPE_SVG_VIEWBOX.width * viewport.width;
+  const visibleHeight = EUROPE_SVG_VIEWBOX.height * viewport.height;
   const viewBoxX = EUROPE_SVG_VIEWBOX.minX + mapView.centerX * EUROPE_SVG_VIEWBOX.width - visibleWidth / 2;
   const viewBoxY = EUROPE_SVG_VIEWBOX.minY + mapView.centerY * EUROPE_SVG_VIEWBOX.height - visibleHeight / 2;
   const viewBoxString = `${viewBoxX} ${viewBoxY} ${visibleWidth} ${visibleHeight}`;
@@ -201,9 +320,13 @@ const GeoGuessrEuropeMap = ({
       onResponderGrant={handleResponderGrant}
       onResponderMove={handleResponderMove}
       onResponderRelease={handleResponderRelease}
-      onResponderTerminate={() => { gesture.current = null; }}
+      onResponderTerminate={() => {
+        gesture.current = null;
+        commitMapView(mapViewRef.current);
+      }}
     >
       <Svg
+        ref={mapSvgRef}
         viewBox={viewBoxString}
         width="100%"
         height="100%"
@@ -217,17 +340,16 @@ const GeoGuessrEuropeMap = ({
           fill="#223144"
         />
         <Path
-          d={EUROPE_MAP_FILL_PATH_DATA}
+          d={revealTarget || mapView.zoom >= DETAILED_MAP_ZOOM_THRESHOLD
+            ? EUROPE_MAP_FILL_PATH_DATA
+            : EUROPE_MAP_OVERVIEW_PATH_DATA}
           fill="#FFF1CD"
           fillRule="evenodd"
-        />
-        <Path
-          d={EUROPE_MAP_BORDER_PATH_DATA}
-          fill="none"
           stroke="#7C8791"
-          strokeWidth={0.24 * markerScale}
+          strokeWidth={0.24 * (EUROPE_SVG_VIEWBOX.width / 290)}
           strokeLinecap="round"
           strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
         />
 
         {revealTarget && targetSvg && Object.entries(guesses || {}).map(([teamId, guess]) => {
