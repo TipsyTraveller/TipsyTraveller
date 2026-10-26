@@ -46,6 +46,65 @@ export const createRouteModel = (countryStops) => {
   };
 };
 
+const createCurveRouteModel = (countryStops, curve, stopDistances = null) => {
+  const stops = normalizeCountryStops(countryStops);
+  const route = stops.map((stop) => new THREE.Vector3(stop.position.x, stop.position.y, -0.92));
+  curve.arcLengthDivisions = 1400;
+  curve.updateArcLengths();
+  const length = curve.getLength();
+  const cumulative = stopDistances || route.reduce((distances, point, index) => (
+    index === 0
+      ? [0]
+      : [...distances, distances[index - 1] + route[index - 1].distanceTo(point)]
+  ), []);
+  const stopProgress = cumulative.map((distance, index) => (
+    index === route.length - 1 ? 1 : distance / (length || 1)
+  ));
+  return {
+    countryStops: stops,
+    route,
+    markers: route,
+    curve,
+    length,
+    stopProgress,
+    stopDistances: cumulative,
+    stopNames: stops.map((stop) => stop.name),
+    finalStopIndex: route.length - 1,
+    getTangentAngle: (progress, lookWindow) => getTangentAngle(curve, progress, lookWindow),
+  };
+};
+
+// Bounded line/bezier pieces round corners without Catmull-Rom overshoot.
+export const createDetourRouteModel = (countryStops) => {
+  const stops = normalizeCountryStops(countryStops);
+  const points = stops.map((stop) => new THREE.Vector3(stop.position.x, stop.position.y, -0.92));
+  if (points.length < 3) return createRouteModel(stops);
+  const tangents = points.map((point, index) => {
+    if (index === 0) return points[1].clone().sub(point).normalize();
+    if (index === points.length - 1) return point.clone().sub(points[index - 1]).normalize();
+    const incoming = point.clone().sub(points[index - 1]).normalize();
+    const outgoing = points[index + 1].clone().sub(point).normalize();
+    const blended = incoming.add(outgoing);
+    return blended.lengthSq() > 0.01 ? blended.normalize() : outgoing;
+  });
+  const curve = new THREE.CurvePath();
+  const cumulative = [0];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const controlLength = start.distanceTo(end) * 0.22;
+    const segment = new THREE.CubicBezierCurve3(
+      start,
+      start.clone().add(tangents[index].clone().multiplyScalar(controlLength)),
+      end.clone().sub(tangents[index + 1].clone().multiplyScalar(controlLength)),
+      end
+    );
+    curve.add(segment);
+    cumulative.push(cumulative[index] + segment.getLength());
+  }
+  return createCurveRouteModel(stops, curve, cumulative);
+};
+
 export const DEFAULT_ROUTE_MODEL = createRouteModel(DEFAULT_COUNTRY_STOPS);
 export const ROUTE = DEFAULT_ROUTE_MODEL.route;
 export const MARKERS = DEFAULT_ROUTE_MODEL.markers;

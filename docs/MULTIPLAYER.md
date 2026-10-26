@@ -22,12 +22,13 @@ games/{gameID}
   teamModels/{team1|team2|team3}: modelId
   routeStops[]: immutable ordered room snapshot
   gameplay
-    schemaVersion: 6
+    schemaVersion: 7
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
     teamProgress/{teamId}: currentLeg, isDone, score,
-      challengePoints, finishPosition?
+      challengePoints, drinks, playerDrinks?, finishPosition?, detour?
     currentAction: id, type, teamId, value, fromLeg, targetLeg,
-      inputMethod, startedAt, movementStartsAt, movementEndsAt
+      inputMethod, startedAt, movementStartsAt, movementEndsAt,
+      movementPath?, detourStartStep?, detourStep?, detourSegmentType?
     challengeStop, challengeStopData, challengeId, challengeRound
     roadblock, roadblockHistory[], usedMonumentIds[]
 players/{gameID}
@@ -40,6 +41,10 @@ gameContent/monumentPool: mirrored GeoGuessr fallback
 Null Firebase fields may be omitted. Empty team placeholders begin as empty strings
 and become objects when players are pushed. Preserve these compatibility quirks
 unless every reader and writer is migrated together.
+
+Schema 7 stores an active detour under the affected team's progress so turn ownership
+can rotate normally. In-flight schema 6 detour waypoint indexes are normalized when
+their movement or challenge completes; new sessions always write schema 7 node indexes.
 
 ## Firestore content
 

@@ -161,6 +161,8 @@ const STOP_VISUALS = {
   'belgium-finish': { code: 'BE', city: 'Brussels', landmark: 'brussels' },
 };
 
+export const GEO_GUESSR_LOSER_SIPS = 2;
+
 // Short badge for the failure penalty, taken from the penalty sentence unless a
 // challenge sets an explicit `penaltyTag`.
 export const getPenaltyTag = (challenge) => {
@@ -170,6 +172,17 @@ export const getPenaltyTag = (challenge) => {
   const sips = penalty.match(/(\d+)\s+sips?/i);
   if (sips) return `${sips[1]} ${sips[1] === '1' ? 'SIP' : 'SIPS'}`;
   return 'DRINK';
+};
+
+export const getPenaltySips = (challenge) => {
+  if (Number.isFinite(Number(challenge?.penaltySips))) {
+    return Math.max(0, Math.round(Number(challenge.penaltySips)));
+  }
+  const text = `${challenge?.penaltyTag ?? ''} ${challenge?.penalty ?? ''}`;
+  if (/\bdown/i.test(text)) return 5;
+  const sips = text.match(/(\d+)\s+sips?/i);
+  if (sips) return Math.max(1, Number(sips[1]) || 1);
+  return 1;
 };
 
 // Optional timer chip, taken from the first "N seconds" in the challenge text.

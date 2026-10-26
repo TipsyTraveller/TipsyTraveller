@@ -14,10 +14,12 @@ import {
   COUNTRY_WORD_CHALLENGE_TYPE,
   didTriggerRoadsideDuel,
   GEO_GUESSR_CHALLENGE_TYPE,
+  GEO_GUESSR_LOSER_SIPS,
   getChallengeForStop,
   getChallengeIdForStop,
   getCountryWordRound,
   getGeoGuessrRound,
+  getPenaltySips,
   getTeamPlayers,
   isBotOnlyTeam,
 } from '../constants/challenges';
@@ -30,7 +32,6 @@ import { getCachedMonumentPool } from '../services/countryStopsService';
 import {
   createRoadblockEvent,
   createRoadblockDetourSegment,
-  createRoadblockMovementPath,
   getRoadblockMovementTiming,
   shouldTriggerRoadblock,
 } from '../constants/roadblocks';
@@ -131,11 +132,63 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         return undefined;
       }
 
+      const activeDetour = current.teamProgress?.[current.activeTeamId]?.detour;
+      if (activeDetour) {
+        const startStep = Number(activeDetour.step) || 0;
+        const finalStep = (activeDetour.detourStops?.length || 0) + 1;
+        const targetStep = Math.min(startStep + action.value, finalStep);
+        const movementPath = createRoadblockDetourSegment({
+          event: activeDetour,
+          routeModel,
+          step: startStep,
+          targetStep,
+        });
+        if (!movementPath) return undefined;
+        const timing = getRoadblockMovementTiming({
+          movementPath,
+          movementStartsAt: action.movementStartsAt,
+          now: action.startedAt,
+        });
+
+        return {
+          ...current,
+          phase: 'moving',
+          revision: (current.revision || 0) + 1,
+          currentAction: {
+            ...action,
+            ...timing,
+            fromLeg: activeDetour.fromLeg,
+            targetLeg: activeDetour.targetLeg,
+            movementPath,
+            roadblockChoice: 'detour',
+            detourStartStep: startStep,
+            detourStep: targetStep,
+            detourSegmentType: targetStep >= finalStep ? 'destination' : 'waypoint',
+          },
+          challengeStop: null,
+          challengeStopData: null,
+          challengeId: null,
+          challengeRound: null,
+          roadblock: {
+            ...activeDetour,
+            status: 'travelling',
+            choice: 'detour',
+            detourStep: targetStep,
+          },
+          updatedAt: action.startedAt,
+        };
+      }
+
       const roadblock = shouldTriggerRoadblock({ action, gameplay: current })
         ? createRoadblockEvent({ action, routeModel, turnNumber: current.turnNumber })
         : null;
       const nextAction = roadblock
-        ? { ...action, movementStartsAt: null, movementEndsAt: null }
+        ? {
+            ...action,
+            targetLeg: roadblock.targetLeg,
+            movementStartsAt: null,
+            movementEndsAt: null,
+          }
         : action;
 
       return {
@@ -207,30 +260,38 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       const brokeThrough = choice === 'completed' && roadblock.status === 'challenge';
       if (!takesDetour && !brokeThrough) return undefined;
 
-      const movementPath = takesDetour
-        ? createRoadblockDetourSegment({ event: roadblock, routeModel, step: 0 })
-        : createRoadblockMovementPath({ event: roadblock, routeModel, type: 'direct' });
-      if (!movementPath) return undefined;
-      const timing = getRoadblockMovementTiming({ movementPath, now: resolvedAt });
+      const teamIds = getRequiredTeamIds(gameDataRef.current);
+      const nextTeamId = getNextActiveTeamId(teamIds, current.teamProgress, action.teamId);
+      const nextTeamProgress = takesDetour
+        ? {
+            ...current.teamProgress,
+            [action.teamId]: {
+              ...current.teamProgress?.[action.teamId],
+              detour: {
+                ...roadblock,
+                choice: 'detour',
+                status: 'pending',
+                step: 0,
+                detourStep: 0,
+                resolvedAt,
+              },
+            },
+          }
+        : current.teamProgress;
 
       return {
         ...current,
-        phase: 'moving',
+        phase: nextTeamId ? 'waiting' : 'done',
+        activeTeamId: nextTeamId || action.teamId,
+        turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
         revision: (current.revision || 0) + 1,
-        currentAction: {
-          ...action,
-          ...timing,
-          movementPath,
-          roadblockChoice: takesDetour ? 'detour' : 'challenge',
-          detourStep: takesDetour ? 0 : null,
-          detourSegmentType: takesDetour ? 'waypoint' : null,
-        },
-        roadblock: {
-          ...roadblock,
-          status: takesDetour ? 'travelling' : 'resolved',
-          choice: takesDetour ? 'detour' : 'challenge',
-          resolvedAt,
-        },
+        teamProgress: nextTeamProgress,
+        currentAction: null,
+        challengeStop: null,
+        challengeStopData: null,
+        challengeId: null,
+        challengeRound: null,
+        roadblock: null,
         updatedAt: resolvedAt,
       };
     });
@@ -271,20 +332,36 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       const teamIds = getRequiredTeamIds(gameDataRef.current);
-      const isDetourWaypoint = action.roadblockChoice === 'detour'
-        && action.detourSegmentType === 'waypoint'
+      const isDetourMovement = action.roadblockChoice === 'detour'
         && current.roadblock?.choice === 'detour';
 
-      if (isDetourWaypoint) {
-        const detourStep = Number(action.detourStep) || 0;
-        const stop = current.roadblock.detourStops?.[detourStep];
+      if (isDetourMovement && action.detourSegmentType === 'waypoint') {
+        // Schema 6 stored zero-based waypoint indexes. Schema 7 stores the
+        // current detour node, where 0 is the branch and 1/2 are waypoints.
+        const detourStep = action.detourStartStep === undefined
+          ? (Number(action.detourStep) || 0) + 1
+          : (Number(action.detourStep) || 0);
+        const stop = current.roadblock.detourStops?.[detourStep - 1];
         if (!stop) return undefined;
         const challengeId = stop.challenges?.[0]?.id || null;
+        const previousProgress = current.teamProgress?.[action.teamId] || {};
 
         return {
           ...current,
           phase: 'challenge',
           revision: (current.revision || 0) + 1,
+          teamProgress: {
+            ...current.teamProgress,
+            [action.teamId]: {
+              ...previousProgress,
+              detour: {
+                ...(previousProgress.detour || current.roadblock),
+                status: 'challenge',
+                step: detourStep,
+                detourStep,
+              },
+            },
+          },
           challengeStop: null,
           challengeStopData: stop,
           challengeId,
@@ -294,6 +371,46 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             status: 'detourChallenge',
             detourStep,
           },
+          updatedAt: completedAt,
+        };
+      }
+
+      if (isDetourMovement) {
+        const hasFinishedRoute = current.roadblock.targetLeg >= routeModel.finalStopIndex;
+        const finishPosition = hasFinishedRoute ? getFinishPosition(current.teamProgress) : null;
+        const previousProgress = current.teamProgress?.[action.teamId] || {};
+        const challengePoints = Number(previousProgress.challengePoints) || 0;
+        const { detour: _completedDetour, ...progressWithoutDetour } = previousProgress;
+        const teamProgress = {
+          ...current.teamProgress,
+          [action.teamId]: {
+            ...progressWithoutDetour,
+            currentLeg: current.roadblock.targetLeg,
+            isDone: hasFinishedRoute,
+            challengePoints,
+            score: getTeamScore({
+              challengePoints,
+              currentLeg: current.roadblock.targetLeg,
+              finishPosition,
+            }),
+            finishPosition,
+          },
+        };
+        const nextTeamId = getNextActiveTeamId(teamIds, teamProgress, action.teamId);
+
+        return {
+          ...current,
+          phase: nextTeamId ? 'waiting' : 'done',
+          activeTeamId: nextTeamId || action.teamId,
+          turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
+          revision: (current.revision || 0) + 1,
+          teamProgress,
+          currentAction: null,
+          challengeStop: null,
+          challengeStopData: null,
+          challengeId: null,
+          challengeRound: null,
+          roadblock: null,
           updatedAt: completedAt,
         };
       }
@@ -315,6 +432,25 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           finishPosition,
         },
       };
+
+      if (action.roadblockChoice) {
+        const nextTeamId = getNextActiveTeamId(teamIds, teamProgress, action.teamId);
+        return {
+          ...current,
+          phase: nextTeamId ? 'waiting' : 'done',
+          activeTeamId: nextTeamId || action.teamId,
+          turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
+          revision: (current.revision || 0) + 1,
+          teamProgress,
+          currentAction: null,
+          challengeStop: null,
+          challengeStopData: null,
+          challengeId: null,
+          challengeRound: null,
+          roadblock: null,
+          updatedAt: completedAt,
+        };
+      }
 
       if (!hasFinishedRoute) {
         const stop = routeModel.countryStops[action.targetLeg];
@@ -507,6 +643,15 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               }),
             };
           });
+          requiredTeamIds.forEach((teamId) => {
+            if (!evaluation.winnerTeamIds.includes(teamId)) {
+              const prev = nextTeamProgress[teamId] || {};
+              nextTeamProgress[teamId] = {
+                ...prev,
+                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+              };
+            }
+          });
 
           return {
             ...current,
@@ -549,6 +694,15 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               }),
             };
           });
+          requiredTeamIds.forEach((teamId) => {
+            if (!evaluation.winnerTeamIds.includes(teamId)) {
+              const prev = nextTeamProgress[teamId] || {};
+              nextTeamProgress[teamId] = {
+                ...prev,
+                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+              };
+            }
+          });
 
           return {
             ...current,
@@ -588,8 +742,19 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return undefined;
       const guessed = actionType === 'guessed';
       const pointsAwarded = guessed ? (Number(challenge.successPoints) || 10) : 0;
+      const penaltySips = guessed ? 0 : getPenaltySips(challenge);
       const activeProgress = current.teamProgress?.[current.activeTeamId] || {};
       const challengePoints = (Number(activeProgress.challengePoints) || 0) + pointsAwarded;
+      const nextDrinks = (Number(activeProgress.drinks) || 0) + penaltySips;
+      const prevPlayerDrinks = activeProgress.playerDrinks && typeof activeProgress.playerDrinks === 'object'
+        ? activeProgress.playerDrinks
+        : {};
+      const nextPlayerDrinks = (!guessed && round.selectedPlayerName)
+        ? {
+            ...prevPlayerDrinks,
+            [round.selectedPlayerName]: (Number(prevPlayerDrinks[round.selectedPlayerName]) || 0) + penaltySips,
+          }
+        : prevPlayerDrinks;
 
       return {
         ...current,
@@ -599,6 +764,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           [current.activeTeamId]: {
             ...activeProgress,
             challengePoints,
+            drinks: nextDrinks,
+            playerDrinks: nextPlayerDrinks,
             score: getTeamScore({
               challengePoints,
               currentLeg: activeProgress.currentLeg,
@@ -634,38 +801,44 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       if (current.roadblock?.choice === 'detour' && current.roadblock.status === 'detourChallenge') {
-        const completedStep = Number(current.roadblock.detourStep) || 0;
-        const nextStep = completedStep + 1;
-        const movementPath = createRoadblockDetourSegment({
-          event: current.roadblock,
-          routeModel,
-          step: nextStep,
-        });
-        if (!movementPath || !current.currentAction) return undefined;
         const updatedAt = now();
-        const timing = getRoadblockMovementTiming({ movementPath, now: updatedAt });
-        const headingToDestination = nextStep >= (current.roadblock.detourStops?.length || 0);
+        const teamIds = getRequiredTeamIds(gameDataRef.current);
+        const nextTeamId = getNextActiveTeamId(
+          teamIds,
+          current.teamProgress,
+          current.activeTeamId
+        );
+        const activeProgress = current.teamProgress?.[current.activeTeamId] || {};
+        const completedStep = activeProgress.detour?.step ?? (
+          current.currentAction?.detourStartStep === undefined
+            ? (Number(current.roadblock.detourStep) || 0) + 1
+            : (Number(current.roadblock.detourStep) || 0)
+        );
 
         return {
           ...current,
-          phase: 'moving',
+          phase: nextTeamId ? 'waiting' : 'done',
+          activeTeamId: nextTeamId || current.activeTeamId,
+          turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
           revision: (current.revision || 0) + 1,
-          currentAction: {
-            ...current.currentAction,
-            ...timing,
-            movementPath,
-            detourStep: nextStep,
-            detourSegmentType: headingToDestination ? 'destination' : 'waypoint',
+          teamProgress: {
+            ...current.teamProgress,
+            [current.activeTeamId]: {
+              ...activeProgress,
+              detour: {
+                ...(activeProgress.detour || current.roadblock),
+                status: 'pending',
+                step: completedStep,
+                detourStep: completedStep,
+              },
+            },
           },
+          currentAction: null,
           challengeStop: null,
           challengeStopData: null,
           challengeId: null,
           challengeRound: null,
-          roadblock: {
-            ...current.roadblock,
-            status: 'travelling',
-            detourStep: nextStep,
-          },
+          roadblock: null,
           updatedAt,
         };
       }
@@ -696,6 +869,57 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     return result.committed;
   }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
 
+  const adjustDrinks = useCallback(async ({ teamId, delta = 1, playerName = null } = {}) => {
+    if (!enabled || !gameID || !teamId || !Number.isFinite(Number(delta)) || Number(delta) === 0) {
+      return false;
+    }
+
+    const safeDelta = Math.round(Number(delta));
+    const updatedAt = now();
+    const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
+      if (!current || !current.teamProgress?.[teamId]) return undefined;
+
+      const prevTeam = current.teamProgress[teamId] || {};
+      const currentTeamDrinks = Math.max(0, Number(prevTeam.drinks) || 0);
+      const prevPlayerDrinks = prevTeam.playerDrinks && typeof prevTeam.playerDrinks === 'object'
+        ? prevTeam.playerDrinks
+        : {};
+
+      let nextTeamDrinks = Math.max(0, currentTeamDrinks + safeDelta);
+      let nextPlayerDrinks = prevPlayerDrinks;
+
+      if (playerName) {
+        const currentPlayerDrinks = Math.max(0, Number(prevPlayerDrinks[playerName]) || 0);
+        const updatedPlayerDrinks = Math.max(0, currentPlayerDrinks + safeDelta);
+        const appliedDelta = updatedPlayerDrinks - currentPlayerDrinks;
+        if (appliedDelta === 0) return undefined;
+        nextTeamDrinks = Math.max(0, currentTeamDrinks + appliedDelta);
+        nextPlayerDrinks = {
+          ...prevPlayerDrinks,
+          [playerName]: updatedPlayerDrinks,
+        };
+      } else if (nextTeamDrinks === currentTeamDrinks) {
+        return undefined;
+      }
+
+      return {
+        ...current,
+        revision: (current.revision || 0) + 1,
+        teamProgress: {
+          ...current.teamProgress,
+          [teamId]: {
+            ...prevTeam,
+            drinks: nextTeamDrinks,
+            playerDrinks: nextPlayerDrinks,
+          },
+        },
+        updatedAt,
+      };
+    });
+
+    return result.committed;
+  }, [enabled, gameID, now]);
+
   const restart = useCallback(async () => {
     if (!enabled || !gameID || !isHost) return false;
 
@@ -710,6 +934,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
   return {
     ...identity,
+    adjustDrinks,
     canControlTurn,
     completeChallenge,
     completeMovement,

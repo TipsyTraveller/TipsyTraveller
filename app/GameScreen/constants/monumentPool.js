@@ -1,7 +1,7 @@
 import { MAP_CY, MAP_H, MAP_W, svgPoint } from './mapCoordinates.js';
 import { EUROPE_SVG_VIEWBOX } from './europeMapPaths.js';
 
-export const MONUMENT_POOL_VERSION = 2;
+export const MONUMENT_POOL_VERSION = 3;
 export const MONUMENT_POOL_DOC_ID = 'monumentPool';
 export const GEO_GUESSR_CHALLENGE_ID = 'geo-guessr-duel';
 export const GEO_GUESSR_CHALLENGE_TYPE = 'geoGuessr';
@@ -42,6 +42,66 @@ const toBoardPosition = (svgX, svgY) => {
     y: Number(pt.y.toFixed(2)),
   };
 };
+
+export const GEO_GUESSR_IMAGE_HEADERS = Object.freeze({
+  'User-Agent': 'TipsyTraveller/1.0 (https://github.com/nielspeters/TipsyTraveller; contact@tipsytraveller.app)',
+  Accept: 'image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5',
+});
+
+const photoDataUriCache = new Map();
+
+export const getCachedMonumentPhotoDataUri = (imageUrl) => {
+  const normalized = normalizeMonumentImageUrl(imageUrl);
+  return normalized ? photoDataUriCache.get(normalized) || null : null;
+};
+
+export const loadMonumentPhotoDataUri = async (imageUrl, { signal } = {}) => {
+  const normalizedUrl = normalizeMonumentImageUrl(imageUrl);
+  if (!normalizedUrl) return null;
+
+  const cached = photoDataUriCache.get(normalizedUrl);
+  if (cached) return cached;
+
+  const response = await fetch(normalizedUrl, {
+    headers: GEO_GUESSR_IMAGE_HEADERS,
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const dataUri = await new Promise((resolve, reject) => {
+    if (typeof FileReader !== 'undefined') {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to read photo blob as data URI'));
+        }
+      };
+      reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+      reader.readAsDataURL(blob);
+    } else {
+      blob.arrayBuffer()
+        .then((buffer) => {
+          const base64 = Buffer.from(buffer).toString('base64');
+          resolve(`data:${blob.type || 'image/jpeg'};base64,${base64}`);
+        })
+        .catch(reject);
+    }
+  });
+
+  photoDataUriCache.set(normalizedUrl, dataUri);
+  return dataUri;
+};
+
+export const normalizeMonumentImageUrl = (imageUrl) => String(imageUrl || '')
+  .trim()
+  .replace(/^http:\/\//i, 'https://')
+  .replace('https://thumb.wikimedia.org/', 'https://upload.wikimedia.org/');
 
 export const boardToNormalizedMap = (position) => {
   const x = Number(position?.x) || 0;
@@ -109,7 +169,7 @@ const monument = ({
   palette: palette || ['#4A90E2', '#D9B382', '#2C3E50'],
   svgPosition,
   position: toBoardPosition(svgPosition[0], svgPosition[1]),
-  imageUrl,
+  imageUrl: normalizeMonumentImageUrl(imageUrl),
   imageSourceUrl,
   imageAuthor,
   imageLicense,
@@ -130,7 +190,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#5DA9E9', '#E5ECF4', '#2B3A4A'],
     svgPosition: [457, 243],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/da/Hallgr%C3%ADmskirkja.jpeg/960px-Hallgr%C3%ADmskirkja.jpeg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Hallgr%C3%ADmskirkja.jpeg/960px-Hallgr%C3%ADmskirkja.jpeg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Hallgr%C3%ADmskirkja.jpeg",
     imageAuthor: "Andreas Tille",
     imageLicense: "CC BY-SA 4.0",
@@ -146,7 +206,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#3F88C5', '#4E8752', '#1C3144'],
     svgPosition: [451, 239],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/Kirkjufell%2C_Iceland%2C_20240714_1631_0713.jpg/960px-Kirkjufell%2C_Iceland%2C_20240714_1631_0713.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Kirkjufell%2C_Iceland%2C_20240714_1631_0713.jpg/960px-Kirkjufell%2C_Iceland%2C_20240714_1631_0713.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Kirkjufell,_Iceland,_20240714_1631_0713.jpg",
     imageAuthor: "Jakub Ha\u0142un",
     imageLicense: "CC BY 4.0",
@@ -162,7 +222,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'coast',
     palette: ['#6EC6FF', '#2E7D32', '#37474F'],
     svgPosition: [493, 290],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/13/Ireland_Cliffs_of_Moher_BW_2025-09-11_14-27-51.jpg/960px-Ireland_Cliffs_of_Moher_BW_2025-09-11_14-27-51.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Ireland_Cliffs_of_Moher_BW_2025-09-11_14-27-51.jpg/960px-Ireland_Cliffs_of_Moher_BW_2025-09-11_14-27-51.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Ireland_Cliffs_of_Moher_BW_2025-09-11_14-27-51.jpg",
     imageAuthor: "Berthold Werner",
     imageLicense: "CC BY-SA 4.0",
@@ -178,7 +238,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#7FB3D5', '#45B39D', '#566573'],
     svgPosition: [497, 292],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Ireland_Rock_of_Cashel_BW_2025-09-14_15-39-31.jpg/960px-Ireland_Rock_of_Cashel_BW_2025-09-14_15-39-31.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Ireland_Rock_of_Cashel_BW_2025-09-14_15-39-31.jpg/960px-Ireland_Rock_of_Cashel_BW_2025-09-14_15-39-31.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Ireland_Rock_of_Cashel_BW_2025-09-14_15-39-31.jpg",
     imageAuthor: "Berthold Werner",
     imageLicense: "CC BY-SA 4.0",
@@ -194,7 +254,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'bridge',
     palette: ['#64B5F6', '#D7CCC8', '#1E88E5'],
     svgPosition: [518, 294],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5f/Tower_Bridge_London_Dusk_Feb_2006.jpg/960px-Tower_Bridge_London_Dusk_Feb_2006.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Tower_Bridge_London_Dusk_Feb_2006.jpg/960px-Tower_Bridge_London_Dusk_Feb_2006.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Tower_Bridge_London_Dusk_Feb_2006.jpg",
     imageAuthor: "Diliff",
     imageLicense: "CC BY-SA 3.0",
@@ -210,7 +270,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'ancient',
     palette: ['#FFCC80', '#7CB342', '#5D4037'],
     svgPosition: [512, 296],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/63/Stonehenge_Heel_Stone.jpg/960px-Stonehenge_Heel_Stone.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Stonehenge_Heel_Stone.jpg/960px-Stonehenge_Heel_Stone.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Stonehenge_Heel_Stone.jpg",
     imageAuthor: "DeFacto",
     imageLicense: "CC BY-SA 4.0",
@@ -226,7 +286,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#90CAF9', '#558B2F', '#455A64'],
     svgPosition: [511, 276],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c4/Edinburgh_Castle_from_Grass_Market.jpg/960px-Edinburgh_Castle_from_Grass_Market.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/Edinburgh_Castle_from_Grass_Market.jpg/960px-Edinburgh_Castle_from_Grass_Market.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Edinburgh_Castle_from_Grass_Market.jpg",
     imageAuthor: "George Washington Wilson / Adam Cuerden",
     imageLicense: "Public domain",
@@ -242,7 +302,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#4FC3F7', '#F5E6CA', '#0277BD'],
     svgPosition: [490, 340],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/Torre_Bel%C3%A9m_April_2009-4a.jpg/960px-Torre_Bel%C3%A9m_April_2009-4a.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Torre_Bel%C3%A9m_April_2009-4a.jpg/960px-Torre_Bel%C3%A9m_April_2009-4a.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Torre_Bel%C3%A9m_April_2009-4a.jpg",
     imageAuthor: "Alvesgaspar",
     imageLicense: "CC BY-SA 3.0",
@@ -258,7 +318,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'palace',
     palette: ['#81D4FA', '#FBC02D', '#D32F2F'],
     svgPosition: [489, 338],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/74/Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg/960px-Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg/960px-Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg",
     imageAuthor: "CEphoto, Uwe Aranas",
     imageLicense: "CC BY-SA 3.0",
@@ -274,7 +334,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#64B5F6', '#E6C280', '#BF360C'],
     svgPosition: [529, 335],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/74/Sagrada_Familia_March_2015-10a.jpg/960px-Sagrada_Familia_March_2015-10a.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Sagrada_Familia_March_2015-10a.jpg/960px-Sagrada_Familia_March_2015-10a.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Sagrada_Familia_March_2015-10a.jpg",
     imageAuthor: "Alvesgaspar",
     imageLicense: "CC BY-SA 4.0",
@@ -290,7 +350,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'palace',
     palette: ['#90CAF9', '#D87A56', '#2E7D32'],
     svgPosition: [512, 348],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fb/Pavillon_Cour_des_Lions_Alhambra_Granada_Spain.jpg/960px-Pavillon_Cour_des_Lions_Alhambra_Granada_Spain.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/Pavillon_Cour_des_Lions_Alhambra_Granada_Spain.jpg/960px-Pavillon_Cour_des_Lions_Alhambra_Granada_Spain.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Pavillon_Cour_des_Lions_Alhambra_Granada_Spain.jpg",
     imageAuthor: "Jebulon",
     imageLicense: "CC0",
@@ -306,7 +366,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#64B5F6', '#689F38', '#5D4037'],
     svgPosition: [528, 329],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/Saint_John_church_in_Caselles_%288%29.jpg/960px-Saint_John_church_in_Caselles_%288%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/Saint_John_church_in_Caselles_%288%29.jpg/960px-Saint_John_church_in_Caselles_%288%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Saint_John_church_in_Caselles_(8).jpg",
     imageAuthor: "Krzysztof Golik",
     imageLicense: "CC BY-SA 4.0",
@@ -322,7 +382,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#81D4FA', '#FFE082', '#37474F'],
     svgPosition: [520, 309],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0d/Mont_St_Michel_at_sunrise.jpg/960px-Mont_St_Michel_at_sunrise.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Mont_St_Michel_at_sunrise.jpg/960px-Mont_St_Michel_at_sunrise.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Mont_St_Michel_at_sunrise.jpg",
     imageAuthor: "Lynx1211",
     imageLicense: "CC BY-SA 4.0",
@@ -338,7 +398,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#64B5F6', '#BCAAA4', '#4E342E'],
     svgPosition: [532, 309],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/960px-Tour_Eiffel_Wikimedia_Commons.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/960px-Tour_Eiffel_Wikimedia_Commons.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Tour_Eiffel_Wikimedia_Commons.jpg",
     imageAuthor: "Benh LIEU SONG",
     imageLicense: "Public domain",
@@ -354,7 +414,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'bridge',
     palette: ['#4FC3F7', '#F4D06F', '#8D6E63'],
     svgPosition: [537, 325],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ae/Pont_du_Gard_%2830%29.jpg/960px-Pont_du_Gard_%2830%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/Pont_du_Gard_%2830%29.jpg/960px-Pont_du_Gard_%2830%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Pont_du_Gard_(30).jpg",
     imageAuthor: "Krzysztof Golik",
     imageLicense: "CC BY-SA 4.0",
@@ -370,7 +430,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'palace',
     palette: ['#29B6F6', '#FFF59D', '#C62828'],
     svgPosition: [548, 329],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Real_Monte_Carlo_Casino.jpg/960px-Real_Monte_Carlo_Casino.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Real_Monte_Carlo_Casino.jpg/960px-Real_Monte_Carlo_Casino.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Real_Monte_Carlo_Casino.jpg",
     imageAuthor: "sam garza from Los Angeles, USA",
     imageLicense: "CC BY 2.0",
@@ -386,7 +446,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'monument',
     palette: ['#42A5F5', '#CFD8DC', '#263238'],
     svgPosition: [531, 303],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Atomium%2C_Bruselas%2C_B%C3%A9lgica%2C_2021-12-15%2C_DD_148-150_HDR.jpg/960px-Atomium%2C_Bruselas%2C_B%C3%A9lgica%2C_2021-12-15%2C_DD_148-150_HDR.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Atomium%2C_Bruselas%2C_B%C3%A9lgica%2C_2021-12-15%2C_DD_148-150_HDR.jpg/960px-Atomium%2C_Bruselas%2C_B%C3%A9lgica%2C_2021-12-15%2C_DD_148-150_HDR.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Atomium,_Bruselas,_B%C3%A9lgica,_2021-12-15,_DD_148-150_HDR.jpg",
     imageAuthor: "Diego Delso",
     imageLicense: "CC BY-SA 4.0",
@@ -402,7 +462,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#90CAF9', '#D7CCC8', '#A1887F'],
     svgPosition: [528, 301],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/Bruges_Belgium_Belfry-02.jpg/960px-Bruges_Belgium_Belfry-02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Bruges_Belgium_Belfry-02.jpg/960px-Bruges_Belgium_Belfry-02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Bruges_Belgium_Belfry-02.jpg",
     imageAuthor: "CEphoto, Uwe Aranas",
     imageLicense: "CC BY-SA 3.0",
@@ -418,7 +478,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#81D4FA', '#8BC34A', '#5D4037'],
     svgPosition: [534, 297],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3e/The_windmills_of_Kinderdijk.JPG/960px-The_windmills_of_Kinderdijk.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/The_windmills_of_Kinderdijk.JPG/960px-The_windmills_of_Kinderdijk.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:The_windmills_of_Kinderdijk.JPG",
     imageAuthor: "Tarod",
     imageLicense: "CC BY-SA 3.0 nl",
@@ -434,7 +494,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#90CAF9', '#689F38', '#37474F'],
     svgPosition: [535, 308],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f5/Vianden_chateau1.jpg/960px-Vianden_chateau1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Vianden_chateau1.jpg/960px-Vianden_chateau1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Vianden_chateau1.jpg",
     imageAuthor: "Palauenc05",
     imageLicense: "CC BY-SA 4.0",
@@ -450,7 +510,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'bridge',
     palette: ['#4FC3F7', '#A1887F', '#C62828'],
     svgPosition: [543, 318],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/CH.LU.Luzern_Kapellbr%C3%BCcke_01_16x9-R_16384x9216.jpg/960px-CH.LU.Luzern_Kapellbr%C3%BCcke_01_16x9-R_16384x9216.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/CH.LU.Luzern_Kapellbr%C3%BCcke_01_16x9-R_16384x9216.jpg/960px-CH.LU.Luzern_Kapellbr%C3%BCcke_01_16x9-R_16384x9216.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:CH.LU.Luzern_Kapellbr%C3%BCcke_01_16x9-R_16384x9216.jpg",
     imageAuthor: "NOTE: This image is a panorama consisting of multiple frames that were merged or stitched in software. As a result, this image necessarily underwent some form of digital manipulation. These manipulations may include blending, blurring, cloning, and color and perspective adjustments. As a result of these adjustments, the image content may be slightly different from reality at the points where multiple images were combined. This manipulation is often required due to lens, perspective, and parallax distortions.",
     imageLicense: "CC BY-SA 4.0",
@@ -466,7 +526,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#42A5F5', '#ECEFF1', '#455A64'],
     svgPosition: [541, 322],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c9/CH.VS.Zermatt_2021-10-17_Matterhorn_8726.jpg/960px-CH.VS.Zermatt_2021-10-17_Matterhorn_8726.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/CH.VS.Zermatt_2021-10-17_Matterhorn_8726.jpg/960px-CH.VS.Zermatt_2021-10-17_Matterhorn_8726.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:CH.VS.Zermatt_2021-10-17_Matterhorn_8726.jpg",
     imageAuthor: "Roy Egloff",
     imageLicense: "CC BY-SA 4.0",
@@ -482,7 +542,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#64B5F6', '#558B2F', '#6D4C41'],
     svgPosition: [550, 317],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/28/Liechtenstein_asv2022-10_img22_Vaduz_Schloss.jpg/960px-Liechtenstein_asv2022-10_img22_Vaduz_Schloss.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Liechtenstein_asv2022-10_img22_Vaduz_Schloss.jpg/960px-Liechtenstein_asv2022-10_img22_Vaduz_Schloss.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Liechtenstein_asv2022-10_img22_Vaduz_Schloss.jpg",
     imageAuthor: "A.Savin",
     imageLicense: "FAL",
@@ -498,7 +558,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#64B5F6', '#ECEFF1', '#1E88E5'],
     svgPosition: [550, 315],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3c/Neuschwanstein_Castle_2024-02.jpg/960px-Neuschwanstein_Castle_2024-02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Neuschwanstein_Castle_2024-02.jpg/960px-Neuschwanstein_Castle_2024-02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Neuschwanstein_Castle_2024-02.jpg",
     imageAuthor: "Wilfredor",
     imageLicense: "CC0",
@@ -514,7 +574,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'monument',
     palette: ['#90CAF9', '#E6CCB2', '#2E7D32'],
     svgPosition: [552, 301],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ef/Brandenburg_Gate_Quadriga_at_Night.jpg/960px-Brandenburg_Gate_Quadriga_at_Night.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Brandenburg_Gate_Quadriga_at_Night.jpg/960px-Brandenburg_Gate_Quadriga_at_Night.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Brandenburg_Gate_Quadriga_at_Night.jpg",
     imageAuthor: "\u05d0 (Aleph) Creator: Johann Gottfried Schadow",
     imageLicense: "CC BY-SA 2.5",
@@ -530,7 +590,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'coast',
     palette: ['#4FC3F7', '#FFB74D', '#D32F2F'],
     svgPosition: [550, 289],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/Kopenhagen_%28DK%29%2C_Nyhavn_--_2017_--_1711.jpg/960px-Kopenhagen_%28DK%29%2C_Nyhavn_--_2017_--_1711.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Kopenhagen_%28DK%29%2C_Nyhavn_--_2017_--_1711.jpg/960px-Kopenhagen_%28DK%29%2C_Nyhavn_--_2017_--_1711.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Kopenhagen_(DK),_Nyhavn_--_2017_--_1711.jpg",
     imageAuthor: "Dietmar Rabich",
     imageLicense: "CC BY-SA 4.0",
@@ -546,7 +606,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#78909C', '#7CB342', '#3E2723'],
     svgPosition: [555, 275],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e2/Borgund_Stave_Church_in_L%C3%A6rdalen%2C_2013_June.jpg/960px-Borgund_Stave_Church_in_L%C3%A6rdalen%2C_2013_June.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/Borgund_Stave_Church_in_L%C3%A6rdalen%2C_2013_June.jpg/960px-Borgund_Stave_Church_in_L%C3%A6rdalen%2C_2013_June.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Borgund_Stave_Church_in_L%C3%A6rdalen,_2013_June.jpg",
     imageAuthor: "Ximonic (Simo R\u00e4s\u00e4nen)",
     imageLicense: "CC BY-SA 3.0",
@@ -562,7 +622,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'coast',
     palette: ['#64B5F6', '#E57373', '#FBC02D'],
     svgPosition: [550, 276],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Bryggen_Hanseatic_wharf_at_night_Bergen_Norway.jpg/960px-Bryggen_Hanseatic_wharf_at_night_Bergen_Norway.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Bryggen_Hanseatic_wharf_at_night_Bergen_Norway.jpg/960px-Bryggen_Hanseatic_wharf_at_night_Bergen_Norway.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Bryggen_Hanseatic_wharf_at_night_Bergen_Norway.jpg",
     imageAuthor: "Smtunli",
     imageLicense: "CC BY-SA 4.0",
@@ -578,7 +638,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#4FC3F7', '#ECEFF1', '#1565C0'],
     svgPosition: [582, 280],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/81/Turning_Torso_2.jpg/960px-Turning_Torso_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Turning_Torso_2.jpg/960px-Turning_Torso_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Turning_Torso_2.jpg",
     imageAuthor: "V\u00e4sk",
     imageLicense: "CC BY-SA 3.0",
@@ -594,7 +654,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#64B5F6', '#FFFFFF', '#2E7D32'],
     svgPosition: [591, 282],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Lutheran_Cathedral_Helsinki.jpg/960px-Lutheran_Cathedral_Helsinki.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/Lutheran_Cathedral_Helsinki.jpg/960px-Lutheran_Cathedral_Helsinki.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Lutheran_Cathedral_Helsinki.jpg",
     imageAuthor: "Hans Hillewaert",
     imageLicense: "CC BY-SA 3.0",
@@ -610,7 +670,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#81D4FA', '#CFD8DC', '#C62828'],
     svgPosition: [594, 286],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9b/Tallinn_Toompea_Upper_Old_Town_2013.jpg/960px-Tallinn_Toompea_Upper_Old_Town_2013.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Tallinn_Toompea_Upper_Old_Town_2013.jpg/960px-Tallinn_Toompea_Upper_Old_Town_2013.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Tallinn_Toompea_Upper_Old_Town_2013.jpg",
     imageAuthor: "Ivar Leidus",
     imageLicense: "CC BY-SA 3.0 ee",
@@ -626,7 +686,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'palace',
     palette: ['#90CAF9', '#C62828', '#F5F5F5'],
     svgPosition: [590, 291],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8c/House_of_Blackheads_and_St._Peter%27s_Church_Tower%2C_Riga%2C_Latvia_-_Diliff.jpg/960px-House_of_Blackheads_and_St._Peter%27s_Church_Tower%2C_Riga%2C_Latvia_-_Diliff.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/House_of_Blackheads_and_St._Peter%27s_Church_Tower%2C_Riga%2C_Latvia_-_Diliff.jpg/960px-House_of_Blackheads_and_St._Peter%27s_Church_Tower%2C_Riga%2C_Latvia_-_Diliff.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:House_of_Blackheads_and_St._Peter%27s_Church_Tower,_Riga,_Latvia_-_Diliff.jpg",
     imageAuthor: "Diliff",
     imageLicense: "CC BY-SA 3.0",
@@ -642,7 +702,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#4FC3F7', '#C62828', '#388E3C'],
     svgPosition: [594, 298],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/29/Trakai-Troki.jpg/960px-Trakai-Troki.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Trakai-Troki.jpg/960px-Trakai-Troki.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Trakai-Troki.jpg",
     imageAuthor: "Julo",
     imageLicense: "CC BY-SA 3.0",
@@ -658,7 +718,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#64B5F6', '#D84315', '#26A69A'],
     svgPosition: [575, 314],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4e/Wawel_Royal_Castle%2C_view_from_Stradomska_Street%2C_Old_Town%2C_Krak%C3%B3w%2C_Poland.jpg/960px-Wawel_Royal_Castle%2C_view_from_Stradomska_Street%2C_Old_Town%2C_Krak%C3%B3w%2C_Poland.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Wawel_Royal_Castle%2C_view_from_Stradomska_Street%2C_Old_Town%2C_Krak%C3%B3w%2C_Poland.jpg/960px-Wawel_Royal_Castle%2C_view_from_Stradomska_Street%2C_Old_Town%2C_Krak%C3%B3w%2C_Poland.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Wawel_Royal_Castle,_view_from_Stradomska_Street,_Old_Town,_Krak%C3%B3w,_Poland.jpg",
     imageAuthor: "Igor123121",
     imageLicense: "CC BY 4.0",
@@ -674,7 +734,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'bridge',
     palette: ['#64B5F6', '#8D6E63', '#37474F'],
     svgPosition: [556, 315],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/20/Prague_07-2016_View_from_Petrinska_Tower_img2.jpg/960px-Prague_07-2016_View_from_Petrinska_Tower_img2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Prague_07-2016_View_from_Petrinska_Tower_img2.jpg/960px-Prague_07-2016_View_from_Petrinska_Tower_img2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Prague_07-2016_View_from_Petrinska_Tower_img2.jpg",
     imageAuthor: "A.Savin",
     imageLicense: "FAL",
@@ -690,7 +750,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'palace',
     palette: ['#81D4FA', '#FFD54F', '#43A047'],
     svgPosition: [563, 322],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/Palacio_de_Sch%C3%B6nbrunn%2C_Viena%2C_Austria%2C_2020-02-02%2C_DD_10.jpg/960px-Palacio_de_Sch%C3%B6nbrunn%2C_Viena%2C_Austria%2C_2020-02-02%2C_DD_10.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Palacio_de_Sch%C3%B6nbrunn%2C_Viena%2C_Austria%2C_2020-02-02%2C_DD_10.jpg/960px-Palacio_de_Sch%C3%B6nbrunn%2C_Viena%2C_Austria%2C_2020-02-02%2C_DD_10.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Palacio_de_Sch%C3%B6nbrunn,_Viena,_Austria,_2020-02-02,_DD_10.jpg",
     imageAuthor: "Diego Delso",
     imageLicense: "CC BY-SA 4.0",
@@ -706,7 +766,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#4FC3F7', '#558B2F', '#8D6E63'],
     svgPosition: [559, 323],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ed/Hallstatt_evangelische_Kirche_20180206.jpg/960px-Hallstatt_evangelische_Kirche_20180206.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/Hallstatt_evangelische_Kirche_20180206.jpg/960px-Hallstatt_evangelische_Kirche_20180206.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Hallstatt_evangelische_Kirche_20180206.jpg",
     imageAuthor: "Uoaei1",
     imageLicense: "CC BY-SA 4.0",
@@ -722,7 +782,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#90CAF9', '#7CB342', '#EFEBE9'],
     svgPosition: [569, 321],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/Spisske_Podhradie_03.jpg/960px-Spisske_Podhradie_03.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Spisske_Podhradie_03.jpg/960px-Spisske_Podhradie_03.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Spisske_Podhradie_03.jpg",
     imageAuthor: "Scotch Mist",
     imageLicense: "CC BY-SA 4.0",
@@ -738,7 +798,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'palace',
     palette: ['#4FC3F7', '#F5E6CA', '#C62828'],
     svgPosition: [571, 326],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/Hungarian_Parliament_Building_2023-9.jpg/960px-Hungarian_Parliament_Building_2023-9.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Hungarian_Parliament_Building_2023-9.jpg/960px-Hungarian_Parliament_Building_2023-9.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Hungarian_Parliament_Building_2023-9.jpg",
     imageAuthor: "Pierre Blach\u00e9",
     imageLicense: "CC0",
@@ -754,7 +814,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#26C6DA', '#43A047', '#ECEFF1'],
     svgPosition: [558, 330],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/26/Bled_Lake%2C_Slovenia.jpg/960px-Bled_Lake%2C_Slovenia.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/Bled_Lake%2C_Slovenia.jpg/960px-Bled_Lake%2C_Slovenia.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Bled_Lake,_Slovenia.jpg",
     imageAuthor: "Ronnie Pander from WikiTravel",
     imageLicense: "Public domain",
@@ -770,7 +830,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'ancient',
     palette: ['#64B5F6', '#E6C280', '#8D6E63'],
     svgPosition: [552, 346],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d8/Colosseum_in_Rome-April_2007-1-_copie_2B.jpg/960px-Colosseum_in_Rome-April_2007-1-_copie_2B.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/Colosseum_in_Rome-April_2007-1-_copie_2B.jpg/960px-Colosseum_in_Rome-April_2007-1-_copie_2B.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Colosseum_in_Rome-April_2007-1-_copie_2B.jpg",
     imageAuthor: "Diliff",
     imageLicense: "CC BY-SA 2.5",
@@ -786,7 +846,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#64B5F6', '#7CB342', '#FAFAFA'],
     svgPosition: [549, 339],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5f/The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg/960px-The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg/960px-The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg",
     imageAuthor: "MHoser",
     imageLicense: "CC BY-SA 4.0",
@@ -802,7 +862,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'bridge',
     palette: ['#26C6DA', '#F5E6CA', '#D84315'],
     svgPosition: [554, 333],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2a/Ponte_di_Rialto_Venice_1.jpg/960px-Ponte_di_Rialto_Venice_1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Ponte_di_Rialto_Venice_1.jpg/960px-Ponte_di_Rialto_Venice_1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Ponte_di_Rialto_Venice_1.jpg",
     imageAuthor: "kallerna",
     imageLicense: "CC BY-SA 4.0",
@@ -818,7 +878,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#64B5F6', '#81C784', '#BCAAA4'],
     svgPosition: [558, 338],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ac/Fortress_of_Guaita_2013-09-19.jpg/960px-Fortress_of_Guaita_2013-09-19.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Fortress_of_Guaita_2013-09-19.jpg/960px-Fortress_of_Guaita_2013-09-19.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Fortress_of_Guaita_2013-09-19.jpg",
     imageAuthor: "Max_Ryazanov",
     imageLicense: "CC BY-SA 3.0",
@@ -834,7 +894,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#64B5F6', '#F5E6CA', '#5D4037'],
     svgPosition: [550, 348],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/92/Basilica_Sancti_Petri_blue_hour.jpg/960px-Basilica_Sancti_Petri_blue_hour.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Basilica_Sancti_Petri_blue_hour.jpg/960px-Basilica_Sancti_Petri_blue_hour.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Basilica_Sancti_Petri_blue_hour.jpg",
     imageAuthor: "Jebulon",
     imageLicense: "CC0",
@@ -850,7 +910,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'coast',
     palette: ['#0288D1', '#FFE082', '#D4A373'],
     svgPosition: [560, 369],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/93/Grand_Harbour_-_Senglea.jpg/960px-Grand_Harbour_-_Senglea.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Grand_Harbour_-_Senglea.jpg/960px-Grand_Harbour_-_Senglea.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Grand_Harbour_-_Senglea.jpg",
     imageAuthor: "MrPanyGoff",
     imageLicense: "CC BY-SA 3.0",
@@ -866,7 +926,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'coast',
     palette: ['#0288D1', '#ECEFF1', '#E64A19'],
     svgPosition: [567, 344],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/40/Casco_viejo_de_Dubrovnik%2C_Croacia%2C_2014-04-14%2C_DD_07.JPG/960px-Casco_viejo_de_Dubrovnik%2C_Croacia%2C_2014-04-14%2C_DD_07.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Casco_viejo_de_Dubrovnik%2C_Croacia%2C_2014-04-14%2C_DD_07.JPG/960px-Casco_viejo_de_Dubrovnik%2C_Croacia%2C_2014-04-14%2C_DD_07.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Casco_viejo_de_Dubrovnik,_Croacia,_2014-04-14,_DD_07.JPG",
     imageAuthor: "Diego Delso",
     imageLicense: "CC BY-SA 3.0",
@@ -882,7 +942,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'bridge',
     palette: ['#26A69A', '#D7CCC8', '#5D4037'],
     svgPosition: [569, 340],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d7/Mostar_Old_Town_Panorama_2007.jpg/960px-Mostar_Old_Town_Panorama_2007.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Mostar_Old_Town_Panorama_2007.jpg/960px-Mostar_Old_Town_Panorama_2007.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Mostar_Old_Town_Panorama_2007.jpg",
     imageAuthor: "Ramirez",
     imageLicense: "CC BY-SA 4.0",
@@ -898,7 +958,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#64B5F6', '#689F38', '#A1887F'],
     svgPosition: [577, 336],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6f/Kalemegdan%2C_a04.jpg/960px-Kalemegdan%2C_a04.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Kalemegdan%2C_a04.jpg/960px-Kalemegdan%2C_a04.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Kalemegdan,_a04.jpg",
     imageAuthor: "Mickey Mystique",
     imageLicense: "CC BY-SA 4.0",
@@ -914,7 +974,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'coast',
     palette: ['#0277BD', '#546E7A', '#ECEFF1'],
     svgPosition: [576, 346],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d9/Kotor_and_Boka_kotorska_-_view_from_city_wall.jpg/960px-Kotor_and_Boka_kotorska_-_view_from_city_wall.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Kotor_and_Boka_kotorska_-_view_from_city_wall.jpg/960px-Kotor_and_Boka_kotorska_-_view_from_city_wall.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Kotor_and_Boka_kotorska_-_view_from_city_wall.jpg",
     imageAuthor: "Pudelek (Marcin Szala)",
     imageLicense: "CC BY-SA 3.0",
@@ -930,7 +990,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'palace',
     palette: ['#64B5F6', '#FAFAFA', '#6D4C41'],
     svgPosition: [580, 351],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/26/Mangalem_district_%28Town_of_a_Thousand_Windows%29_in_Berat%2C_Albania.jpg/960px-Mangalem_district_%28Town_of_a_Thousand_Windows%29_in_Berat%2C_Albania.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/Mangalem_district_%28Town_of_a_Thousand_Windows%29_in_Berat%2C_Albania.jpg/960px-Mangalem_district_%28Town_of_a_Thousand_Windows%29_in_Berat%2C_Albania.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Mangalem_district_(Town_of_a_Thousand_Windows)_in_Berat,_Albania.jpg",
     imageAuthor: "Christoph Str\u00e4ssler",
     imageLicense: "CC BY-SA 2.0",
@@ -946,7 +1006,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'monument',
     palette: ['#64B5F6', '#CFD8DC', '#455A64'],
     svgPosition: [583, 346],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Biblioteca_Nacional%2C_Pristina%2C_Kosovo%2C_2014-04-16%2C_DD_14.JPG/960px-Biblioteca_Nacional%2C_Pristina%2C_Kosovo%2C_2014-04-16%2C_DD_14.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Biblioteca_Nacional%2C_Pristina%2C_Kosovo%2C_2014-04-16%2C_DD_14.JPG/960px-Biblioteca_Nacional%2C_Pristina%2C_Kosovo%2C_2014-04-16%2C_DD_14.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Biblioteca_Nacional,_Pristina,_Kosovo,_2014-04-16,_DD_14.JPG",
     imageAuthor: "Diego Delso",
     imageLicense: "CC BY-SA 3.0",
@@ -962,7 +1022,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#29B6F6', '#D7CCC8', '#BF360C'],
     svgPosition: [585, 352],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4a/Church_of_St._John_at_Kaneo_6.jpg/960px-Church_of_St._John_at_Kaneo_6.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Church_of_St._John_at_Kaneo_6.jpg/960px-Church_of_St._John_at_Kaneo_6.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Church_of_St._John_at_Kaneo_6.jpg",
     imageAuthor: "kallerna",
     imageLicense: "CC BY-SA 4.0",
@@ -978,7 +1038,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'ancient',
     palette: ['#29B6F6', '#FFE082', '#A1887F'],
     svgPosition: [589, 359],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c6/Attica_06-13_Athens_50_View_from_Philopappos_-_Acropolis_Hill.jpg/960px-Attica_06-13_Athens_50_View_from_Philopappos_-_Acropolis_Hill.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c6/Attica_06-13_Athens_50_View_from_Philopappos_-_Acropolis_Hill.jpg/960px-Attica_06-13_Athens_50_View_from_Philopappos_-_Acropolis_Hill.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Attica_06-13_Athens_50_View_from_Philopappos_-_Acropolis_Hill.jpg",
     imageAuthor: "A.Savin",
     imageLicense: "CC BY-SA 3.0",
@@ -994,7 +1054,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'coast',
     palette: ['#0288D1', '#FFFFFF', '#1565C0'],
     svgPosition: [594, 364],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/1000_Three_domes_of_Oia_in_Santorini_Photo_by_Giles_Laurent.jpg/960px-1000_Three_domes_of_Oia_in_Santorini_Photo_by_Giles_Laurent.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/1000_Three_domes_of_Oia_in_Santorini_Photo_by_Giles_Laurent.jpg/960px-1000_Three_domes_of_Oia_in_Santorini_Photo_by_Giles_Laurent.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:1000_Three_domes_of_Oia_in_Santorini_Photo_by_Giles_Laurent.jpg",
     imageAuthor: "Giles Laurent",
     imageLicense: "CC BY-SA 4.0",
@@ -1010,7 +1070,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#64B5F6', '#FBC02D', '#26A69A'],
     svgPosition: [592, 349],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/AlexanderNevskyCathedral-Sofia-6.jpg/960px-AlexanderNevskyCathedral-Sofia-6.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/AlexanderNevskyCathedral-Sofia-6.jpg/960px-AlexanderNevskyCathedral-Sofia-6.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:AlexanderNevskyCathedral-Sofia-6.jpg",
     imageAuthor: "Plamen Agov ( user:MrPanyGoff )",
     imageLicense: "CC BY-SA 4.0",
@@ -1026,7 +1086,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#78909C', '#ECEFF1', '#B71C1C'],
     svgPosition: [600, 340],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/06/Bran_castle_courtyard_round_tower.jpg/960px-Bran_castle_courtyard_round_tower.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/06/Bran_castle_courtyard_round_tower.jpg/960px-Bran_castle_courtyard_round_tower.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Bran_castle_courtyard_round_tower.jpg",
     imageAuthor: "Myrabella",
     imageLicense: "CC BY-SA 3.0",
@@ -1042,7 +1102,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#64B5F6', '#8BC34A', '#FBC02D'],
     svgPosition: [608, 331],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/94/Nave_of_a_Cave_Monastery_%28M%C4%83n%C4%83stire_Rupestr%C4%83%29%2C_Old_Orhei.jpg/960px-Nave_of_a_Cave_Monastery_%28M%C4%83n%C4%83stire_Rupestr%C4%83%29%2C_Old_Orhei.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Nave_of_a_Cave_Monastery_%28M%C4%83n%C4%83stire_Rupestr%C4%83%29%2C_Old_Orhei.jpg/960px-Nave_of_a_Cave_Monastery_%28M%C4%83n%C4%83stire_Rupestr%C4%83%29%2C_Old_Orhei.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Nave_of_a_Cave_Monastery_(M%C4%83n%C4%83stire_Rupestr%C4%83),_Old_Orhei.jpg",
     imageAuthor: "AntyLegit",
     imageLicense: "CC BY-SA 4.0",
@@ -1058,7 +1118,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#42A5F5', '#FFFFFF', '#FBC02D'],
     svgPosition: [616, 313],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/80-391-9014_Kyiv_Sofia_2_RB_24.jpg/960px-80-391-9014_Kyiv_Sofia_2_RB_24.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/80-391-9014_Kyiv_Sofia_2_RB_24.jpg/960px-80-391-9014_Kyiv_Sofia_2_RB_24.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:80-391-9014_Kyiv_Sofia_2_RB_24.jpg",
     imageAuthor: "Rbrechko",
     imageLicense: "CC BY-SA 4.0",
@@ -1074,7 +1134,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'castle',
     palette: ['#64B5F6', '#C62828', '#F5F5F5'],
     svgPosition: [597, 301],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d6/%D0%9A%D0%BE%D0%BC%D0%BF%D0%BB%D0%B5%D0%BA%D1%81_%D0%9C%D0%B8%D1%80%D1%81%D0%BA%D0%BE%D0%B3%D0%BE_%D0%B7%D0%B0%D0%BC%D0%BA%D0%B0.JPG/960px-%D0%9A%D0%BE%D0%BC%D0%BF%D0%BB%D0%B5%D0%BA%D1%81_%D0%9C%D0%B8%D1%80%D1%81%D0%BA%D0%BE%D0%B3%D0%BE_%D0%B7%D0%B0%D0%BC%D0%BA%D0%B0.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/%D0%9A%D0%BE%D0%BC%D0%BF%D0%BB%D0%B5%D0%BA%D1%81_%D0%9C%D0%B8%D1%80%D1%81%D0%BA%D0%BE%D0%B3%D0%BE_%D0%B7%D0%B0%D0%BC%D0%BA%D0%B0.JPG/960px-%D0%9A%D0%BE%D0%BC%D0%BF%D0%BB%D0%B5%D0%BA%D1%81_%D0%9C%D0%B8%D1%80%D1%81%D0%BA%D0%BE%D0%B3%D0%BE_%D0%B7%D0%B0%D0%BC%D0%BA%D0%B0.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:%D0%9A%D0%BE%D0%BC%D0%BF%D0%BB%D0%B5%D0%BA%D1%81_%D0%9C%D0%B8%D1%80%D1%81%D0%BA%D0%BE%D0%B3%D0%BE_%D0%B7%D0%B0%D0%BC%D0%BA%D0%B0.JPG",
     imageAuthor: "\u0412\u0430\u0434\u0437\u0456\u043c \u041d\u043e\u0432\u0438\u043a\u0430\u045e",
     imageLicense: "CC BY-SA 3.0",
@@ -1090,7 +1150,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#42A5F5', '#D32F2F', '#FBC02D'],
     svgPosition: [625, 290],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/40/Sant_Vasily_cathedral_in_Moscow.JPG/960px-Sant_Vasily_cathedral_in_Moscow.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Sant_Vasily_cathedral_in_Moscow.JPG/960px-Sant_Vasily_cathedral_in_Moscow.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Sant_Vasily_cathedral_in_Moscow.JPG",
     imageAuthor: "Petar Milo\u0161evi\u0107",
     imageLicense: "CC BY-SA 4.0",
@@ -1106,7 +1166,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#29B6F6', '#FFFFFF', '#FFD600'],
     svgPosition: [676, 320],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Night_at_Esil_District%2C_Astana_%28P1190721%29.jpg/960px-Night_at_Esil_District%2C_Astana_%28P1190721%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Night_at_Esil_District%2C_Astana_%28P1190721%29.jpg/960px-Night_at_Esil_District%2C_Astana_%28P1190721%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Night_at_Esil_District,_Astana_(P1190721).jpg",
     imageAuthor: "Matti Blume",
     imageLicense: "CC BY-SA 4.0",
@@ -1122,7 +1182,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#64B5F6', '#558B2F', '#8D6E63'],
     svgPosition: [636, 347],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ac/Kazbeg_Panorama.jpg/960px-Kazbeg_Panorama.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Kazbeg_Panorama.jpg/960px-Kazbeg_Panorama.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Kazbeg_Panorama.jpg",
     imageAuthor: "Philipp Weigell",
     imageLicense: "CC BY 3.0",
@@ -1138,7 +1198,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'mountain',
     palette: ['#90CAF9', '#A1887F', '#ECEFF1'],
     svgPosition: [640, 355],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Monasterio_Khor_Virap%2C_Armenia%2C_2016-10-01%2C_DD_25.jpg/960px-Monasterio_Khor_Virap%2C_Armenia%2C_2016-10-01%2C_DD_25.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Monasterio_Khor_Virap%2C_Armenia%2C_2016-10-01%2C_DD_25.jpg/960px-Monasterio_Khor_Virap%2C_Armenia%2C_2016-10-01%2C_DD_25.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Monasterio_Khor_Virap,_Armenia,_2016-10-01,_DD_25.jpg",
     imageAuthor: "Diego Delso",
     imageLicense: "CC BY-SA 4.0",
@@ -1154,7 +1214,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'tower',
     palette: ['#1E88E5', '#263238', '#FF7043'],
     svgPosition: [653, 355],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2e/Flame_towers_from_Baku_boulevard.JPG/960px-Flame_towers_from_Baku_boulevard.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Flame_towers_from_Baku_boulevard.JPG/960px-Flame_towers_from_Baku_boulevard.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Flame_towers_from_Baku_boulevard.JPG",
     imageAuthor: "Xoncha",
     imageLicense: "CC BY-SA 4.0",
@@ -1170,7 +1230,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'cathedral',
     palette: ['#4FC3F7', '#E6AD8E', '#5D4037'],
     svgPosition: [592, 351],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/Hagia_Sophia_Mars_2013.jpg/960px-Hagia_Sophia_Mars_2013.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Hagia_Sophia_Mars_2013.jpg/960px-Hagia_Sophia_Mars_2013.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Hagia_Sophia_Mars_2013.jpg",
     imageAuthor: "Arild V\u00e5gen",
     imageLicense: "CC BY-SA 3.0",
@@ -1186,7 +1246,7 @@ export const DEFAULT_MONUMENT_POOL = [
     category: 'ancient',
     palette: ['#039BE5', '#FFE082', '#A1887F'],
     svgPosition: [610, 369],
-    imageUrl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e9/Tombs_of_the_Kings_Paphos_Cyprus_17.jpg/960px-Tombs_of_the_Kings_Paphos_Cyprus_17.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Tombs_of_the_Kings_Paphos_Cyprus_17.jpg/960px-Tombs_of_the_Kings_Paphos_Cyprus_17.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Tombs_of_the_Kings_Paphos_Cyprus_17.jpg",
     imageAuthor: "Nikodem Nijaki",
     imageLicense: "CC BY-SA 3.0",
@@ -1210,8 +1270,11 @@ export const normalizeMonumentPool = (rawPool) => {
     .filter((item) => item && item.id && item.name)
     .map((item) => {
       const fallback = byId.get(item.id) || {};
-      const svgPos = Array.isArray(item.svgPosition) && item.svgPosition.length === 2
-        ? [Number(item.svgPosition[0]) || 550, Number(item.svgPosition[1]) || 320]
+      const hasValidSvgPosition = Array.isArray(item.svgPosition)
+        && item.svgPosition.length === 2
+        && item.svgPosition.every((coordinate) => Number.isFinite(Number(coordinate)));
+      const svgPos = hasValidSvgPosition
+        ? [Number(item.svgPosition[0]), Number(item.svgPosition[1])]
         : fallback.svgPosition || [550, 320];
       return {
         id: String(item.id),
@@ -1225,10 +1288,10 @@ export const normalizeMonumentPool = (rawPool) => {
           ? item.palette.map(String)
           : (fallback.palette || ['#4A90E2', '#D9B382', '#2C3E50']),
         svgPosition: svgPos,
-        position: item.position && Number.isFinite(Number(item.position.x)) && Number.isFinite(Number(item.position.y))
-          ? { x: Number(item.position.x), y: Number(item.position.y) }
-          : toBoardPosition(svgPos[0], svgPos[1]),
-        imageUrl: String(item.imageUrl || fallback.imageUrl || ''),
+        // svgPosition is the source of truth for this map. Recomputing avoids stale
+        // board coordinates from older Firestore/cache map transforms.
+        position: toBoardPosition(svgPos[0], svgPos[1]),
+        imageUrl: normalizeMonumentImageUrl(item.imageUrl || fallback.imageUrl),
         imageSourceUrl: String(item.imageSourceUrl || fallback.imageSourceUrl || ''),
         imageAuthor: String(item.imageAuthor || fallback.imageAuthor || ''),
         imageLicense: String(item.imageLicense || fallback.imageLicense || ''),

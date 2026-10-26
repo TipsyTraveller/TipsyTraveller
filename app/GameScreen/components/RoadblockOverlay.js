@@ -154,7 +154,8 @@ const RoadblockOverlay = memo(({
               </View>
 
               <Text style={styles.challengeNote}>
-                Complete before time runs out to break through. Timeout forces the detour.
+                Complete before time runs out to clear the road. Your turn then ends.
+                Timeout forces the detour.
               </Text>
 
               {canChoose ? (
@@ -197,7 +198,8 @@ const RoadblockOverlay = memo(({
                   {detourNames || 'Scenic Detour'}
                 </Text>
                 <Text style={styles.detourHint}>
-                  2 hidden bonus countries with individual standard challenges.
+                  Your turn ends now. On later turns, each dice roll moves you 1–3
+                  legs along this route; challenges open only where you land.
                 </Text>
               </View>
 

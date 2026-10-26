@@ -77,12 +77,14 @@ const CountryMarkersFallback = ({
 
 const GameScene = memo(({
   activeCarProgressRef,
+  activeDetourTeamId = null,
   activeTeamColor,
   cameraMode,
   canvasStyle,
   currentLeg,
   diceEnabled,
   diceVisible = true,
+  detourRouteModels,
   driving,
   lowPower,
   gamePieces,
@@ -121,6 +123,7 @@ const GameScene = memo(({
   const occupiedMarkerIndexes = useMemo(() => new Set(
     gamePieces
       .filter((piece) => !(vehicleInMotion && piece.id === movingPieceId))
+      .filter((piece) => !teamProgress[piece.id]?.detour)
       .map((piece) => teamProgress[piece.id]?.currentLeg ?? 0)
   ), [gamePieces, movingPieceId, teamProgress, vehicleInMotion]);
 
@@ -175,6 +178,7 @@ const GameScene = memo(({
     <Suspense fallback={<GamePiecesFallback gamePieces={gamePieces} routeModel={routeModel} teamProgress={teamProgress} />}>
       <GamePieces
         activeCarProgressRef={activeCarProgressRef}
+        detourRouteModels={detourRouteModels}
         driving={driving}
         gamePieces={gamePieces}
         moveStartDelay={moveStartDelay}
@@ -204,6 +208,30 @@ const GameScene = memo(({
         />
       </Suspense>
     )}
+    {Object.entries(detourRouteModels || {}).map(([teamId, detourModel]) => {
+      if (!detourModel || teamId === activeDetourTeamId) return null;
+      const detourStep = Math.min(
+        Number(teamProgress[teamId]?.detour?.step) || 0,
+        detourModel.finalStopIndex
+      );
+      const occupiedIndexes = new Set([0, detourModel.finalStopIndex]);
+      if (detourStep > 0 && detourStep < detourModel.finalStopIndex) {
+        occupiedIndexes.add(detourStep);
+      }
+
+      return (
+        <Suspense key={`inactive-detour-pins-${teamId}`} fallback={null}>
+          <CountryMarkers
+            currentLeg={detourStep}
+            occupiedMarkerIndexes={occupiedIndexes}
+            routeModel={detourModel}
+            showLabels
+            showStopNumbers={false}
+            targetLeg={Math.min(detourStep + 1, detourModel.finalStopIndex)}
+          />
+        </Suspense>
+      );
+    })}
     <Suspense fallback={
       <CountryMarkersFallback
         currentLeg={currentLeg}

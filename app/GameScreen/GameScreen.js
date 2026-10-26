@@ -10,10 +10,12 @@ import {
   COUNTRY_WORD_CHALLENGE_TYPE,
   didTriggerRoadsideDuel,
   GEO_GUESSR_CHALLENGE_TYPE,
+  GEO_GUESSR_LOSER_SIPS,
   getChallengeForStop,
   getChallengeIdForStop,
   getCountryWordRound,
   getGeoGuessrRound,
+  getPenaltySips,
   getTeamPlayers,
 } from './constants/challenges';
 import {
@@ -35,6 +37,8 @@ import {
   createRoadblockDetourSegment,
   createRoadblockMovementPath,
   createRoadblockOnRoute,
+  createRoadblockRouteModel,
+  getDetourDirection,
   shouldTriggerRoadblock,
 } from './constants/roadblocks';
 import {
@@ -106,7 +110,6 @@ const GameScreen = ({ route }) => {
   const visualActionIdRef = useRef(null);
   const usedMonumentIdsRef = useRef([]);
   const devForceChallengeTypeRef = useRef(null);
-  const devForceRoadblockRef = useRef(false);
   const localRoadblockHistoryRef = useRef([]);
   const routeStops = useMemo(
     () => devRouteStops || resolveGameRouteStops(gameData),
@@ -212,14 +215,22 @@ const GameScreen = ({ route }) => {
       if (visualActionIdRef.current === visualActionKey) return;
 
       visualActionIdRef.current = visualActionKey;
-      activeCarProgressRef.current = routeModel.stopProgress[action.fromLeg] ?? 0;
+      activeCarProgressRef.current = action.roadblockChoice === 'detour'
+        ? 0
+        : (routeModel.stopProgress[action.fromLeg] ?? 0);
       setLastRoll(action.value);
       setMoveStartLeg(action.fromLeg);
       setPassedLeg(action.fromLeg);
       setIsCarDriving(false);
-      setRemainingMoves(action.targetLeg - action.fromLeg);
+      setRemainingMoves(action.roadblockChoice === 'detour'
+        ? Math.max(1, (Number(action.detourStep) || 0) - (Number(action.detourStartStep) || 0))
+        : action.targetLeg - action.fromLeg);
       setMovingPieceId(action.teamId);
-      setMoveStartDelay(action.roadblockChoice ? 0 : DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER);
+      setMoveStartDelay(
+        action.roadblockChoice && action.detourStartStep === undefined
+          ? 0
+          : DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER
+      );
       setMoveTargets((previousTargets) => ({
         ...previousTargets,
         [action.teamId]: action.targetLeg,
@@ -363,27 +374,37 @@ const GameScreen = ({ route }) => {
     }
 
     if (localRoadblock?.choice === 'detour' && localRoadblock.status === 'detourChallenge') {
-      const completedStep = Number(localRoadblock.detourStep) || 0;
-      const nextStep = completedStep + 1;
-      const movementPath = createRoadblockDetourSegment({
-        event: localRoadblock,
-        routeModel,
-        step: nextStep,
-      });
-      if (!movementPath || !localPendingAction) return;
-      const headingToDestination = nextStep >= (localRoadblock.detourStops?.length || 0);
+      const activeProgressForDetour = teamProgress[activePiece.id] || {};
+      const nextTeamProgress = {
+        ...teamProgress,
+        [activePiece.id]: {
+          ...activeProgressForDetour,
+          detour: {
+            ...(activeProgressForDetour.detour || localRoadblock),
+            status: 'pending',
+          },
+        },
+      };
+      const nextActiveTeamIndex = getNextActiveTeamIndex(
+        gamePieces,
+        nextTeamProgress,
+        activeTeamIndex
+      );
+      setTeamProgress(nextTeamProgress);
       setCurrentChallenge(null);
-      setLocalMovementPath(movementPath);
-      setLocalPendingAction({
-        ...localPendingAction,
-        detourStep: nextStep,
-        detourSegmentType: headingToDestination ? 'destination' : 'waypoint',
-      });
-      setLocalRoadblock({ ...localRoadblock, status: 'travelling', detourStep: nextStep });
-      setMovingPieceId(localPendingAction.teamId);
-      setMoveStartDelay(0);
+      setLocalMovementPath(null);
+      setLocalPendingAction(null);
+      setLocalRoadblock(null);
+      setMovingPieceId(null);
       setIsCarDriving(false);
-      setState('moving');
+      setLastRoll(null);
+      if (nextActiveTeamIndex === null) {
+        setState('done');
+        return;
+      }
+      setActiveTeamIndex(nextActiveTeamIndex);
+      setLocalTurnNumber((turn) => turn + 1);
+      setState('waiting');
       return;
     }
 
@@ -477,6 +498,15 @@ const GameScreen = ({ route }) => {
               }),
             };
           });
+          requiredTeamIds.forEach((teamId) => {
+            if (!evaluation.winnerTeamIds.includes(teamId)) {
+              const prev = next[teamId] || {};
+              next[teamId] = {
+                ...prev,
+                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+              };
+            }
+          });
           return next;
         });
 
@@ -516,6 +546,15 @@ const GameScreen = ({ route }) => {
               }),
             };
           });
+          requiredTeamIds.forEach((teamId) => {
+            if (!evaluation.winnerTeamIds.includes(teamId)) {
+              const prev = next[teamId] || {};
+              next[teamId] = {
+                ...prev,
+                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+              };
+            }
+          });
           return next;
         });
 
@@ -542,15 +581,29 @@ const GameScreen = ({ route }) => {
 
     const guessed = actionType === 'guessed';
     const pointsAwarded = guessed ? (Number(currentChallenge.successPoints) || 10) : 0;
-    if (pointsAwarded && activePiece?.id) {
+    const penaltySips = guessed ? 0 : getPenaltySips(currentChallenge);
+    if ((pointsAwarded || penaltySips) && activePiece?.id) {
       setTeamProgress((progress) => {
         const current = progress[activePiece.id] || {};
         const challengePoints = (Number(current.challengePoints) || 0) + pointsAwarded;
+        const nextDrinks = (Number(current.drinks) || 0) + penaltySips;
+        const prevPlayerDrinks = current.playerDrinks && typeof current.playerDrinks === 'object'
+          ? current.playerDrinks
+          : {};
+        const nextPlayerDrinks = (!guessed && currentChallenge.selectedPlayerName)
+          ? {
+              ...prevPlayerDrinks,
+              [currentChallenge.selectedPlayerName]:
+                (Number(prevPlayerDrinks[currentChallenge.selectedPlayerName]) || 0) + penaltySips,
+            }
+          : prevPlayerDrinks;
         return {
           ...progress,
           [activePiece.id]: {
             ...current,
             challengePoints,
+            drinks: nextDrinks,
+            playerDrinks: nextPlayerDrinks,
             score: getTeamScore({
               challengePoints,
               currentLeg: current.currentLeg,
@@ -568,6 +621,54 @@ const GameScreen = ({ route }) => {
       pointsAwarded,
     });
   };
+
+  const handleAdjustDrinks = useCallback(({ teamId, delta = 1, playerName = null } = {}) => {
+    if (!teamId || !Number.isFinite(Number(delta)) || Number(delta) === 0) return;
+
+    if (multiplayerEnabled) {
+      multiplayer.adjustDrinks({ teamId, delta, playerName }).catch((error) => {
+        console.log('Unable to synchronize drink adjustment', error);
+      });
+      return;
+    }
+
+    const safeDelta = Math.round(Number(delta));
+    setTeamProgress((progress) => {
+      const prevTeam = progress[teamId];
+      if (!prevTeam) return progress;
+
+      const currentTeamDrinks = Math.max(0, Number(prevTeam.drinks) || 0);
+      const prevPlayerDrinks = prevTeam.playerDrinks && typeof prevTeam.playerDrinks === 'object'
+        ? prevTeam.playerDrinks
+        : {};
+
+      let nextTeamDrinks = Math.max(0, currentTeamDrinks + safeDelta);
+      let nextPlayerDrinks = prevPlayerDrinks;
+
+      if (playerName) {
+        const currentPlayerDrinks = Math.max(0, Number(prevPlayerDrinks[playerName]) || 0);
+        const updatedPlayerDrinks = Math.max(0, currentPlayerDrinks + safeDelta);
+        const appliedDelta = updatedPlayerDrinks - currentPlayerDrinks;
+        if (appliedDelta === 0) return progress;
+        nextTeamDrinks = Math.max(0, currentTeamDrinks + appliedDelta);
+        nextPlayerDrinks = {
+          ...prevPlayerDrinks,
+          [playerName]: updatedPlayerDrinks,
+        };
+      } else if (nextTeamDrinks === currentTeamDrinks) {
+        return progress;
+      }
+
+      return {
+        ...progress,
+        [teamId]: {
+          ...prevTeam,
+          drinks: nextTeamDrinks,
+          playerDrinks: nextPlayerDrinks,
+        },
+      };
+    });
+  }, [multiplayer, multiplayerEnabled]);
 
   const handleDiceRollStart = () => {
     if (state === 'waiting' && (!multiplayerEnabled || multiplayer.canControlTurn)) {
@@ -590,6 +691,52 @@ const GameScreen = ({ route }) => {
       targetLeg,
       finalStopIndex: routeModel.finalStopIndex,
     };
+
+    if (activeProgress.detour) {
+      const detour = activeProgress.detour;
+      const startStep = Number(detour.step) || 0;
+      const finalStep = (detour.detourStops?.length || 0) + 1;
+      const targetStep = Math.min(startStep + safeValue, finalStep);
+      const movementPath = createRoadblockDetourSegment({
+        event: detour,
+        routeModel,
+        step: startStep,
+        targetStep,
+      });
+      if (!movementPath) return;
+      const detourAction = {
+        ...action,
+        fromLeg: detour.fromLeg,
+        targetLeg: detour.targetLeg,
+        roadblockChoice: 'detour',
+        detourStartStep: startStep,
+        detourStep: targetStep,
+        detourSegmentType: targetStep >= finalStep ? 'destination' : 'waypoint',
+      };
+      activeCarProgressRef.current = 0;
+      setLastRoll(safeValue);
+      setMoveStartLeg(detour.fromLeg);
+      setPassedLeg(detour.fromLeg);
+      setIsCarDriving(false);
+      setRemainingMoves(targetStep - startStep);
+      setMovingPieceId(activePiece.id);
+      setMoveStartDelay(resultDisplayDelay);
+      setMoveTargets((previousTargets) => ({
+        ...previousTargets,
+        [activePiece.id]: detour.targetLeg,
+      }));
+      setLocalMovementPath(movementPath);
+      setLocalPendingAction(detourAction);
+      setLocalRoadblock({
+        ...detour,
+        status: 'travelling',
+        choice: 'detour',
+        detourStep: targetStep,
+      });
+      setState('moving');
+      return;
+    }
+
     activeCarProgressRef.current = routeModel.stopProgress[startLeg] ?? 0;
     setLastRoll(safeValue);
     setMoveStartLeg(startLeg);
@@ -607,17 +754,27 @@ const GameScreen = ({ route }) => {
       turnNumber: localTurnNumber,
       roadblockHistory: localRoadblockHistoryRef.current,
     };
-    const forceRoadblock = devForceRoadblockRef.current;
-    devForceRoadblockRef.current = false;
-    if (forceRoadblock || shouldTriggerRoadblock({ action, gameplay: localGameplay })) {
+    if (shouldTriggerRoadblock({ action, gameplay: localGameplay })) {
       const event = createRoadblockEvent({ action, routeModel, turnNumber: localTurnNumber });
+      if (!event) {
+        setLocalPendingAction(null);
+        setLocalRoadblock(null);
+        setState('moving');
+        return;
+      }
       localRoadblockHistoryRef.current = [...localRoadblockHistoryRef.current, {
         id: event.id,
         teamId: event.teamId,
         turnNumber: event.turnNumber,
       }].slice(-8);
+      const roadblockAction = { ...action, targetLeg: event.targetLeg };
+      setRemainingMoves(event.targetLeg - startLeg);
+      setMoveTargets((previousTargets) => ({
+        ...previousTargets,
+        [activePiece.id]: event.targetLeg,
+      }));
       setMovingPieceId(null);
-      setLocalPendingAction(action);
+      setLocalPendingAction(roadblockAction);
       setLocalRoadblock(event);
       setState('roadblock');
       return;
@@ -626,6 +783,49 @@ const GameScreen = ({ route }) => {
     setLocalPendingAction(null);
     setLocalRoadblock(null);
     setState('moving');
+  };
+
+  const startLocalRoadblockTest = () => {
+    if (
+      !['waiting', 'rolling'].includes(state)
+      || !activePiece
+      || activeProgress.isDone
+      || activeProgress.detour
+    ) return;
+
+    const currentLeg = activeProgress.currentLeg;
+    const targetLeg = Math.min(currentLeg + 1, routeModel.finalStopIndex);
+    if (targetLeg <= currentLeg) return;
+    const action = {
+      id: `local-roadblock-test-${currentLeg}-${Date.now()}`,
+      type: 'roll',
+      teamId: activePiece.id,
+      value: 1,
+      fromLeg: currentLeg,
+      targetLeg,
+      finalStopIndex: routeModel.finalStopIndex,
+    };
+    const event = createRoadblockEvent({
+      action,
+      allowFallbackDetour: true,
+      routeModel,
+      turnNumber: localTurnNumber,
+    });
+    if (!event) return;
+
+    activeCarProgressRef.current = routeModel.stopProgress[currentLeg] ?? 0;
+    setLastRoll(action.value);
+    setMoveStartLeg(currentLeg);
+    setPassedLeg(currentLeg);
+    setIsCarDriving(false);
+    setRemainingMoves(1);
+    setMovingPieceId(null);
+    setMoveStartDelay(0);
+    setMoveTargets((previous) => ({ ...previous, [activePiece.id]: action.targetLeg }));
+    setLocalMovementPath(null);
+    setLocalPendingAction(action);
+    setLocalRoadblock(event);
+    setState('roadblock');
   };
 
   const handleRoadblockAction = (choice) => {
@@ -650,27 +850,42 @@ const GameScreen = ({ route }) => {
     const brokeThrough = choice === 'completed' && localRoadblock.status === 'challenge';
     if (!takesDetour && !brokeThrough) return;
 
-    const movementPath = takesDetour
-      ? createRoadblockDetourSegment({ event: localRoadblock, routeModel, step: 0 })
-      : createRoadblockMovementPath({ event: localRoadblock, routeModel, type: 'direct' });
-    if (!movementPath) return;
-    setLocalMovementPath(movementPath);
-    setLocalPendingAction({
-      ...localPendingAction,
-      roadblockChoice: takesDetour ? 'detour' : 'challenge',
-      detourStep: takesDetour ? 0 : null,
-      detourSegmentType: takesDetour ? 'waypoint' : null,
-    });
-    setLocalRoadblock({
-      ...localRoadblock,
-      status: takesDetour ? 'travelling' : 'resolved',
-      choice: takesDetour ? 'detour' : 'challenge',
-      detourStep: takesDetour ? 0 : null,
-      resolvedAt: Date.now(),
-    });
-    setMovingPieceId(localPendingAction.teamId);
-    setMoveStartDelay(0);
-    setState('moving');
+    const resolvedAt = Date.now();
+    const nextTeamProgress = takesDetour
+      ? {
+          ...teamProgress,
+          [localPendingAction.teamId]: {
+            ...teamProgress[localPendingAction.teamId],
+            detour: {
+              ...localRoadblock,
+              status: 'pending',
+              choice: 'detour',
+              step: 0,
+              detourStep: 0,
+              resolvedAt,
+            },
+          },
+        }
+      : teamProgress;
+    const nextActiveTeamIndex = getNextActiveTeamIndex(
+      gamePieces,
+      nextTeamProgress,
+      activeTeamIndex
+    );
+    setTeamProgress(nextTeamProgress);
+    setLastRoll(null);
+    setRemainingMoves(0);
+    setMovingPieceId(null);
+    setLocalMovementPath(null);
+    setLocalPendingAction(null);
+    setLocalRoadblock(null);
+    if (nextActiveTeamIndex === null) {
+      setState('done');
+      return;
+    }
+    setActiveTeamIndex(nextActiveTeamIndex);
+    setLocalTurnNumber((turn) => turn + 1);
+    setState('waiting');
   };
 
   const requestRoll = async (value = rollDice(), inputMethod = 'shortcut') => {
@@ -723,9 +938,22 @@ const GameScreen = ({ route }) => {
 
     if (isLocalDetourWaypoint) {
       const detourStep = Number(localPendingAction.detourStep) || 0;
-      const stop = localRoadblock.detourStops?.[detourStep];
+      const stop = localRoadblock.detourStops?.[detourStep - 1];
       if (!stop) return;
       const challengeId = stop.challenges?.[0]?.id || null;
+      const previousProgress = teamProgress[pieceId] || {};
+      setTeamProgress({
+        ...teamProgress,
+        [pieceId]: {
+          ...previousProgress,
+          detour: {
+            ...(previousProgress.detour || localRoadblock),
+            status: 'challenge',
+            step: detourStep,
+            detourStep,
+          },
+        },
+      });
       setIsCarDriving(false);
       setRemainingMoves(0);
       setLocalRoadblock({ ...localRoadblock, status: 'detourChallenge', detourStep });
@@ -739,13 +967,17 @@ const GameScreen = ({ route }) => {
     }
 
     const hasFinishedRoute = landedLeg >= routeModel.finalStopIndex;
+    const completedRoadblock = Boolean(localPendingAction?.roadblockChoice);
     const finishPosition = hasFinishedRoute ? getFinishPosition(teamProgress) : null;
     const previousProgress = teamProgress[pieceId] || {};
+    const { detour: _completedDetour, ...progressWithoutDetour } = previousProgress;
     const challengePoints = Number(previousProgress.challengePoints) || 0;
     const nextTeamProgress = {
       ...teamProgress,
       [pieceId]: {
-        ...previousProgress,
+        ...(localPendingAction?.roadblockChoice === 'detour'
+          ? progressWithoutDetour
+          : previousProgress),
         currentLeg: hasFinishedRoute ? routeModel.finalStopIndex : landedLeg,
         isDone: hasFinishedRoute,
         challengePoints,
@@ -762,7 +994,7 @@ const GameScreen = ({ route }) => {
     setLocalRoadblock(null);
 
     const nextActiveTeamIndex = getNextActiveTeamIndex(gamePieces, nextTeamProgress, activeTeamIndex);
-    if (hasFinishedRoute && !activeDevDrive) {
+    if ((hasFinishedRoute || completedRoadblock) && !activeDevDrive) {
       if (nextActiveTeamIndex === null) {
         setState('done');
         return;
@@ -870,6 +1102,7 @@ const GameScreen = ({ route }) => {
   };
 
   const stableDevDriveToStop = useLatestCallback(startDevDriveToStop);
+  const stableRoadblockTest = useLatestCallback(startLocalRoadblockTest);
   const requestRollRef = useRef(requestRoll);
   requestRollRef.current = requestRoll;
   const handleRestartRef = useRef(handleRestart);
@@ -927,8 +1160,7 @@ const GameScreen = ({ route }) => {
     });
     const unsubTestRoadblock = devEventBus.on('dev:testRoadblock', () => {
       if (multiplayerEnabled) return;
-      devForceRoadblockRef.current = true;
-      requestRollRef.current?.(1, 'shortcut');
+      stableRoadblockTest();
     });
     const unsubClearRoadblocks = devEventBus.on('dev:clearRoadblocks', () => {
       setRoadblocks([]);
@@ -979,7 +1211,7 @@ const GameScreen = ({ route }) => {
       unsubPlacement();
       unsubRestart();
     };
-  }, [multiplayerEnabled, routeStops, stableDevDriveToStop]);
+  }, [multiplayerEnabled, routeStops, stableDevDriveToStop, stableRoadblockTest]);
 
   const handleMapPointSelected = async (point) => {
     if (!placementRequest || !point) return;
@@ -1014,21 +1246,33 @@ const GameScreen = ({ route }) => {
   const stableDriveStart = useLatestCallback(handleDriveStart);
   const stableLegPass = useLatestCallback(handleLegPass);
   const stableMoveComplete = useLatestCallback(handleMoveComplete);
-  const roadblockEvent = multiplayerEnabled ? multiplayer.gameplay?.roadblock : localRoadblock;
+  const activeDetour = teamProgress[activePiece?.id]?.detour || null;
+  const roadblockEvent = (multiplayerEnabled ? multiplayer.gameplay?.roadblock : localRoadblock)
+    || activeDetour;
   const movementPath = multiplayerEnabled
     ? multiplayer.gameplay?.currentAction?.movementPath
     : localMovementPath;
   const movementRouteModel = useMemo(
-    () => movementPath?.stops?.length >= 2 ? createRouteModel(movementPath.stops) : null,
+    () => movementPath?.stops?.length >= 2 ? createRoadblockRouteModel(movementPath) : null,
     [movementPath]
   );
+  const detourRouteModels = useMemo(() => Object.fromEntries(
+    Object.entries(teamProgress).flatMap(([teamId, progressEntry]) => {
+      const detour = progressEntry?.detour;
+      if (!detour?.detourStops?.length) return [];
+      const path = createRoadblockMovementPath({ event: detour, routeModel, type: 'detour' });
+      return path?.stops?.length >= 2
+        ? [[teamId, createRoadblockRouteModel(path)]]
+        : [];
+    })
+  ), [routeModel, teamProgress]);
   const detourPreviewPath = useMemo(() => (
     roadblockEvent?.detourStops?.length
       ? createRoadblockMovementPath({ event: roadblockEvent, routeModel, type: 'detour' })
       : null
   ), [roadblockEvent, routeModel]);
   const detourPreviewModel = useMemo(
-    () => detourPreviewPath?.stops?.length >= 2 ? createRouteModel(detourPreviewPath.stops) : null,
+    () => detourPreviewPath?.stops?.length >= 2 ? createRoadblockRouteModel(detourPreviewPath) : null,
     [detourPreviewPath]
   );
   const liveRoadblock = useMemo(() => (
@@ -1037,7 +1281,10 @@ const GameScreen = ({ route }) => {
           routeModel,
           roadblockEvent.obstacleLeg || Math.min(roadblockEvent.fromLeg + 1, roadblockEvent.targetLeg),
           roadblockEvent.progressAlongLeg ?? 0.48,
-          { id: roadblockEvent.id, detourDirection: 'both' }
+          {
+            id: roadblockEvent.id,
+            detourDirection: getDetourDirection({ event: roadblockEvent, routeModel }),
+          }
         )
       : null
   ), [roadblockEvent, routeModel]);
@@ -1050,14 +1297,23 @@ const GameScreen = ({ route }) => {
     )
   );
   const detourStep = Number(roadblockEvent?.detourStep) || 0;
-  const detourCurrentLeg = state === 'roadblock' ? 0 : detourStep;
+  const activeMovementAction = multiplayerEnabled
+    ? multiplayer.gameplay?.currentAction
+    : localPendingAction;
+  const detourCurrentLeg = state === 'roadblock'
+    ? 0
+    : state === 'moving'
+      ? (Number(activeMovementAction?.detourStartStep) || 0)
+      : detourStep;
   const detourTargetLeg = state === 'roadblock'
     ? 1
-    : Math.min(detourStep + 1, (detourPreviewModel?.finalStopIndex ?? 3));
+    : state === 'moving'
+      ? detourStep
+      : Math.min(detourStep + 1, (detourPreviewModel?.finalStopIndex ?? 3));
   const detourOccupiedIndexes = useMemo(() => {
     const set = new Set([0, detourPreviewModel?.finalStopIndex ?? 3]);
     if (state === 'challenge' && roadblockEvent?.status === 'detourChallenge') {
-      set.add(detourStep + 1);
+      set.add(detourStep);
     }
     return set;
   }, [detourPreviewModel?.finalStopIndex, detourStep, roadblockEvent?.status, state]);
@@ -1108,6 +1364,8 @@ const GameScreen = ({ route }) => {
         currentLeg={currentLeg}
         diceEnabled={canRoll && !placementRequest}
         diceVisible={!placementRequest && state !== 'roadblock'}
+        detourRouteModels={detourRouteModels}
+        activeDetourTeamId={activeDetour ? activePiece?.id : null}
         driving={state === 'moving'}
         lowPower={state === 'challenge'}
         gamePieces={gamePieces}
@@ -1145,18 +1403,26 @@ const GameScreen = ({ route }) => {
       />
 
       <GameHud
+        activeTeamColor={activePiece?.color}
+        activeTeamId={activePiece?.id}
         activeTeamLabel={activePiece?.label}
         activeTeamScore={activeProgress.score || 0}
         canRestart={!multiplayerEnabled || multiplayer.isHost}
         fromName={fromName}
+        gamePieces={gamePieces}
+        isDetour={Boolean(activeDetour || (roadblockEvent && roadblockEvent.choice === 'detour'))}
         lastRoll={lastRoll}
+        onAdjustDrinks={handleAdjustDrinks}
         onRestart={handleRestart}
         progress={progress}
         remainingMoves={remainingMoves}
+        routeStopNames={routeModel.stopNames}
         state={state}
-        gamePieces={gamePieces}
+        teamMembers={teamMembers}
         teamProgress={teamProgress}
         toName={toName}
+        totalStops={routeModel.finalStopIndex + 1}
+        turnNumber={multiplayerEnabled ? (multiplayer.gameplay?.turnNumber || 1) : localTurnNumber}
       />
       <RaceProgressTracker
         activeTeamId={activePiece?.id}

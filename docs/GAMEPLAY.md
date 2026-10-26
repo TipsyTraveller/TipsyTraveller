@@ -19,9 +19,12 @@
 | `9-12` | 3 | 12 | 3 |
 
 Difficulty is stored but currently has no gameplay effect. Duration chooses a fresh
-Belgium-to-Greece route snapshot: short 6 stops, medium 9, long 12. Route corridors
-and the 51-country fallback catalogue are in `constants/countryStops.js`; a room
-snapshot never changes when authored content later changes.
+6-, 9-, or 12-stop route snapshot from a curated family beginning in Iceland,
+Ireland, Portugal, Norway, or Finland and ending in Greece. Selection preserves
+geographic order, unique countries, at least 0.75 board units between stops, turns
+no sharper than 110 degrees, and non-crossing legs. The route families and the
+51-country fallback catalogue are in `constants/countryStops.js`; a room snapshot
+never changes when authored content later changes.
 
 ## Scoring and movement
 
@@ -64,12 +67,24 @@ closest unfinished opponent, has reached leg 2, and is not moving to the finish.
 Eligible rolls use a deterministic 38% check based on the synchronized action ID;
 the same team has a three-turn cooldown.
 
-The synchronized `roadblock` event stores one hard challenge and a two-country
-detour outside the room itinerary. Completing the timed hard challenge removes the
-barrier and uses the original route. Choosing the detour, or timing out, travels via
-both temporary countries; each opens its standard challenge. Temporary stops do not
-change the immutable route or award route points. Canonical progress is committed
-only after arrival at the original roll destination.
+The synchronized `roadblock` event stores one hard challenge and a validated,
+two-country detour outside the room itinerary. Ordered candidate pairs must progress
+toward the destination, stay on one side of the blocked movement, avoid route
+crossings and severe turns, and remain a bounded extension of the direct trip. If no
+pair passes validation, the roll proceeds normally without a roadblock. Resolving
+the roadblock consumes the triggering turn. Completing the timed hard challenge
+removes the barrier, passes play to the next team, and lets the affected team resume
+the original route on its next turn. Choosing the detour, or timing out, stores a
+per-team detour and immediately passes play to the next team.
+
+On each later turn, a detouring team rolls normally and advances that many of the
+three detour legs: the two temporary countries and the rejoin destination. Landing
+on a temporary country opens its standard challenge; completing it ends that turn.
+A sufficiently high roll may skip a temporary country or complete the entire detour
+in one turn. Temporary stops do not change the immutable route or award route
+points. Canonical progress is committed only when the team reaches the stop
+immediately beyond the barricade, without an additional ordinary landing challenge.
+The per-team detour remains canonical while other teams take their turns.
 
 ## Ownership rules
 

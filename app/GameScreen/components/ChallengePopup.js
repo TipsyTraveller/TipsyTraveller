@@ -58,9 +58,15 @@ const getMarkerScreenOffset = (routeModel, stopIndex, markerPosition, pieceRefs,
 
   projectedPoint.copy(stopPosition).project(projectionCamera);
 
+  // Detour stops can sit outside the main-route overview used for this projection.
+  // Keep the card's launch point on-screen so an Android tablet never has to
+  // animate a large hardware layer in from a very distant projected position.
+  const projectedX = Number.isFinite(projectedPoint.x) ? projectedPoint.x : 0;
+  const projectedY = Number.isFinite(projectedPoint.y) ? projectedPoint.y : 0;
+
   return {
-    x: projectedPoint.x * (width * 0.5),
-    y: -projectedPoint.y * (height * 0.5),
+    x: THREE.MathUtils.clamp(projectedX, -0.92, 0.92) * (width * 0.5),
+    y: -THREE.MathUtils.clamp(projectedY, -0.92, 0.92) * (height * 0.5),
   };
 };
 
@@ -753,6 +759,8 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 30,
+    elevation: 30,
   },
   cardShadow: {
     alignSelf: 'center',

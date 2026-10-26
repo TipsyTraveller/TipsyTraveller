@@ -44,9 +44,14 @@ timing; nearest-point lookup is unsafe when a route crosses itself.
 ribbon. The current ribbon changes `drawRange` rather than reallocating geometry: it
 reveals before driving and its tail follows the active vehicle.
 
-Roadblock detours use a separate gold ribbon and temporary normal marker pins. The
-preview and travel path must share the same ordered spline so the rendered detour and
-movement agree. See [GAMEPLAY.md](GAMEPLAY.md) for roadblock rules.
+Roadblock detours use a separate gold ribbon and temporary normal marker pins. A
+bounded cubic path rounds the detour through its exact country waypoints without
+Catmull-Rom loops or overshoot; preview, segmented vehicle travel, and timing derive
+from that same geometry. See [GAMEPLAY.md](GAMEPLAY.md) for roadblock rules.
+
+The barricade scans the middle 30–70% of its blocked leg for a low-curvature,
+clear position. It remains perpendicular to the tangent, derives its arrow from the
+first detour branch, and includes a red closure strip below the compact prop.
 
 ## Markers and occupancy
 

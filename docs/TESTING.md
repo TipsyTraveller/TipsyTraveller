@@ -37,18 +37,30 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
    camera transitions, marker occupancy, and challenge opening.
 4. Complete the challenge and verify the next unfinished team becomes active.
 5. Use tracker Roll and verify it shares gameplay behavior without 3D die animation.
-6. Restore any temporary development flag.
+6. Start several instant games and confirm each 6/9/12-stop route starts in an
+   allowed edge country, ends in Greece, has readable spacing, and never crosses.
+7. Force roadblocks after rolls of 1–3 on multiple route families. Confirm either
+   roadblock resolution ends the triggering turn. For a detour, let the other teams
+   act, then roll 1–3 on the affected team's later turns and confirm the roll advances
+   that many detour legs. Verify skipped temporary stops do not open challenges,
+   landed temporary stops do, and completing one passes play to the next team.
+   Confirm the final destination is the next route stop beyond the barricade and
+   arrival opens no ordinary landing challenge. Ineligible detours must roll normally.
+8. Complete the hard roadblock challenge, confirm play passes to the next team, and
+   verify the affected team resumes the original route on its following turn.
+9. Restore any temporary development flag.
 
 ## Focused multiplayer flow
 
 1. Create on device A, join on B, verify team/leader assignment and realtime roster.
 2. Start character selection, choose each required model, and verify synchronized game
-   entry with Team 1 active and the snapshotted Belgium-to-Greece itinerary.
+   entry with Team 1 active and the immutable edge-country-to-Greece itinerary.
 3. Verify only the active leader can roll/complete, results are 1–3, route points and
    challenges match, finished teams are skipped, and re-entry restores current state.
 4. Exercise word challenge secrecy/timer/result and GeoGuessr pin/result/score.
-5. Exercise both roadblock choices, including temporary challenges and final canonical
-   progress, then finish and verify podium bonuses/ranking on every client.
+5. Exercise both roadblock choices, reconnect during the choice and between detour
+   turns, and verify turn ownership, intermediate challenges, per-team detour
+   progress, and final canonical progress on both clients.
 6. Restart as host and verify initial progress returns without changing the route.
 
 ## Reconnection and performance

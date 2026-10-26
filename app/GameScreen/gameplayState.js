@@ -7,7 +7,7 @@ import {
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
 import { getPathRevealDuration } from './constants/route';
 
-export const GAMEPLAY_SCHEMA_VERSION = 6;
+export const GAMEPLAY_SCHEMA_VERSION = 7;
 export const POINTS_PER_STOP = 10;
 export const FINISH_BONUSES = [30, 15, 5];
 

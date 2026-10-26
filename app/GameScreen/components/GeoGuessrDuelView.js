@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 import {
   EUROPE_MAP_BORDER_PATH_DATA,
@@ -8,6 +8,10 @@ import {
 } from '../constants/europeMapPaths';
 import {
   boardToSvgCoords,
+  GEO_GUESSR_IMAGE_HEADERS,
+  getCachedMonumentPhotoDataUri,
+  loadMonumentPhotoDataUri,
+  normalizeMonumentImageUrl,
   normalizedMapToBoard,
 } from '../constants/monumentPool';
 
@@ -304,6 +308,12 @@ export default function GeoGuessrDuelView({
   const [draftPin, setDraftPin] = useState(null);
   const [imageFailed, setImageFailed] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const monumentImageUrl = normalizeMonumentImageUrl(challenge?.monumentImageUrl);
+  const [dataUri, setDataUri] = useState(() => (
+    monumentImageUrl ? getCachedMonumentPhotoDataUri(monumentImageUrl) : null
+  ));
+  const [isFetchingPhoto, setIsFetchingPhoto] = useState(false);
 
   // Reset draft pin whenever the active pinning team or challenge changes
   useEffect(() => {
@@ -313,7 +323,71 @@ export default function GeoGuessrDuelView({
   useEffect(() => {
     setImageFailed(false);
     setImageLoaded(false);
-  }, [challenge?.monumentId]);
+    const cached = getCachedMonumentPhotoDataUri(monumentImageUrl);
+    setDataUri(cached);
+  }, [challenge?.monumentId, monumentImageUrl]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    if (!monumentImageUrl) return undefined;
+
+    const cached = getCachedMonumentPhotoDataUri(monumentImageUrl);
+    if (cached) {
+      setDataUri(cached);
+      return undefined;
+    }
+
+    // Android's New Architecture (Fabric) drops custom Image headers, leading to Wikimedia 403 blocks.
+    // We download via fetch() with standard headers and pass a local base64 data URI to <Image>.
+    if (Platform.OS === 'android') {
+      setIsFetchingPhoto(true);
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = setTimeout(() => controller?.abort(), 12000);
+
+      loadMonumentPhotoDataUri(monumentImageUrl, { signal: controller?.signal })
+        .then((uri) => {
+          if (!isCancelled) {
+            setDataUri(uri);
+            setIsFetchingPhoto(false);
+          }
+        })
+        .catch((error) => {
+          if (!isCancelled) {
+            console.warn('GeoGuessrDuelView photo fetch failed:', monumentImageUrl, error?.message || error);
+            setImageFailed(true);
+            setIsFetchingPhoto(false);
+          }
+        })
+        .finally(() => {
+          clearTimeout(timeoutId);
+        });
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [monumentImageUrl, retryKey]);
+
+  const activeImageUri = Platform.OS === 'android' ? dataUri : (dataUri || monumentImageUrl);
+
+  const handleImageError = (error) => {
+    console.warn('GeoGuessrDuelView failed to load photo:', monumentImageUrl, error?.nativeEvent);
+    if (!dataUri && monumentImageUrl && Platform.OS !== 'android') {
+      setIsFetchingPhoto(true);
+      loadMonumentPhotoDataUri(monumentImageUrl)
+        .then((uri) => {
+          setDataUri(uri);
+          setIsFetchingPhoto(false);
+        })
+        .catch((err) => {
+          console.warn('GeoGuessr fallback fetch also failed:', monumentImageUrl, err?.message);
+          setImageFailed(true);
+          setIsFetchingPhoto(false);
+        });
+    } else {
+      setImageFailed(true);
+    }
+  };
 
   const teamById = useMemo(
     () => Object.fromEntries((gamePieces || []).map((piece) => [piece.id, piece])),
@@ -341,24 +415,40 @@ export default function GeoGuessrDuelView({
         </View>
 
         <View style={[styles.postcardFrame, compact && styles.postcardFrameCompact]}>
-          {!imageLoaded && !imageFailed ? (
+          {(!imageLoaded || isFetchingPhoto || !activeImageUri) && !imageFailed ? (
             <View style={styles.photoStatus}>
               <Text style={styles.photoStatusTitle}>LOADING REAL PHOTO...</Text>
             </View>
           ) : null}
-          {challenge?.monumentImageUrl && !imageFailed ? (
+          {activeImageUri && !imageFailed ? (
             <Image
-              source={{ uri: challenge.monumentImageUrl }}
+              key={`${activeImageUri.slice(0, 48)}-${retryKey}`}
+              source={{ uri: activeImageUri, cache: 'force-cache' }}
               style={styles.postcardImage}
               resizeMode="cover"
-              onError={() => setImageFailed(true)}
+              onError={handleImageError}
               onLoad={() => setImageLoaded(true)}
             />
           ) : null}
-          {imageFailed || !challenge?.monumentImageUrl ? (
+          {imageFailed || !monumentImageUrl ? (
             <View style={styles.photoStatus}>
               <Text style={styles.photoStatusTitle}>PHOTO UNAVAILABLE</Text>
               <Text style={styles.photoStatusText}>Check the connection and try this round again.</Text>
+              {monumentImageUrl ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading photo"
+                  style={({ pressed }) => [styles.photoRetryButton, pressed && styles.buttonPressed]}
+                  onPress={() => {
+                    setDataUri(null);
+                    setImageFailed(false);
+                    setImageLoaded(false);
+                    setRetryKey((k) => k + 1);
+                  }}
+                >
+                  <Text style={styles.photoRetryButtonText}>RETRY PHOTO ↻</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
           <View style={styles.postcardClueBar}>
@@ -644,6 +734,24 @@ const styles = StyleSheet.create({
     fontSize: 7,
     lineHeight: 11,
     textAlign: 'center',
+  },
+  photoRetryButton: {
+    marginTop: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderBottomWidth: 3,
+    borderColor: '#111111',
+    backgroundColor: '#1BA39C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoRetryButtonText: {
+    color: '#111111',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 7,
+    textTransform: 'uppercase',
   },
   postcardClueBar: {
     position: 'absolute',

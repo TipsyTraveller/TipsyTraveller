@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from './mapCoordinates';
 import { DEFAULT_COUNTRY_STOPS } from './countryStops';
-import { createRouteModel, getPathRevealDuration } from './route';
+import { createDetourRouteModel, createRouteModel, getPathRevealDuration } from './route';
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './movement';
 
 export const ROADBLOCK_PALETTE = {
@@ -60,6 +60,59 @@ const distanceBetween = (left, right) => Math.hypot(
   Number(left?.position?.y || 0) - Number(right?.position?.y || 0)
 );
 
+const pointSide = (start, end, point) => (
+  (end.position.x - start.position.x) * (point.position.y - start.position.y)
+  - (end.position.y - start.position.y) * (point.position.x - start.position.x)
+);
+
+const segmentIntersection = (a, b, c, d) => {
+  const abC = pointSide(a, b, c);
+  const abD = pointSide(a, b, d);
+  const cdA = pointSide(c, d, a);
+  const cdB = pointSide(c, d, b);
+  return abC * abD < -1e-6 && cdA * cdB < -1e-6;
+};
+
+const turnAngle = (a, b, c) => {
+  const first = Math.atan2(b.position.y - a.position.y, b.position.x - a.position.x);
+  const second = Math.atan2(c.position.y - b.position.y, c.position.x - b.position.x);
+  return Math.abs(Math.atan2(Math.sin(second - first), Math.cos(second - first)));
+};
+
+const projectedProgress = (start, end, point) => {
+  const dx = end.position.x - start.position.x;
+  const dy = end.position.y - start.position.y;
+  const denominator = dx * dx + dy * dy || 1;
+  return ((point.position.x - start.position.x) * dx
+    + (point.position.y - start.position.y) * dy) / denominator;
+};
+
+const isValidDetourPair = ({ first, fromStop, routeStops, second, targetStop }) => {
+  const directDistance = distanceBetween(fromStop, targetStop);
+  const detour = [fromStop, first, second, targetStop];
+  const legLengths = detour.slice(1).map((stop, index) => distanceBetween(detour[index], stop));
+  const routeDistance = legLengths.reduce((sum, length) => sum + length, 0);
+  const ratio = routeDistance / Math.max(directDistance, 0.01);
+  const firstProgress = projectedProgress(fromStop, targetStop, first);
+  const secondProgress = projectedProgress(fromStop, targetStop, second);
+  const firstSide = pointSide(fromStop, targetStop, first);
+  const secondSide = pointSide(fromStop, targetStop, second);
+  if (firstProgress <= 0.04 || secondProgress >= 0.96 || secondProgress <= firstProgress) return false;
+  if (Math.abs(firstSide) < 0.18 || Math.abs(secondSide) < 0.18 || firstSide * secondSide <= 0) return false;
+  if (ratio < 1.25 || ratio > 2.25 || legLengths.some((length) => length < 0.72)) return false;
+  if (turnAngle(fromStop, first, second) > (115 * Math.PI) / 180) return false;
+  if (turnAngle(first, second, targetStop) > (115 * Math.PI) / 180) return false;
+  if (segmentIntersection(fromStop, first, second, targetStop)) return false;
+
+  const detourLegs = [[fromStop, first], [first, second], [second, targetStop]];
+  const mainLegs = routeStops.slice(1).map((stop, index) => [routeStops[index], stop]);
+  return !detourLegs.some(([start, end], detourIndex) => mainLegs.some(([mainStart, mainEnd]) => {
+    const touchesBranch = detourIndex === 0 && (mainStart.id === fromStop.id || mainEnd.id === fromStop.id);
+    const touchesRejoin = detourIndex === 2 && (mainStart.id === targetStop.id || mainEnd.id === targetStop.id);
+    return !touchesBranch && !touchesRejoin && segmentIntersection(start, end, mainStart, mainEnd);
+  }));
+};
+
 export const getRoadblockLeaderGap = (gameplay, teamId) => {
   const activeLeg = Number(gameplay?.teamProgress?.[teamId]?.currentLeg) || 0;
   const trailingLegs = Object.entries(gameplay?.teamProgress || {})
@@ -115,61 +168,98 @@ const withDetourChallenge = (stop, actionId, index) => {
   };
 };
 
-export const selectDetourStops = ({ actionId, fromStop, routeStops, targetStop }) => {
+export const selectDetourStops = ({
+  actionId,
+  allowFallback = false,
+  fromStop,
+  routeStops,
+  targetStop,
+}) => {
   const routeIds = new Set((routeStops || []).map((stop) => stop.id));
   const directDistance = Math.max(distanceBetween(fromStop, targetStop), 0.01);
-  const candidates = DEFAULT_COUNTRY_STOPS
-    .filter((stop) => !routeIds.has(stop.id) && stop.id !== fromStop?.id && stop.id !== targetStop?.id)
-    .map((stop) => ({
-      stop,
-      addedDistance: distanceBetween(fromStop, stop) + distanceBetween(stop, targetStop) - directDistance,
-      routeDistance: distanceBetween(fromStop, stop) + distanceBetween(stop, targetStop),
-    }))
-    .filter(({ routeDistance }) => routeDistance >= directDistance * 1.28)
-    .sort((left, right) => left.addedDistance - right.addedDistance);
+  const candidates = DEFAULT_COUNTRY_STOPS.filter((stop) => !routeIds.has(stop.id));
+  const pairs = [];
+  const fallbackPairs = [];
+  candidates.forEach((first) => candidates.forEach((second) => {
+    if (first.id === second.id) return;
+    const routeDistance = distanceBetween(fromStop, first)
+      + distanceBetween(first, second)
+      + distanceBetween(second, targetStop);
+    const ratio = routeDistance / directDistance;
+    const legs = [
+      distanceBetween(fromStop, first),
+      distanceBetween(first, second),
+      distanceBetween(second, targetStop),
+    ];
+    const mean = routeDistance / 3;
+    const imbalance = legs.reduce((sum, length) => sum + ((length - mean) ** 2), 0);
+    const sameSide = pointSide(fromStop, targetStop, first)
+      * pointSide(fromStop, targetStop, second) > 0;
+    const pair = {
+      first,
+      second,
+      score: Math.abs(ratio - 1.55) + imbalance * 0.04 + (sameSide ? 0 : 10),
+    };
+    if (isValidDetourPair({ first, fromStop, routeStops, second, targetStop })) {
+      pairs.push(pair);
+    } else if (allowFallback) {
+      fallbackPairs.push(pair);
+    }
+  }));
+  const availablePairs = pairs.length ? pairs : fallbackPairs;
+  availablePairs.sort((left, right) => left.score - right.score
+    || `${left.first.id}:${left.second.id}`.localeCompare(`${right.first.id}:${right.second.id}`));
+  if (!availablePairs.length) return [];
+  const bestPairs = availablePairs.slice(0, Math.min(8, availablePairs.length));
+  const selectedPair = bestPairs[hashSeed(`${actionId}:detour-pair`) % bestPairs.length];
 
-  if (!candidates.length) return [];
-  const nearbyPool = candidates.slice(0, Math.min(12, candidates.length));
-  const firstIndex = hashSeed(`${actionId}:detour:first`) % nearbyPool.length;
-  const first = nearbyPool[firstIndex].stop;
-
-  const secondCandidates = DEFAULT_COUNTRY_STOPS
-    .filter((stop) => !routeIds.has(stop.id) && stop.id !== first.id)
-    .map((stop) => ({
-      stop,
-      distance: distanceBetween(first, stop) + distanceBetween(stop, targetStop),
-    }))
-    .sort((left, right) => left.distance - right.distance)
-    .slice(0, 8);
-  const second = secondCandidates.length
-    ? secondCandidates[hashSeed(`${actionId}:detour:second`) % secondCandidates.length].stop
-    : null;
-
-  const selected = [first, second].filter(Boolean);
-  if (selected.length === 2) {
-    const forwardDistance = distanceBetween(fromStop, selected[0])
-      + distanceBetween(selected[0], selected[1])
-      + distanceBetween(selected[1], targetStop);
-    const reverseDistance = distanceBetween(fromStop, selected[1])
-      + distanceBetween(selected[1], selected[0])
-      + distanceBetween(selected[0], targetStop);
-    if (reverseDistance < forwardDistance) selected.reverse();
-  }
-
-  return selected.map((stop, index) => stripStopForGameplay(
+  return [selectedPair.first, selectedPair.second].map((stop, index) => stripStopForGameplay(
     withDetourChallenge(stop, actionId, index)
   ));
 };
 
-export const createRoadblockEvent = ({ action, routeModel, turnNumber }) => {
+const selectRoadblockProgress = ({ detourStops, obstacleLeg, routeModel }) => {
+  const startProgress = routeModel.stopProgress[obstacleLeg - 1] ?? 0;
+  const endProgress = routeModel.stopProgress[obstacleLeg] ?? 1;
+  const protectedPoints = [
+    ...routeModel.markers,
+    ...(detourStops || []).map((stop) => new THREE.Vector3(stop.position.x, stop.position.y, -0.92)),
+  ];
+  let best = { progress: 0.5, score: Number.POSITIVE_INFINITY };
+  const before = new THREE.Vector3();
+  const point = new THREE.Vector3();
+  const after = new THREE.Vector3();
+  for (let step = 0; step <= 16; step += 1) {
+    const progress = 0.3 + (step / 16) * 0.4;
+    const global = THREE.MathUtils.lerp(startProgress, endProgress, progress);
+    routeModel.curve.getPointAt(Math.max(0, global - 0.006), before);
+    routeModel.curve.getPointAt(global, point);
+    routeModel.curve.getPointAt(Math.min(1, global + 0.006), after);
+    const curvature = after.clone().sub(point).angleTo(point.clone().sub(before));
+    const clearance = Math.min(...protectedPoints.map((candidate) => candidate.distanceTo(point)));
+    const score = curvature * 2.5 - Math.min(clearance, 1.2) + Math.abs(progress - 0.5) * 0.1;
+    if (score < best.score) best = { progress, score };
+  }
+  return best.progress;
+};
+
+export const createRoadblockEvent = ({
+  action,
+  allowFallbackDetour = false,
+  routeModel,
+  turnNumber,
+}) => {
   const fromStop = routeModel.countryStops[action.fromLeg];
-  const targetStop = routeModel.countryStops[action.targetLeg];
+  const obstacleLeg = Math.min(action.fromLeg + 1, action.targetLeg);
+  const targetStop = routeModel.countryStops[obstacleLeg];
   const detourStops = selectDetourStops({
     actionId: action.id,
+    allowFallback: allowFallbackDetour,
     fromStop,
     routeStops: routeModel.countryStops,
     targetStop,
   });
+  if (detourStops.length !== 2) return null;
   const challenge = ROADBLOCK_CHALLENGES[
     hashSeed(`${action.id}:challenge`) % ROADBLOCK_CHALLENGES.length
   ];
@@ -178,12 +268,12 @@ export const createRoadblockEvent = ({ action, routeModel, turnNumber }) => {
     id: `roadblock-${action.id}`,
     teamId: action.teamId,
     fromLeg: action.fromLeg,
-    targetLeg: action.targetLeg,
-    obstacleLeg: Math.min(action.fromLeg + 1, action.targetLeg),
+    targetLeg: obstacleLeg,
+    obstacleLeg,
     turnNumber,
     status: 'choice',
     choice: null,
-    progressAlongLeg: 0.48,
+    progressAlongLeg: selectRoadblockProgress({ detourStops, obstacleLeg, routeModel }),
     detourStops,
     challenge,
   };
@@ -202,24 +292,32 @@ export const createRoadblockMovementPath = ({ event, routeModel, type }) => {
   };
 };
 
-export const createRoadblockDetourSegment = ({ event, routeModel, step }) => {
+export const createRoadblockRouteModel = (movementPath) => (
+  movementPath?.type === 'detour'
+    ? createDetourRouteModel(movementPath.stops)
+    : createRouteModel(movementPath.stops)
+);
+
+export const createRoadblockDetourSegment = ({ event, routeModel, step, targetStep = step + 1 }) => {
   const detourStops = event?.detourStops || [];
   const fromStop = step === 0
     ? routeModel.countryStops[event.fromLeg]
     : detourStops[step - 1];
-  const targetStop = step < detourStops.length
-    ? detourStops[step]
+  const targetStop = targetStep <= detourStops.length
+    ? detourStops[targetStep - 1]
     : routeModel.countryStops[event.targetLeg];
 
-  if (!fromStop || !targetStop) return null;
+  if (!fromStop || !targetStop || targetStep <= step || targetStep > detourStops.length + 1) {
+    return null;
+  }
 
   const fullMovement = createRoadblockMovementPath({ event, routeModel, type: 'detour' });
 
   if (fullMovement?.stops?.length >= 3) {
-    const fullModel = createRouteModel(fullMovement.stops);
+    const fullModel = createDetourRouteModel(fullMovement.stops);
     const pStart = fullModel.stopProgress[step] ?? 0;
-    const pEnd = fullModel.stopProgress[step + 1] ?? 1;
-    const SAMPLES = 16;
+    const pEnd = fullModel.stopProgress[targetStep] ?? 1;
+    const SAMPLES = 16 * (targetStep - step);
     const sampledStops = [];
     const tempPoint = new THREE.Vector3();
 
@@ -242,7 +340,7 @@ export const createRoadblockDetourSegment = ({ event, routeModel, step }) => {
         });
       } else {
         sampledStops.push({
-          id: `detour-step-${step}-pt-${i}`,
+          id: `detour-step-${step}-${targetStep}-pt-${i}`,
           name: '',
           position: { x: tempPoint.x, y: tempPoint.y },
           order: i,
@@ -264,15 +362,23 @@ export const createRoadblockDetourSegment = ({ event, routeModel, step }) => {
   };
 };
 
-export const getRoadblockMovementTiming = ({ movementPath, now }) => {
-  const movementRoute = createRouteModel(movementPath.stops);
-  const movementStartsAt = now
+export const getRoadblockMovementTiming = ({ movementPath, movementStartsAt, now }) => {
+  const movementRoute = createRoadblockRouteModel(movementPath);
+  const startsAt = Number(movementStartsAt) || now
     + (getPathRevealDuration(1) + 0.08) * 1000;
   return {
-    movementStartsAt,
-    movementEndsAt: movementStartsAt
+    movementStartsAt: startsAt,
+    movementEndsAt: startsAt
       + (movementRoute.length / DRIVE_SPEED_UNITS_PER_SECOND) * 1000,
   };
+};
+
+export const getDetourDirection = ({ event, routeModel }) => {
+  const fromStop = routeModel?.countryStops?.[event?.fromLeg];
+  const targetStop = routeModel?.countryStops?.[event?.targetLeg];
+  const firstDetour = event?.detourStops?.[0];
+  if (!fromStop || !targetStop || !firstDetour) return 'right';
+  return pointSide(fromStop, targetStop, firstDetour) >= 0 ? 'left' : 'right';
 };
 
 /**

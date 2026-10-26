@@ -144,7 +144,7 @@ const hasCurrentMonumentPhotos = (monuments) => {
     return Number(monument?.monumentPoolVersion) === MONUMENT_POOL_VERSION
       && monument?.photoSource === COMMONS_PHOTO_SOURCE
       && typeof monument?.imageUrl === 'string'
-      && monument.imageUrl.startsWith('https://');
+      && monument.imageUrl.startsWith('https://upload.wikimedia.org/');
   });
 };
 

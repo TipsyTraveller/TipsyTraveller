@@ -13,7 +13,10 @@ not a production authorization boundary.
   assign default vehicles to unready teams, and remove test bots.
 - **Board & Game Tools:** force rolls 1–3, move to a route stop and open its challenge,
   skip active challenge/roadblock steps, test or clear roadblocks, and reset board
-  state.
+  state. The roadblock-event shortcut places the barrier on the next leg from the
+  active team's current position and may use a relaxed detour only when that leg has
+  no production-valid pair. Use several route families and roll lengths to inspect
+  production-validated branches, both temporary challenges, and final rejoin.
 - **Countries (web only):** list/reorder/remove authored stops, edit challenge pools,
   and place or move stop markers on the 3D map.
 - **Identity & Tools:** inspect/regenerate anonymous device identity, view environment
@@ -29,7 +32,8 @@ immutable route snapshot.
 Country writes use `countryStopsService.js`: Firestore country/challenge documents
 are primary, with local cache and Realtime Database fallback. A marker move updates
 only the affected stop document. Removing a catalogue stop does not mutate existing
-room snapshots. Belgium and Greece retain bundled endpoint fallbacks.
+room snapshots. New snapshots rotate among five curated edge-country starts and
+retain Greece as the finish; Belgium remains available as an intermediate stop.
 
 The Countries tab and map-placement UI are web-only. Placement hides the die, keeps
 the target marker visible, and uses the board-coordinate data shape documented in

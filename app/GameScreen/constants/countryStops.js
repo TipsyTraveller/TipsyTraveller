@@ -12,31 +12,19 @@ import {
 
 export const DURATION_STOP_COUNTS = { short: 6, medium: 9, long: 12 };
 
-// Each corridor is ordered from Belgium toward Greece. A room picks one
-// corridor, then samples evenly distributed stops from it so routes vary while
-// remaining geographically readable instead of zigzagging randomly.
-export const ROUTE_CORRIDORS = [
-  [
-    'luxembourg', 'france', 'monaco', 'switzerland', 'liechtenstein',
-    'italy', 'san-marino', 'vatican-city', 'slovenia',
-    'croatia', 'bosnia-herzegovina', 'montenegro', 'albania', 'north-macedonia',
-  ],
-  [
-    'netherlands', 'germany', 'denmark', 'poland', 'czechia', 'austria',
-    'slovakia', 'hungary', 'romania', 'serbia', 'kosovo', 'bulgaria',
-    'north-macedonia',
-  ],
-  [
-    'netherlands', 'germany', 'denmark', 'norway', 'sweden', 'finland',
-    'estonia', 'latvia', 'lithuania', 'poland', 'ukraine', 'moldova',
-    'romania', 'bulgaria', 'turkey', 'north-macedonia',
-  ],
-  [
-    'ireland', 'united-kingdom', 'france', 'portugal', 'spain', 'andorra',
-    'monaco', 'switzerland', 'italy', 'san-marino', 'vatican-city',
-    'malta', 'albania',
-  ],
+export const ROUTE_START_IDS = ['iceland', 'ireland', 'portugal', 'norway', 'finland'];
+
+// Curated north/south and west/east spines. Shorter games select an ordered,
+// validated subset of one spine rather than moving any country marker.
+export const ROUTE_FAMILIES = [
+  ['iceland', 'ireland', 'united-kingdom', 'netherlands', 'denmark', 'germany', 'switzerland', 'monaco', 'vatican-city', 'bosnia-herzegovina', 'albania', 'greece'],
+  ['ireland', 'united-kingdom', 'netherlands', 'denmark', 'germany', 'czechia', 'poland', 'latvia', 'belarus', 'serbia', 'albania', 'greece'],
+  ['portugal', 'spain', 'andorra', 'switzerland', 'monaco', 'san-marino', 'slovakia', 'poland', 'sweden', 'estonia', 'belarus', 'greece'],
+  ['norway', 'denmark', 'germany', 'estonia', 'lithuania', 'poland', 'czechia', 'monaco', 'croatia', 'serbia', 'kosovo', 'greece'],
+  ['finland', 'norway', 'denmark', 'netherlands', 'france', 'switzerland', 'czechia', 'slovakia', 'san-marino', 'bosnia-herzegovina', 'kosovo', 'greece'],
 ];
+// Kept as an export for development tools that used the old constant name.
+export const ROUTE_CORRIDORS = ROUTE_FAMILIES;
 export const COUNTRY_POSITION_VERSION = 2;
 
 const position = (x, y) => {
@@ -344,36 +332,107 @@ export const applyCurrentDefaultPositions = (value) => normalizeCountryStops(val
   };
 });
 
+const ROUTE_MIN_SPACING = 0.75;
+const ROUTE_MAX_TURN_RADIANS = (110 * Math.PI) / 180;
+
+const routeDistance = (left, right) => Math.hypot(
+  left.position.x - right.position.x,
+  left.position.y - right.position.y
+);
+
+const orientation = (a, b, c) => (
+  (b.position.x - a.position.x) * (c.position.y - a.position.y)
+  - (b.position.y - a.position.y) * (c.position.x - a.position.x)
+);
+
+const segmentsCross = (a, b, c, d) => {
+  const abC = orientation(a, b, c);
+  const abD = orientation(a, b, d);
+  const cdA = orientation(c, d, a);
+  const cdB = orientation(c, d, b);
+  return abC * abD < -1e-7 && cdA * cdB < -1e-7;
+};
+
+export const validateGeneratedRoute = (route) => {
+  if (new Set(route.map(({ id }) => id)).size !== route.length) return false;
+  for (let index = 1; index < route.length; index += 1) {
+    if (routeDistance(route[index - 1], route[index]) < ROUTE_MIN_SPACING) return false;
+  }
+  for (let index = 1; index < route.length - 1; index += 1) {
+    const previous = route[index - 1].position;
+    const current = route[index].position;
+    const next = route[index + 1].position;
+    const firstHeading = Math.atan2(current.y - previous.y, current.x - previous.x);
+    const secondHeading = Math.atan2(next.y - current.y, next.x - current.x);
+    const turn = Math.abs(Math.atan2(
+      Math.sin(secondHeading - firstHeading),
+      Math.cos(secondHeading - firstHeading)
+    ));
+    if (turn > ROUTE_MAX_TURN_RADIANS) return false;
+  }
+  for (let first = 0; first < route.length - 1; first += 1) {
+    for (let second = first + 2; second < route.length - 1; second += 1) {
+      if (segmentsCross(route[first], route[first + 1], route[second], route[second + 1])) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
+
+const enumerateOrderedSelections = (items, count, start = 0, selected = [], result = []) => {
+  if (selected.length === count) {
+    result.push(selected);
+    return result;
+  }
+  const remaining = count - selected.length;
+  for (let index = start; index <= items.length - remaining; index += 1) {
+    enumerateOrderedSelections(items, count, index + 1, [...selected, items[index]], result);
+  }
+  return result;
+};
+
+const routeBalanceScore = (route) => {
+  const lengths = route.slice(1).map((stop, index) => routeDistance(route[index], stop));
+  const mean = lengths.reduce((sum, length) => sum + length, 0) / lengths.length;
+  const variance = lengths.reduce((sum, length) => sum + ((length - mean) ** 2), 0) / lengths.length;
+  return variance + Math.max(...lengths) * 0.08;
+};
+
 export const getStopsForDuration = (stops, duration = 'long', random = Math.random) => {
   const normalized = normalizeCountryStops(stops);
   const stopCount = DURATION_STOP_COUNTS[duration] || DURATION_STOP_COUNTS.long;
-  const intermediateCount = stopCount - 2;
-  const availableIds = new Set(normalized.map(({ id }) => id));
-  const availableCorridors = ROUTE_CORRIDORS
-    .map((corridor) => corridor.filter((id) => availableIds.has(id)))
-    .filter((corridor) => corridor.length >= intermediateCount);
-  const routeCorridors = availableCorridors.length > 0 ? availableCorridors : ROUTE_CORRIDORS;
-  const corridorIndex = Math.min(
-    routeCorridors.length - 1,
-    Math.floor(random() * routeCorridors.length)
-  );
-  const corridor = routeCorridors[corridorIndex];
-  const intermediateIds = Array.from({ length: intermediateCount }, (_, index) => {
-    const segmentStart = Math.floor((index * corridor.length) / intermediateCount);
-    const segmentEnd = Math.max(
-      segmentStart,
-      Math.floor(((index + 1) * corridor.length) / intermediateCount) - 1
-    );
-    const offset = Math.floor(random() * (segmentEnd - segmentStart + 1));
-    return corridor[Math.min(segmentEnd, segmentStart + offset)];
-  });
-  const routeIds = ['belgium', ...intermediateIds, 'greece'];
   const authoredById = new Map(normalized.map((countryStop) => [countryStop.id, countryStop]));
+  const availableFamilies = ROUTE_FAMILIES.filter((family) => (
+    family.every((id) => authoredById.has(id))
+  ));
+  const families = availableFamilies.length ? availableFamilies : ROUTE_FAMILIES;
+  const familyIndex = Math.min(families.length - 1, Math.floor(random() * families.length));
+  const familyStops = families[familyIndex].map((id) => (
+    authoredById.get(id) || DEFAULT_COUNTRY_STOP_BY_ID.get(id)
+  ));
+  const intermediateSelections = enumerateOrderedSelections(
+    familyStops.slice(1, -1),
+    stopCount - 2
+  );
+  const validRoutes = intermediateSelections
+    .map((selection) => [familyStops[0], ...selection, familyStops[familyStops.length - 1]])
+    .filter(validateGeneratedRoute)
+    .sort((left, right) => routeBalanceScore(left) - routeBalanceScore(right));
+  const candidatePool = validRoutes.slice(0, Math.min(validRoutes.length, 4));
+  const defaultFamilyStops = families[familyIndex].map((id) => DEFAULT_COUNTRY_STOP_BY_ID.get(id));
+  const defaultCandidates = enumerateOrderedSelections(
+    defaultFamilyStops.slice(1, -1),
+    stopCount - 2
+  )
+    .map((selection) => [defaultFamilyStops[0], ...selection, defaultFamilyStops[defaultFamilyStops.length - 1]])
+    .filter(validateGeneratedRoute)
+    .sort((left, right) => routeBalanceScore(left) - routeBalanceScore(right));
+  const selected = candidatePool.length
+    ? candidatePool[Math.min(candidatePool.length - 1, Math.floor(random() * candidatePool.length))]
+    : defaultCandidates[0].map((stop) => authoredById.get(stop.id) || stop);
 
-  return routeIds.map((id, index) => ({
-    ...(authoredById.get(id) || DEFAULT_COUNTRY_STOP_BY_ID.get(id)),
-    order: index,
-  }));
+  return selected.map((stop, index) => ({ ...stop, order: index }));
 };
 
 export const mergeRouteStopsWithCatalogue = (routeStops, catalogueStops) => {
