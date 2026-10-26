@@ -10,12 +10,11 @@ import {
   COUNTRY_WORD_CHALLENGE_TYPE,
   didTriggerRoadsideDuel,
   GEO_GUESSR_CHALLENGE_TYPE,
-  GEO_GUESSR_LOSER_SIPS,
   getChallengeForStop,
   getChallengeIdForStop,
   getCountryWordRound,
   getGeoGuessrRound,
-  getPenaltySips,
+  getResolvedPenaltySips,
   getTeamPlayers,
 } from './constants/challenges';
 import {
@@ -317,6 +316,7 @@ const GameScreen = ({ route }) => {
         startedAt: Date.now(),
         stopCountryId: stop?.id || null,
         usedMonumentIds: usedMonumentIdsRef.current,
+        difficulty: gameData?.difficulty,
       });
       if (geoData) {
         usedMonumentIdsRef.current = geoData.nextUsedMonumentIds;
@@ -329,7 +329,7 @@ const GameScreen = ({ route }) => {
 
     return {
       ...challenge,
-      ...(getCountryWordRound(challenge, players, seed) || {}),
+      ...(getCountryWordRound(challenge, players, seed, gameData?.difficulty) || {}),
     };
   };
 
@@ -503,7 +503,7 @@ const GameScreen = ({ route }) => {
               const prev = next[teamId] || {};
               next[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(currentChallenge, gameData?.difficulty),
               };
             }
           });
@@ -517,6 +517,7 @@ const GameScreen = ({ route }) => {
           winnerTeamIds: evaluation.winnerTeamIds,
           bestDistanceKm: evaluation.bestDistanceKm,
           pointsAwarded,
+          drinkAwardId: `local:${localTurnNumber}:geo-penalty`,
         });
         return;
       }
@@ -551,7 +552,7 @@ const GameScreen = ({ route }) => {
               const prev = next[teamId] || {};
               next[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(currentChallenge, gameData?.difficulty),
               };
             }
           });
@@ -565,6 +566,7 @@ const GameScreen = ({ route }) => {
           winnerTeamIds: evaluation.winnerTeamIds,
           bestDistanceKm: evaluation.bestDistanceKm,
           pointsAwarded,
+          drinkAwardId: `local:${localTurnNumber}:geo-penalty`,
         });
       }
       return;
@@ -581,7 +583,7 @@ const GameScreen = ({ route }) => {
 
     const guessed = actionType === 'guessed';
     const pointsAwarded = guessed ? (Number(currentChallenge.successPoints) || 10) : 0;
-    const penaltySips = guessed ? 0 : getPenaltySips(currentChallenge);
+    const penaltySips = guessed ? 0 : getResolvedPenaltySips(currentChallenge, gameData?.difficulty);
     if ((pointsAwarded || penaltySips) && activePiece?.id) {
       setTeamProgress((progress) => {
         const current = progress[activePiece.id] || {};
@@ -619,6 +621,7 @@ const GameScreen = ({ route }) => {
       stage: 'result',
       result: guessed ? 'guessed' : actionType,
       pointsAwarded,
+      drinkAwardId: penaltySips > 0 ? `local:${localTurnNumber}:word-penalty` : null,
     });
   };
 
@@ -1445,6 +1448,7 @@ const GameScreen = ({ route }) => {
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
         challenge={currentChallenge}
+        difficulty={gameData?.difficulty}
         gamePieces={gamePieces}
         getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
         isTeamLeader={!multiplayerEnabled || multiplayer.isTeamLeader}

@@ -14,12 +14,11 @@ import {
   COUNTRY_WORD_CHALLENGE_TYPE,
   didTriggerRoadsideDuel,
   GEO_GUESSR_CHALLENGE_TYPE,
-  GEO_GUESSR_LOSER_SIPS,
   getChallengeForStop,
   getChallengeIdForStop,
   getCountryWordRound,
   getGeoGuessrRound,
-  getPenaltySips,
+  getResolvedPenaltySips,
   getTeamPlayers,
   isBotOnlyTeam,
 } from '../constants/challenges';
@@ -479,13 +478,19 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             startedAt: completedAt,
             stopCountryId: stop?.id || null,
             usedMonumentIds,
+            difficulty: gameDataRef.current?.difficulty,
           });
           if (geoData) {
             challengeRound = geoData.round;
             usedMonumentIds = geoData.nextUsedMonumentIds;
           }
         } else {
-          challengeRound = getCountryWordRound(challenge, players, action.id);
+          challengeRound = getCountryWordRound(
+            challenge,
+            players,
+            action.id,
+            gameDataRef.current?.difficulty
+          );
         }
 
         return {
@@ -648,7 +653,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               const prev = nextTeamProgress[teamId] || {};
               nextTeamProgress[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(
+                  round.resolvedPenaltySips === undefined ? challenge : round,
+                  gameDataRef.current?.difficulty
+                ),
               };
             }
           });
@@ -664,6 +672,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               winnerTeamIds: evaluation.winnerTeamIds,
               bestDistanceKm: evaluation.bestDistanceKm,
               pointsAwarded,
+              drinkAwardId: `${current.sessionId}:${current.turnNumber}:geo-penalty`,
             },
             updatedAt,
           };
@@ -699,7 +708,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               const prev = nextTeamProgress[teamId] || {};
               nextTeamProgress[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + GEO_GUESSR_LOSER_SIPS,
+                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(
+                  round.resolvedPenaltySips === undefined ? challenge : round,
+                  gameDataRef.current?.difficulty
+                ),
               };
             }
           });
@@ -715,6 +727,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               winnerTeamIds: evaluation.winnerTeamIds,
               bestDistanceKm: evaluation.bestDistanceKm,
               pointsAwarded,
+              drinkAwardId: `${current.sessionId}:${current.turnNumber}:geo-penalty`,
             },
             updatedAt,
           };
@@ -742,7 +755,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return undefined;
       const guessed = actionType === 'guessed';
       const pointsAwarded = guessed ? (Number(challenge.successPoints) || 10) : 0;
-      const penaltySips = guessed ? 0 : getPenaltySips(challenge);
+      const penaltySips = guessed ? 0 : getResolvedPenaltySips(
+        round.resolvedPenaltySips === undefined ? challenge : round,
+        gameDataRef.current?.difficulty
+      );
       const activeProgress = current.teamProgress?.[current.activeTeamId] || {};
       const challengePoints = (Number(activeProgress.challengePoints) || 0) + pointsAwarded;
       const nextDrinks = (Number(activeProgress.drinks) || 0) + penaltySips;
@@ -778,6 +794,9 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           stage: 'result',
           result: guessed ? 'guessed' : actionType,
           pointsAwarded,
+          drinkAwardId: penaltySips > 0
+            ? `${current.sessionId}:${current.turnNumber}:word-penalty`
+            : null,
         },
         updatedAt,
       };

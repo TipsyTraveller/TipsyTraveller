@@ -267,6 +267,7 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         title: challenge.title,
         prompt: challenge.prompt,
         penalty: challenge.penalty,
+        penaltySips: challenge.penaltySips,
         type: challenge.type,
         penaltyTag: challenge.penaltyTag,
         durationSeconds: challenge.durationSeconds,
@@ -301,6 +302,7 @@ const getGeoGuessrChallenge = (stop) => (
 
 const hasCurrentCountryWordContent = (challenge, expected) => (
   challenge?.id === expected?.id
+  && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
   && Number(challenge?.wordListVersion) === Number(expected?.wordListVersion)
   && Array.isArray(challenge?.words)
   && JSON.stringify(challenge.words) === JSON.stringify(expected.words)
@@ -308,6 +310,7 @@ const hasCurrentCountryWordContent = (challenge, expected) => (
 
 const hasCurrentGeoGuessrContent = (challenge, expected) => (
   challenge?.id === expected?.id
+  && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
   && Number(challenge?.monumentPoolVersion) === Number(expected?.monumentPoolVersion)
   && Array.isArray(challenge?.countryMonumentIds)
   && JSON.stringify(challenge.countryMonumentIds) === JSON.stringify(expected.countryMonumentIds)

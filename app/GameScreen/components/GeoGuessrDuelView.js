@@ -487,6 +487,7 @@ export default function GeoGuessrDuelView({
   localTeamId = 'team1',
   multiplayerEnabled = false,
   onChallengeAction,
+  penaltySips = 0,
   remainingSeconds = 18,
 }) {
   const stage = challenge?.stage || 'photo';
@@ -841,7 +842,7 @@ export default function GeoGuessrDuelView({
               <Text numberOfLines={1} style={styles.rankSubText}>
                 {entry.isWinner
                   ? `${entry.distanceKm} KM · WINNER!`
-                  : `${entry.distanceKm} KM · TAKE 2 SIPS`}
+                  : `${entry.distanceKm} KM · TAKE ${penaltySips} ${penaltySips === 1 ? 'SIP' : 'SIPS'}`}
               </Text>
             </View>
           </View>

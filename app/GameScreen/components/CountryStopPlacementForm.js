@@ -7,6 +7,7 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [penalty, setPenalty] = useState('');
+  const [penaltySips, setPenaltySips] = useState('1');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -16,6 +17,7 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
       setTitle('');
       setPrompt('');
       setPenalty('');
+      setPenaltySips('1');
     }
   }, [mode, position]);
 
@@ -65,6 +67,7 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
           title: title.trim(),
           prompt: prompt.trim(),
           penalty: penalty.trim() || 'Take 1 sip.',
+          penaltySips: Math.max(0, Math.round(Number(penaltySips) || 1)),
         }],
       });
       onSaved(created);
@@ -84,6 +87,7 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
         <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Challenge title" placeholderTextColor="#718096" />
         <TextInput style={[styles.input, styles.multiline]} value={prompt} onChangeText={setPrompt} placeholder="Challenge prompt" placeholderTextColor="#718096" multiline />
         <TextInput style={styles.input} value={penalty} onChangeText={setPenalty} placeholder="Penalty (optional)" placeholderTextColor="#718096" />
+        <TextInput style={styles.input} value={penaltySips} onChangeText={setPenaltySips} placeholder="Base penalty sips" placeholderTextColor="#718096" keyboardType="number-pad" />
         {Boolean(error) && <Text style={styles.error}>{error}</Text>}
         <View style={styles.actions}>
           <TouchableOpacity onPress={onCancel} style={[styles.button, styles.cancel]}><Text style={styles.buttonText}>CANCEL</Text></TouchableOpacity>

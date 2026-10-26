@@ -15,6 +15,7 @@ export default function CountryStopsTab({ onClose }) {
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [penalty, setPenalty] = useState('');
+  const [penaltySips, setPenaltySips] = useState('1');
   const [error, setError] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
   const [removalCandidate, setRemovalCandidate] = useState(null);
@@ -74,6 +75,7 @@ export default function CountryStopsTab({ onClose }) {
       title: title.trim(),
       prompt: prompt.trim(),
       penalty: penalty.trim() || 'Take 1 sip.',
+      penaltySips: Math.max(0, Math.round(Number(penaltySips) || 1)),
     }];
     try {
       await updateCountryStop(stop.id, { challenges });
@@ -81,6 +83,7 @@ export default function CountryStopsTab({ onClose }) {
       setTitle('');
       setPrompt('');
       setPenalty('');
+      setPenaltySips('1');
     } catch (updateError) {
       setError(updateError?.message || 'Unable to save challenge.');
     } finally {
@@ -169,6 +172,7 @@ export default function CountryStopsTab({ onClose }) {
               <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Challenge title" placeholderTextColor="#718096" />
               <TextInput style={[styles.input, styles.multiline]} value={prompt} onChangeText={setPrompt} placeholder="Challenge prompt" placeholderTextColor="#718096" multiline />
               <TextInput style={styles.input} value={penalty} onChangeText={setPenalty} placeholder="Penalty (optional)" placeholderTextColor="#718096" />
+              <TextInput style={styles.input} value={penaltySips} onChangeText={setPenaltySips} placeholder="Base penalty sips" placeholderTextColor="#718096" keyboardType="number-pad" />
               <TouchableOpacity
                 disabled={!title.trim() || !prompt.trim() || Boolean(pendingAction)}
                 style={[styles.save, (!title.trim() || !prompt.trim() || Boolean(pendingAction)) && styles.disabled]}

@@ -32,11 +32,12 @@ const position = (x, y) => {
   return { x: point.x, y: point.y };
 };
 
-const challenge = (id, title, prompt, penalty = 'If the team cannot do it, take 1 sip or choose water.') => ([{
+const challenge = (id, title, prompt, penalty = 'If the team cannot do it, apply the sip penalty or choose water.') => ([{
   id,
   title,
   prompt,
   penalty,
+  penaltySips: 1,
 }]);
 
 const COUNTRY_WORDS = {
@@ -104,6 +105,7 @@ const getCountryWordChallenge = (countryId) => {
     prompt: 'One player explains a secret country-themed word while their team tries to guess it.',
     penalty: 'Guess it within 30 seconds to earn 10 points.',
     penaltyTag: '10 PTS',
+    penaltySips: 1,
     durationSeconds: 30,
     successPoints: 10,
     wordListVersion: 2,
@@ -124,6 +126,7 @@ const getGeoGuessrChallenge = (countryId) => ({
   prompt: 'Study a mystery European place—from a landscape or street scene to a famous landmark—then every team drops a pin on the map. Closest pin wins 15 points!',
   penalty: 'Closest team earns +15 points. Every other team takes 2 sips!',
   penaltyTag: '15 PTS',
+  penaltySips: 2,
   durationSeconds: GEO_GUESSR_PHOTO_SECONDS,
   pinDurationSeconds: GEO_GUESSR_PIN_SECONDS,
   successPoints: GEO_GUESSR_SUCCESS_POINTS,
@@ -272,6 +275,9 @@ export const normalizeCountryStops = (value) => {
           title: String(challenge.title || 'Border Check'),
           prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
           penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
+          penaltySips: Number.isFinite(Number(challenge.penaltySips))
+            ? Math.max(0, Math.round(Number(challenge.penaltySips)))
+            : challenge.type === GEO_GUESSR_CHALLENGE_TYPE ? 2 : 1,
           ...(challenge.type ? { type: String(challenge.type) } : {}),
           ...(challenge.penaltyTag ? { penaltyTag: String(challenge.penaltyTag) } : {}),
           ...(Number.isFinite(Number(challenge.durationSeconds))

@@ -51,7 +51,8 @@ their movement or challenge completes; new sessions always write schema 7 node i
 - `countries/{stopId}`: identity, name/code/city/landmark, order, board position and
   version, accent, embedded challenges, update time.
 - `challenges/{challengeDocId}`: normalized challenge fields, country relation,
-  content, type, timing/scoring/word metadata, order, update time.
+  content, authoritative base `penaltySips`, type, timing/scoring/word metadata,
+  order, update time.
 - `geoGuessrChallenges/{locationId}`: normalized location, map position, photo URL,
   attribution, clue, and version metadata.
 - `gameContent/monumentPool`: collection/version/count manifest.
@@ -91,6 +92,10 @@ automatically deleted.
 Revision numbers and unique action IDs make replayed updates idempotent. Roll,
 movement completion, roadblock choice, challenge stage/completion, score awards,
 finish assignment, and restart use transactions.
+
+Typed challenge rounds snapshot `resolvedPenaltySips` from the room difficulty when
+they are created. Result transactions record a stable `drinkAwardId` and accept only
+the expected pre-result stage, so retrying a result cannot apply its drinks twice.
 
 Only the active leader's UI may roll or complete a challenge; only the host may
 restart. Any connected client may attempt idempotent movement finalization after the

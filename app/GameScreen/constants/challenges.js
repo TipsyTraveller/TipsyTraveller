@@ -94,6 +94,7 @@ const CHALLENGES_BY_STOP = {
     title: 'Cafe Charades',
     prompt: 'Act out ordering the fanciest drink in Paris without using words.',
     penalty: 'If your team cannot guess it in 20 seconds, take 1 sip.',
+    penaltySips: 1,
     accent: '#d71920',
   },
   2: {
@@ -101,6 +102,7 @@ const CHALLENGES_BY_STOP = {
     title: 'Tapas Tempo',
     prompt: 'Name three tapas dishes before the other team counts down from five.',
     penalty: 'Miss one? Tell a travel story or take 1 sip.',
+    penaltySips: 1,
     accent: '#f2c94c',
   },
   3: {
@@ -108,6 +110,7 @@ const CHALLENGES_BY_STOP = {
     title: 'Fado Face-Off',
     prompt: 'Give your most dramatic 5-second performance about missing the last train.',
     penalty: 'No drama, no glory: take 1 sip.',
+    penaltySips: 1,
     accent: '#27ae60',
   },
   4: {
@@ -115,6 +118,7 @@ const CHALLENGES_BY_STOP = {
     title: 'Flamenco Freeze',
     prompt: 'Strike a flamenco pose. Your team must copy it perfectly.',
     penalty: 'Worst pose takes 1 sip.',
+    penaltySips: 1,
     accent: '#eb5757',
   },
   5: {
@@ -122,6 +126,7 @@ const CHALLENGES_BY_STOP = {
     title: 'Pasta Pitch',
     prompt: 'Invent a pasta dish and sell it like a luxury commercial.',
     penalty: 'If nobody would order it, take 1 sip.',
+    penaltySips: 1,
     accent: '#2f80ed',
   },
   6: {
@@ -129,6 +134,7 @@ const CHALLENGES_BY_STOP = {
     title: 'Autobahn Answers',
     prompt: 'Name two German cities and one German food before time runs out.',
     penalty: 'If you stall, take 1 sip.',
+    penaltySips: 1,
     accent: '#f2994a',
   },
   7: {
@@ -136,6 +142,7 @@ const CHALLENGES_BY_STOP = {
     title: 'Trappist Toast',
     prompt: 'Make a grand toast to the whole table in your best royal voice.',
     penalty: 'If the toast gets no applause, take 1 sip.',
+    penaltySips: 1,
     accent: '#1ba39c',
   },
 };
@@ -145,6 +152,7 @@ const DEFAULT_CHALLENGE = {
   title: 'Border Check',
   prompt: 'Tell the table where your team is travelling next and why.',
   penalty: 'If the story is boring, take 1 sip.',
+  penaltySips: 1,
   accent: '#1ba39c',
 };
 
@@ -161,28 +169,40 @@ const STOP_VISUALS = {
   'belgium-finish': { code: 'BE', city: 'Brussels', landmark: 'brussels' },
 };
 
-export const GEO_GUESSR_LOSER_SIPS = 2;
+export const MAX_PENALTY_SIPS = 9;
 
-// Short badge for the failure penalty, taken from the penalty sentence unless a
-// challenge sets an explicit `penaltyTag`.
-export const getPenaltyTag = (challenge) => {
-  if (challenge.penaltyTag) return challenge.penaltyTag;
-  const penalty = challenge.penalty ?? '';
-  if (/\bdown/i.test(penalty)) return 'DOWN IT';
-  const sips = penalty.match(/(\d+)\s+sips?/i);
-  if (sips) return `${sips[1]} ${sips[1] === '1' ? 'SIP' : 'SIPS'}`;
-  return 'DRINK';
+export const DIFFICULTY_MULTIPLIERS = {
+  easy: 1,
+  medium: 2,
+  hard: 3,
+  lethal: 3,
 };
 
-export const getPenaltySips = (challenge) => {
-  if (Number.isFinite(Number(challenge?.penaltySips))) {
-    return Math.max(0, Math.round(Number(challenge.penaltySips)));
+export const getDifficultyMultiplier = (difficulty) => (
+  DIFFICULTY_MULTIPLIERS[String(difficulty || '').toLowerCase()] || 1
+);
+
+export const resolvePenaltySips = (basePenaltySips, difficulty = 'easy') => {
+  const base = Number(basePenaltySips);
+  if (!Number.isFinite(base)) return 0;
+  return Math.min(
+    Math.max(0, Math.round(base)) * getDifficultyMultiplier(difficulty),
+    MAX_PENALTY_SIPS
+  );
+};
+
+export const getResolvedPenaltySips = (challenge, difficulty = 'easy') => {
+  if (Number.isFinite(Number(challenge?.resolvedPenaltySips))) {
+    return Math.min(MAX_PENALTY_SIPS, Math.max(0, Math.round(Number(challenge.resolvedPenaltySips))));
   }
-  const text = `${challenge?.penaltyTag ?? ''} ${challenge?.penalty ?? ''}`;
-  if (/\bdown/i.test(text)) return 5;
-  const sips = text.match(/(\d+)\s+sips?/i);
-  if (sips) return Math.max(1, Number(sips[1]) || 1);
-  return 1;
+  return resolvePenaltySips(challenge?.penaltySips, difficulty);
+};
+
+// Short badge for the resolved numeric penalty unless a challenge uses a custom tag.
+export const getPenaltyTag = (challenge, difficulty = 'easy') => {
+  if (challenge.penaltyTag) return challenge.penaltyTag;
+  const sips = getResolvedPenaltySips(challenge, difficulty);
+  return `${sips} ${sips === 1 ? 'SIP' : 'SIPS'}`;
 };
 
 // Optional timer chip, taken from the first "N seconds" in the challenge text.
@@ -269,7 +289,7 @@ export const getChallengeIdForStop = (
   return eligibleChallenges[hash % eligibleChallenges.length]?.id || eligibleChallenges[0]?.id || null;
 };
 
-export const getCountryWordRound = (challenge, players, seed = '') => {
+export const getCountryWordRound = (challenge, players, seed = '', difficulty = 'easy') => {
   if (challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || players.length < 2) return null;
   const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
   if (!words.length) return null;
@@ -281,6 +301,7 @@ export const getCountryWordRound = (challenge, players, seed = '') => {
     startedAt: null,
     result: null,
     pointsAwarded: 0,
+    resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
   };
 };
 
@@ -293,6 +314,7 @@ export const getGeoGuessrRound = ({
   startedAt = Date.now(),
   stopCountryId = null,
   usedMonumentIds = [],
+  difficulty = 'easy',
 }) => {
   if (challenge?.type !== GEO_GUESSR_CHALLENGE_TYPE) return null;
 
@@ -334,6 +356,7 @@ export const getGeoGuessrRound = ({
       winnerTeamIds: [],
       bestDistanceKm: null,
       pointsAwarded: 0,
+      resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
     },
   };
 };
@@ -347,6 +370,9 @@ export const getChallengeForStop = (stopIndex, routeStops, challengeId) => {
 
   if (stop && selected) {
     const defaultVisuals = STOP_VISUALS[stop.id] || {};
+    const penaltySips = Number.isFinite(Number(selected.penaltySips))
+      ? Math.max(0, Math.round(Number(selected.penaltySips)))
+      : selected.type === GEO_GUESSR_CHALLENGE_TYPE ? 2 : 1;
     return {
       stopIndex,
       country: stop.name,
@@ -356,11 +382,13 @@ export const getChallengeForStop = (stopIndex, routeStops, challengeId) => {
       city: stop.city || defaultVisuals.city,
       landmark: stop.landmark || defaultVisuals.landmark,
       ...selected,
+      penaltySips,
     };
   }
 
   return {
     stopIndex,
     ...(CHALLENGES_BY_STOP[stopIndex] || { ...DEFAULT_CHALLENGE, country: stop?.name || DEFAULT_CHALLENGE.country }),
+    penaltySips: 1,
   };
 };

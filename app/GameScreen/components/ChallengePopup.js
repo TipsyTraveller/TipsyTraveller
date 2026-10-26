@@ -22,6 +22,7 @@ import {
   getChallengeTimer,
   getCountryFlag,
   getPenaltyTag,
+  getResolvedPenaltySips,
 } from '../constants/challenges';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
@@ -136,6 +137,7 @@ const CardBack = ({ compact, style }) => (
 const ChallengePopup = ({
   canComplete = true,
   challenge,
+  difficulty = 'easy',
   gamePieces = [],
   getNow = Date.now,
   isTeamLeader = true,
@@ -430,6 +432,7 @@ const ChallengePopup = ({
     : isGeoGuessrChallenge && challengeStage === 'result'
       ? 'REVEALED'
       : getChallengeTimer(challenge);
+  const resolvedPenaltySips = getResolvedPenaltySips(challenge, difficulty);
   const canFinishChallenge = canComplete
     && ((!isCountryWordChallenge && !isGeoGuessrChallenge) || challengeStage === 'result');
   const missionCode = challenge.code
@@ -548,7 +551,11 @@ const ChallengePopup = ({
       <View style={styles.wordCenteredContent}>
         <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{guessed ? 'GUESSED!' : 'NOT GUESSED'}</Text>
         <Text style={styles.resultPoints}>{guessed ? `+${challenge.pointsAwarded || challenge.successPoints || 10} POINTS` : '0 POINTS'}</Text>
-        <Text style={[styles.prompt, compact && styles.promptCompact]}>{guessed ? 'Great teamwork!' : challenge.result === 'timeout' ? 'Time ran out.' : 'Better luck at the next stop.'}</Text>
+        <Text style={[styles.prompt, compact && styles.promptCompact]}>
+          {guessed
+            ? 'Great teamwork!'
+            : `${challenge.result === 'timeout' ? 'Time ran out.' : 'Better luck at the next stop.'} ${challenge.selectedPlayerName || 'The describer'} takes ${resolvedPenaltySips} ${resolvedPenaltySips === 1 ? 'sip' : 'sips'}.`}
+        </Text>
       </View>
     );
   };
@@ -653,6 +660,13 @@ const ChallengePopup = ({
               <View style={[styles.body, compact && styles.bodyCompact, expandedGeoMap && styles.bodyExpanded]}>
               <View style={styles.bodyHeader}>
                 <Text style={styles.missionCode}>{missionCode}</Text>
+                {resolvedPenaltySips > 0 ? (
+                  <View style={styles.penaltySummaryChip}>
+                    <Text style={styles.penaltySummaryText}>
+                      {`PENALTY ${resolvedPenaltySips} ${resolvedPenaltySips === 1 ? 'SIP' : 'SIPS'}`}
+                    </Text>
+                  </View>
+                ) : null}
                 {timer ? (
                   <View style={styles.timerChip}>
                     <Text style={styles.timerChipText}>{timer}</Text>
@@ -669,6 +683,7 @@ const ChallengePopup = ({
                   localTeamId={localTeamId}
                   multiplayerEnabled={multiplayerEnabled}
                   onChallengeAction={onChallengeAction}
+                  penaltySips={resolvedPenaltySips}
                   remainingSeconds={remainingSeconds}
                 />
               ) : isCountryWordChallenge ? renderCountryWordContent() : (
@@ -678,9 +693,11 @@ const ChallengePopup = ({
                   <View style={styles.bodySpacer} />
                   <View style={styles.penaltyBox}>
                     <View style={styles.penaltyTag}>
-                      <Text style={styles.penaltyTagText}>{getPenaltyTag(challenge)}</Text>
+                      <Text style={styles.penaltyTagText}>{getPenaltyTag(challenge, difficulty)}</Text>
                     </View>
-                    <Text style={styles.penaltyText}>{challenge.penalty}</Text>
+                    <Text style={styles.penaltyText}>
+                      {`Failure: take ${resolvedPenaltySips} ${resolvedPenaltySips === 1 ? 'sip' : 'sips'}.`}
+                    </Text>
                   </View>
                 </>
               )}
@@ -1105,6 +1122,20 @@ const styles = StyleSheet.create({
     color: '#111111',
     fontFamily: 'dogicapixelbold',
     fontSize: 9,
+    textTransform: 'uppercase',
+  },
+  penaltySummaryChip: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    backgroundColor: '#FFD166',
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#111111',
+  },
+  penaltySummaryText: {
+    color: '#111111',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 7,
     textTransform: 'uppercase',
   },
   title: {
