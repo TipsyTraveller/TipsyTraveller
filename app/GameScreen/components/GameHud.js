@@ -131,9 +131,7 @@ const GameHud = ({
                     )}
                   </View>
 
-                  <View style={styles.expandPill}>
-                    <Text style={styles.expandPillText}>SCORE ▾</Text>
-                  </View>
+                  <Text style={styles.expandLabel}>SCORES  ›</Text>
                 </View>
 
                 <Text numberOfLines={1} style={styles.statusText}>
@@ -164,10 +162,15 @@ const GameHud = ({
                         <Text style={styles.miniTeamLabel}>
                           {getShortTeamLabel(piece.label, index)}
                         </Text>
-                        <Text style={styles.miniTeamScore}>{`${score}P`}</Text>
-                        <View style={[styles.miniDrinkBadge, drinks > 0 && styles.miniDrinkBadgeActive]}>
-                          <Text style={styles.miniDrinkText}>{`🍺${drinks}`}</Text>
-                        </View>
+                        <Text style={styles.miniTeamScore}>{score}</Text>
+                        <Text
+                          style={[
+                            styles.miniDrinkText,
+                            drinks === 0 && styles.miniDrinkTextMuted,
+                          ]}
+                        >
+                          {`🍺 ${drinks}`}
+                        </Text>
                       </View>
                     );
                   })}
@@ -185,7 +188,7 @@ const GameHud = ({
               >
                 <View style={styles.expandedHeader}>
                   <View style={styles.expandedTitleWrap}>
-                    <Text style={styles.expandedTitle}>SCOREBOARD & DRINKS</Text>
+                    <Text style={styles.expandedTitle}>GAME STATUS</Text>
                     <Text style={styles.expandedSubtitle}>
                       {`TURN ${turnNumber} · ${activeTeamLabel.toUpperCase()}`}
                     </Text>
@@ -199,7 +202,7 @@ const GameHud = ({
                       pressed && styles.controlButtonPressed,
                     ]}
                   >
-                    <Text style={styles.collapseButtonText}>▴ HIDE</Text>
+                    <Text style={styles.collapseButtonText}>CLOSE</Text>
                   </Pressable>
                 </View>
 
@@ -370,9 +373,7 @@ const GameHud = ({
                   })}
                 </ScrollView>
 
-                <Text style={styles.footerHintText}>
-                  Auto-tracks challenge penalties · Tap + / − for extra sips
-                </Text>
+                <Text style={styles.footerHintText}>Challenge penalties update automatically</Text>
               </View>
             )}
           </View>
@@ -432,16 +433,16 @@ const styles = StyleSheet.create({
     minWidth: 215,
     maxWidth: 320,
     backgroundColor: 'rgba(255, 241, 205, 0.96)',
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderWidth: 2.5,
-    borderColor: '#111111',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 0,
-    elevation: 5,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(44, 62, 80, 0.45)',
+    shadowColor: '#223144',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 4,
   },
   cardPressed: {
     transform: [{ translateY: 1 }],
@@ -460,11 +461,11 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   activeTeamDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: '#111111',
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    borderWidth: 1,
+    borderColor: '#2C3E50',
   },
   activeTeamTitle: {
     color: '#111111',
@@ -486,18 +487,10 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixelbold',
     fontSize: 6,
   },
-  expandPill: {
-    backgroundColor: '#223144',
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: '#111111',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-  expandPillText: {
-    color: '#FFF1CD',
+  expandLabel: {
+    color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
-    fontSize: 7,
+    fontSize: 6.5,
   },
   statusText: {
     color: '#2C3E50',
@@ -509,34 +502,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 6,
-    paddingTop: 5,
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(17, 17, 17, 0.16)',
+    columnGap: 11,
+    rowGap: 4,
+    marginTop: 7,
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(44, 62, 80, 0.22)',
   },
   miniTeamChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-    borderWidth: 1.5,
-    borderColor: '#2C3E50',
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 2.5,
+    paddingVertical: 2,
+    opacity: 0.66,
   },
   miniTeamChipActive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#111111',
-    borderWidth: 2,
+    opacity: 1,
   },
   miniTeamDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#111111',
+    borderColor: '#2C3E50',
   },
   miniTeamLabel: {
     color: '#111111',
@@ -548,32 +536,26 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixelbold',
     fontSize: 7,
   },
-  miniDrinkBadge: {
-    backgroundColor: 'rgba(34, 49, 68, 0.1)',
-    borderRadius: 4,
-    paddingHorizontal: 3,
-    paddingVertical: 1,
-  },
-  miniDrinkBadgeActive: {
-    backgroundColor: '#FFE082',
-  },
   miniDrinkText: {
-    color: '#111111',
+    color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
-    fontSize: 7,
+    fontSize: 6.5,
+  },
+  miniDrinkTextMuted: {
+    opacity: 0.45,
   },
 
   expandedCard: {
     backgroundColor: '#FFF1CD',
-    borderRadius: 11,
-    paddingVertical: 9,
-    paddingHorizontal: 11,
-    borderWidth: 3,
-    borderColor: '#111111',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 0,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 13,
+    borderWidth: 1,
+    borderColor: 'rgba(44, 62, 80, 0.5)',
+    shadowColor: '#223144',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
     elevation: 8,
   },
   expandedHeader: {
@@ -597,15 +579,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   collapseButton: {
-    backgroundColor: '#223144',
-    borderWidth: 1.5,
-    borderColor: '#111111',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 5,
   },
   collapseButtonText: {
-    color: '#FFF1CD',
+    color: '#2C3E50',
     fontFamily: 'dogicapixelbold',
     fontSize: 7,
   },
@@ -613,13 +591,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 7,
-    backgroundColor: 'rgba(34, 49, 68, 0.08)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(17, 17, 17, 0.2)',
+    marginTop: 8,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(44, 62, 80, 0.24)',
   },
   activeBannerText: {
     flex: 1,
@@ -628,23 +603,20 @@ const styles = StyleSheet.create({
     fontSize: 7.5,
   },
   teamListScroll: {
-    marginTop: 7,
+    marginTop: 4,
   },
   teamListContent: {
     gap: 6,
     paddingBottom: 2,
   },
   teamRowCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#111111',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(44, 62, 80, 0.22)',
+    paddingHorizontal: 2,
+    paddingVertical: 9,
   },
   teamRowCardActive: {
-    backgroundColor: '#FFFDF5',
-    borderColor: '#1BA39C',
+    borderBottomColor: 'rgba(27, 163, 156, 0.5)',
   },
   teamRowMain: {
     flexDirection: 'row',
@@ -728,10 +700,10 @@ const styles = StyleSheet.create({
   drinkAdjustBtn: {
     width: 24,
     height: 24,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#111111',
-    backgroundColor: '#FFF1CD',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(44, 62, 80, 0.4)',
+    backgroundColor: 'rgba(255, 241, 205, 0.78)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -754,10 +726,8 @@ const styles = StyleSheet.create({
     minWidth: 46,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFE082',
-    borderWidth: 1.5,
-    borderColor: '#111111',
-    borderRadius: 6,
+    backgroundColor: 'rgba(255, 215, 0, 0.18)',
+    borderRadius: 7,
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
@@ -785,12 +755,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FFF1CD',
-    borderWidth: 1,
-    borderColor: '#111111',
-    borderRadius: 5,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    backgroundColor: 'rgba(34, 49, 68, 0.06)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
   playerChipName: {
     color: '#223144',
@@ -834,7 +802,8 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixel',
     fontSize: 6.5,
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 8,
+    opacity: 0.62,
   },
 
   doneOverlay: {
