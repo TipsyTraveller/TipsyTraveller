@@ -1,4 +1,5 @@
 const toDrinkCount = (value) => Math.max(0, Math.round(Number(value) || 0));
+const DRINK_RULES = new Set(['target', 'teamExceptTarget', 'wholeTeam', 'opponents', 'none']);
 
 export const getTeamPlayers = (teamMembers, teamId) => {
   const members = teamMembers?.[teamId];
@@ -9,7 +10,8 @@ export const getTeamPlayers = (teamMembers, teamId) => {
     .map(([playerId, member]) => ({
       ...member,
       playerId,
-    }));
+    }))
+    .sort((left, right) => left.playerId.localeCompare(right.playerId));
 };
 
 export const getTeamDrinkTotal = (playerDrinks) => (
@@ -107,3 +109,47 @@ export const addDrinksToTeam = (ledger, amount) => (
     },
   }), {})
 );
+
+export const addDrinksByRule = ({
+  amount,
+  playerId,
+  rule = 'none',
+  teamId,
+  teamMembers,
+  teamProgress,
+}) => {
+  if (!DRINK_RULES.has(rule) || rule === 'none' || !Number(amount)) return teamProgress;
+
+  const recipientTeamIds = rule === 'opponents'
+    ? Object.keys(teamProgress || {}).filter((id) => id.startsWith('team') && id !== teamId)
+    : [teamId];
+
+  return recipientTeamIds.reduce((nextProgress, recipientTeamId) => {
+    const previous = nextProgress?.[recipientTeamId];
+    if (!previous) return nextProgress;
+    const ledger = createPlayerDrinkLedger(
+      teamMembers,
+      recipientTeamId,
+      previous.playerDrinks,
+      previous.drinks
+    );
+    let playerDrinks = ledger;
+    if (rule === 'target') {
+      playerDrinks = addDrinksToPlayer(ledger, playerId, amount);
+    } else if (rule === 'teamExceptTarget') {
+      playerDrinks = Object.keys(ledger).reduce((next, currentPlayerId) => (
+        currentPlayerId === playerId ? next : addDrinksToPlayer(next, currentPlayerId, amount)
+      ), ledger);
+    } else {
+      playerDrinks = addDrinksToTeam(ledger, amount);
+    }
+    const { drinks: _legacyDrinks, ...withoutLegacyTotal } = previous;
+    return {
+      ...nextProgress,
+      [recipientTeamId]: {
+        ...withoutLegacyTotal,
+        playerDrinks,
+      },
+    };
+  }, teamProgress);
+};

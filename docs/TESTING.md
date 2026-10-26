@@ -57,7 +57,9 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
    entry with Team 1 active and the immutable edge-country-to-Greece itinerary.
 3. Verify only the active leader can roll/complete, results are 1–3, route points and
    challenges match, finished teams are skipped, and re-entry restores current state.
-4. Exercise word challenge secrecy/timer/result and GeoGuessr pin/result/score.
+4. Exercise ordinary completed/failed outcomes, named-player rotation, word challenge
+   secrecy/timer/result, and GeoGuessr pin/result/score. Verify success/failure drink
+   recipients and action IDs match on both clients after reconnecting.
 5. Exercise both roadblock choices, reconnect during the choice and between detour
    turns, and verify turn ownership, intermediate challenges, per-team detour
    progress, and final canonical progress on both clients.
@@ -78,8 +80,7 @@ landscape layout, and camera motion.
 - Client-generated rolls are peer-authoritative; trusted rolls require backend logic.
 - Animation deadlines use server offset but frames remain local; slow/backgrounded
   clients may snap to canonical state.
-- Difficulty is unused; duration changes only route length/snapshot.
-- Ordinary penalties are honor-based and not scored.
+- Duration changes only route length/snapshot.
 - There is no Firebase Authentication; device IDs and host UI checks are not security.
 - Room code reservation is not atomic; Realtime Database rules are not in the repo;
   Dev Portal country/challenge writes are unauthenticated.

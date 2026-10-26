@@ -12,10 +12,11 @@ import {
   GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
-  getCountryWordRound,
+  getChallengeRound,
   getGeoGuessrRound,
   getResolvedPenaltySips,
   getTeamPlayers,
+  formatChallengeForTarget,
 } from './constants/challenges';
 import {
   calculateBoardDistanceKm,
@@ -31,6 +32,7 @@ import { getDefaultModelOption, getModelOption } from './constants/modelOptions'
 import { devEventBus } from '../shared/dev/devEventBus';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
 import {
+  addDrinksByRule,
   addDrinksToPlayer,
   addDrinksToTeam,
   createPlayerDrinkLedger,
@@ -255,9 +257,11 @@ const GameScreen = ({ route }) => {
         ? [gameplay.challengeStopData]
         : routeStops;
       const challengeStopIndex = gameplay.challengeStopData ? 0 : gameplay.challengeStop;
+      const challenge = getChallengeForStop(challengeStopIndex, challengeStops, gameplay.challengeId);
+      const challengeRound = gameplay.challengeRound || {};
       setCurrentChallenge({
-        ...getChallengeForStop(challengeStopIndex, challengeStops, gameplay.challengeId),
-        ...(gameplay.challengeRound || {}),
+        ...formatChallengeForTarget(challenge, challengeRound),
+        ...challengeRound,
         ...(gameplay.challengeStopData
           ? { markerPosition: gameplay.challengeStopData.position, isDetour: true }
           : {}),
@@ -333,9 +337,25 @@ const GameScreen = ({ route }) => {
       }
     }
 
+    const roundData = getChallengeRound({
+      challenge,
+      difficulty: gameData?.difficulty,
+      players,
+      seed,
+      targetCursor: currentTeamProgress[pieceId]?.targetCursor,
+    });
+    if (roundData.nextTargetCursor !== currentTeamProgress[pieceId]?.targetCursor) {
+      setTeamProgress((progress) => ({
+        ...progress,
+        [pieceId]: {
+          ...progress[pieceId],
+          targetCursor: roundData.nextTargetCursor,
+        },
+      }));
+    }
     return {
-      ...challenge,
-      ...(getCountryWordRound(challenge, players, seed, gameData?.difficulty) || {}),
+      ...formatChallengeForTarget(challenge, roundData.round),
+      ...(roundData.round || {}),
     };
   };
 
@@ -428,7 +448,7 @@ const GameScreen = ({ route }) => {
 
   const handleCountryWordAction = (action) => {
     if (multiplayerEnabled) {
-      multiplayer.updateCountryWordChallenge(action).catch((error) => {
+      multiplayer.updateChallenge(action).catch((error) => {
         console.log('Unable to update synchronized challenge', error);
       });
       return;
@@ -598,7 +618,35 @@ const GameScreen = ({ route }) => {
       return;
     }
 
-    if (currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return;
+    if (currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) {
+      const ordinaryResult = String(actionType || '').toLowerCase();
+      if (!['completed', 'failed'].includes(ordinaryResult) || currentChallenge.stage !== 'playing') {
+        return;
+      }
+      const succeeded = ordinaryResult === 'completed';
+      const drinkRule = succeeded
+        ? currentChallenge.drinkRules?.success
+        : currentChallenge.drinkRules?.failure;
+      setTeamProgress((progress) => addDrinksByRule({
+        amount: getResolvedPenaltySips(currentChallenge, gameData?.difficulty),
+        playerId: currentChallenge.selectedPlayerId,
+        rule: drinkRule,
+        teamId: activePiece.id,
+        teamMembers: currentTeamMembers,
+        teamProgress: progress,
+      }));
+      setCurrentChallenge({
+        ...currentChallenge,
+        stage: 'result',
+        result: ordinaryResult,
+        resultActionId: `local:${localTurnNumber}:${ordinaryResult}`,
+        drinkAwardId: drinkRule && drinkRule !== 'none'
+          ? `local:${localTurnNumber}:${ordinaryResult}`
+          : null,
+      });
+      return;
+    }
+
     if ((actionType === 'start' || actionType === 'ready') && (currentChallenge.stage === 'intro' || currentChallenge.stage === 'secret')) {
       setCurrentChallenge({ ...currentChallenge, stage: 'playing', startedAt: Date.now() });
       return;
@@ -609,7 +657,7 @@ const GameScreen = ({ route }) => {
 
     const guessed = actionType === 'guessed';
     const pointsAwarded = guessed ? (Number(currentChallenge.successPoints) || 10) : 0;
-    const penaltySips = guessed ? 0 : getResolvedPenaltySips(currentChallenge, gameData?.difficulty);
+    const penaltySips = getResolvedPenaltySips(currentChallenge, gameData?.difficulty);
     if ((pointsAwarded || penaltySips) && activePiece?.id) {
       setTeamProgress((progress) => {
         const current = progress[activePiece.id] || {};
@@ -624,12 +672,26 @@ const GameScreen = ({ route }) => {
           currentTeamMembers,
           activePiece.id
         ).find((player) => player.name === currentChallenge.selectedPlayerName)?.playerId;
-        const nextPlayerDrinks = (!guessed && selectedPlayerId)
-          ? addDrinksToPlayer(prevPlayerDrinks, selectedPlayerId, penaltySips)
-          : prevPlayerDrinks;
+        const withAward = addDrinksByRule({
+          amount: penaltySips,
+          playerId: selectedPlayerId,
+          rule: guessed
+            ? (currentChallenge.drinkRules?.success || 'teamExceptTarget')
+            : (currentChallenge.drinkRules?.failure || 'target'),
+          teamId: activePiece.id,
+          teamMembers: currentTeamMembers,
+          teamProgress: {
+            ...progress,
+            [activePiece.id]: {
+              ...current,
+              playerDrinks: prevPlayerDrinks,
+            },
+          },
+        });
+        const nextPlayerDrinks = withAward[activePiece.id]?.playerDrinks || prevPlayerDrinks;
         const { drinks: _legacyDrinks, ...currentWithoutLegacyTotal } = current;
         return {
-          ...progress,
+          ...withAward,
           [activePiece.id]: {
             ...currentWithoutLegacyTotal,
             challengePoints,
@@ -649,7 +711,8 @@ const GameScreen = ({ route }) => {
       stage: 'result',
       result: guessed ? 'guessed' : actionType,
       pointsAwarded,
-      drinkAwardId: penaltySips > 0 ? `local:${localTurnNumber}:word-penalty` : null,
+      resultActionId: `local:${localTurnNumber}:${actionType}`,
+      drinkAwardId: penaltySips > 0 ? `local:${localTurnNumber}:${actionType}` : null,
     });
   };
 
@@ -962,6 +1025,14 @@ const GameScreen = ({ route }) => {
       if (!stop) return;
       const challengeId = stop.challenges?.[0]?.id || null;
       const previousProgress = teamProgress[pieceId] || {};
+      const challenge = getChallengeForStop(0, [stop], challengeId);
+      const roundData = getChallengeRound({
+        challenge,
+        difficulty: gameData?.difficulty,
+        players: getTeamPlayers(currentTeamMembers, pieceId),
+        seed: localPendingAction.id,
+        targetCursor: previousProgress.targetCursor,
+      });
       setTeamProgress({
         ...teamProgress,
         [pieceId]: {
@@ -972,13 +1043,15 @@ const GameScreen = ({ route }) => {
             step: detourStep,
             detourStep,
           },
+          targetCursor: roundData.nextTargetCursor,
         },
       });
       setIsCarDriving(false);
       setRemainingMoves(0);
       setLocalRoadblock({ ...localRoadblock, status: 'detourChallenge', detourStep });
       setCurrentChallenge({
-        ...getChallengeForStop(0, [stop], challengeId),
+        ...formatChallengeForTarget(challenge, roundData.round),
+        ...(roundData.round || {}),
         markerPosition: stop.position,
         isDetour: true,
       });

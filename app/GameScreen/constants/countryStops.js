@@ -27,17 +27,29 @@ export const ROUTE_FAMILIES = [
 export const ROUTE_CORRIDORS = ROUTE_FAMILIES;
 export const COUNTRY_POSITION_VERSION = 2;
 
+const BUILT_IN_TARGETING = {
+  'cafe-charades': { role: 'performer', selection: 'rotate' },
+};
+
 const position = (x, y) => {
   const point = svgPoint(x, y);
   return { x: point.x, y: point.y };
 };
 
-const challenge = (id, title, prompt, penalty = 'If the team cannot do it, apply the sip penalty or choose water.') => ([{
+const challenge = (
+  id,
+  title,
+  prompt,
+  penalty = 'If the team cannot do it, apply the sip penalty or choose water.',
+  options = {}
+) => ([{
   id,
   title,
   prompt,
   penalty,
   penaltySips: 1,
+  drinkRules: { success: 'none', failure: 'wholeTeam' },
+  ...options,
 }]);
 
 const COUNTRY_WORDS = {
@@ -108,6 +120,8 @@ const getCountryWordChallenge = (countryId) => {
     penaltySips: 1,
     durationSeconds: 30,
     successPoints: 10,
+    targeting: { role: 'describer', selection: 'rotate' },
+    drinkRules: { success: 'teamExceptTarget', failure: 'target' },
     wordListVersion: 2,
     words,
   };
@@ -172,7 +186,7 @@ const EUROPE_COUNTRIES = [
   { id: 'portugal', name: 'Portugal', code: 'PT', city: 'Lisbon', longitude: -9.1393, latitude: 38.7223, sourcePosition: [490, 340], accent: '#27ae60', challenge: challenge('fado-face-off', 'Fado Face-Off', 'Give a dramatic 10-second performance about missing the last train.') },
   { id: 'spain', name: 'Spain', code: 'ES', city: 'Madrid', longitude: -3.7038, latitude: 40.4168, sourcePosition: [515, 337], accent: '#f2c94c', challenge: challenge('tapas-tempo', 'Tapas Tempo', 'Name three Spanish dishes before the other team counts down from five.') },
   { id: 'andorra', name: 'Andorra', code: 'AD', city: 'Andorra la Vella', longitude: 1.5218, latitude: 42.5063, sourcePosition: [528, 329], accent: '#2f80ed', challenge: challenge('mountain-echo', 'Mountain Echo', 'Create a three-sound mountain call; every teammate must echo it perfectly.') },
-  { id: 'france', name: 'France', code: 'FR', city: 'Paris', longitude: 2.3522, latitude: 48.8566, sourcePosition: [532, 309], accent: '#d71920', challenge: challenge('cafe-charades', 'Cafe Charades', 'Act out ordering a fancy café drink without using words.') },
+  { id: 'france', name: 'France', code: 'FR', city: 'Paris', longitude: 2.3522, latitude: 48.8566, sourcePosition: [532, 309], accent: '#d71920', challenge: challenge('cafe-charades', "{targetPlayerName}'s Cafe Charades", '{targetPlayerName}, act out ordering a fancy café drink without using words.', 'If the team cannot guess it, the performer takes the sip penalty.', { targeting: { role: 'performer', selection: 'rotate' }, drinkRules: { success: 'none', failure: 'target' } }) },
   { id: 'monaco', name: 'Monaco', code: 'MC', city: 'Monaco', longitude: 7.4246, latitude: 43.7384, sourcePosition: [548, 329], accent: '#eb5757', challenge: challenge('grand-prix-pitstop', 'Grand Prix Pitstop', 'Mime a lightning-fast tyre change with your whole team in 10 seconds.') },
   { id: 'belgium', name: 'Belgium', code: 'BE', city: 'Brussels', longitude: 4.3517, latitude: 50.8503, sourcePosition: [531, 303], accent: '#1ba39c', challenge: challenge('trappist-toast', 'Grand Toast', 'Make a grand toast to the whole table in your best royal voice.') },
   { id: 'netherlands', name: 'Netherlands', code: 'NL', city: 'Amsterdam', longitude: 4.9041, latitude: 52.3676, sourcePosition: [534, 297], accent: '#f2994a', challenge: challenge('canal-balance', 'Canal Balance', 'Balance a coaster on your head for 15 seconds while naming three Dutch cities.') },
@@ -274,6 +288,7 @@ export const normalizeCountryStops = (value) => {
           id: String(challenge.id || `challenge-${challengeIndex}`),
           title: String(challenge.title || 'Border Check'),
           prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
+          ...(challenge.instructions ? { instructions: String(challenge.instructions) } : {}),
           penalty: String(challenge.penalty || 'Take 1 sip if the table is not convinced.'),
           penaltySips: Number.isFinite(Number(challenge.penaltySips))
             ? Math.max(0, Math.round(Number(challenge.penaltySips)))
@@ -302,6 +317,21 @@ export const normalizeCountryStops = (value) => {
           ...(Array.isArray(challenge.countryMonumentIds)
             ? { countryMonumentIds: challenge.countryMonumentIds.map(String).filter(Boolean) }
             : {}),
+          ...((challenge.targeting || BUILT_IN_TARGETING[challenge.id])
+            ? {
+                targeting: {
+                  role: String((challenge.targeting || BUILT_IN_TARGETING[challenge.id]).role || ''),
+                  selection: String((challenge.targeting || BUILT_IN_TARGETING[challenge.id]).selection || ''),
+                },
+              }
+            : {}),
+          drinkRules: {
+            success: String(challenge.drinkRules?.success || 'none'),
+            failure: String(
+              challenge.drinkRules?.failure
+              || (BUILT_IN_TARGETING[challenge.id] ? 'target' : 'wholeTeam')
+            ),
+          },
         }))
       ),
     };

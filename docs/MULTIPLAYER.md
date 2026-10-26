@@ -22,10 +22,10 @@ games/{gameID}
   teamModels/{team1|team2|team3}: modelId
   routeStops[]: immutable ordered room snapshot
   gameplay
-    schemaVersion: 8
+    schemaVersion: 9
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
     teamProgress/{teamId}: currentLeg, isDone, score,
-      challengePoints, finishPosition?, detour?
+      challengePoints, targetCursor, finishPosition?, detour?
       playerDrinks/{playerPushKey}: name, drinks
     currentAction: id, type, teamId, value, fromLeg, targetLeg,
       inputMethod, startedAt, movementStartsAt, movementEndsAt,
@@ -43,7 +43,10 @@ Null Firebase fields may be omitted. Empty team placeholders begin as empty stri
 and become objects when players are pushed. Preserve these compatibility quirks
 unless every reader and writer is migrated together.
 
-Schema 8 uses the roster push key as the stable player ID for drink totals. Team drink
+Schema 9 adds a per-team `targetCursor`; targeted challenge creation advances it in
+the same transaction that stores the selected player ID/name and outcome rules in
+`challengeRound`. Reconnects therefore cannot select a different player. Schema 8
+uses the roster push key as the stable player ID for drink totals. Team drink
 totals are derived by summing `playerDrinks`; they are not stored separately. When an
 older room is opened, its name-keyed player ledger (or team-only total) is migrated in
 a gameplay transaction. Names are retained only as display snapshots, so renaming a
@@ -98,9 +101,10 @@ Revision numbers and unique action IDs make replayed updates idempotent. Roll,
 movement completion, roadblock choice, challenge stage/completion, score awards,
 finish assignment, and restart use transactions.
 
-Typed challenge rounds snapshot `resolvedPenaltySips` from the room difficulty when
-they are created. Result transactions record a stable `drinkAwardId` and accept only
-the expected pre-result stage, so retrying a result cannot apply its drinks twice.
+Challenge rounds snapshot targeting, outcome rules, and `resolvedPenaltySips` from
+the room difficulty when they are created. Result transactions record stable
+`resultActionId` and `drinkAwardId` values and accept only the expected pre-result
+stage, so retrying a result cannot apply its drinks twice.
 Drink adjustments update the stable per-player ledger transactionally; team-wide
 adjustments apply the delta once to every current roster player.
 

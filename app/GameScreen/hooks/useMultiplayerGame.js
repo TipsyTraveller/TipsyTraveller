@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onValue, ref, runTransaction } from 'firebase/database';
 import { db } from '../../../firebaseConfig';
 import {
+  addDrinksByRule,
   addDrinksToPlayer,
   addDrinksToTeam,
   createPlayerDrinkLedger,
@@ -11,6 +12,7 @@ import {
 import {
   buildRollAction,
   createInitialGameplay,
+  GAMEPLAY_SCHEMA_VERSION,
   getFinishPosition,
   getNextActiveTeamId,
   getRequiredTeamIds,
@@ -22,7 +24,7 @@ import {
   GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
-  getCountryWordRound,
+  getChallengeRound,
   getGeoGuessrRound,
   getResolvedPenaltySips,
   getTeamPlayers,
@@ -118,11 +120,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       if (!current?.teamProgress) return undefined;
       const normalized = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
-      if (JSON.stringify(normalized) === JSON.stringify(current.teamProgress)) return undefined;
+      if (
+        JSON.stringify(normalized) === JSON.stringify(current.teamProgress)
+        && Number(current.schemaVersion) >= GAMEPLAY_SCHEMA_VERSION
+      ) return undefined;
 
       return {
         ...current,
-        schemaVersion: Math.max(Number(current.schemaVersion) || 0, 8),
+        schemaVersion: Math.max(Number(current.schemaVersion) || 0, GAMEPLAY_SCHEMA_VERSION),
         revision: (current.revision || 0) + 1,
         teamProgress: normalized,
         updatedAt: now(),
@@ -381,6 +386,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         if (!stop) return undefined;
         const challengeId = stop.challenges?.[0]?.id || null;
         const previousProgress = current.teamProgress?.[action.teamId] || {};
+        const challenge = getChallengeForStop(0, [stop], challengeId);
+        const roundData = getChallengeRound({
+          challenge,
+          difficulty: gameDataRef.current?.difficulty,
+          players: getTeamPlayers(teamMembersRef.current, action.teamId),
+          seed: action.id,
+          targetCursor: previousProgress.targetCursor,
+        });
 
         return {
           ...current,
@@ -396,12 +409,13 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
                 step: detourStep,
                 detourStep,
               },
+              targetCursor: roundData.nextTargetCursor,
             },
           },
           challengeStop: null,
           challengeStopData: stop,
           challengeId,
-          challengeRound: null,
+          challengeRound: roundData.round,
           roadblock: {
             ...current.roadblock,
             status: 'detourChallenge',
@@ -457,7 +471,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         : null;
       const previousProgress = current.teamProgress?.[action.teamId] || {};
       const challengePoints = Number(previousProgress.challengePoints) || 0;
-      const teamProgress = {
+      let teamProgress = {
         ...current.teamProgress,
         [action.teamId]: {
           ...previousProgress,
@@ -522,12 +536,21 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             usedMonumentIds = geoData.nextUsedMonumentIds;
           }
         } else {
-          challengeRound = getCountryWordRound(
+          const roundData = getChallengeRound({
             challenge,
+            difficulty: gameDataRef.current?.difficulty,
             players,
-            action.id,
-            gameDataRef.current?.difficulty
-          );
+            seed: action.id,
+            targetCursor: teamProgress[action.teamId]?.targetCursor,
+          });
+          challengeRound = roundData.round;
+          teamProgress = {
+            ...teamProgress,
+            [action.teamId]: {
+              ...teamProgress[action.teamId],
+              targetCursor: roundData.nextTargetCursor,
+            },
+          };
         }
 
         return {
@@ -566,7 +589,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     return result.committed;
   }, [enabled, gameID, now, routeModel]);
 
-  const updateCountryWordChallenge = useCallback(async (action) => {
+  const updateChallenge = useCallback(async (action) => {
     if (!enabled || !gameID) return false;
 
     const actionType = typeof action === 'object' && action !== null ? action.type : action;
@@ -799,6 +822,42 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           updatedAt,
         };
       }
+
+      const ordinaryResult = String(actionType || '').toLowerCase();
+      if (
+        challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE
+        && ['completed', 'failed'].includes(ordinaryResult)
+        && round.stage === 'playing'
+      ) {
+        const succeeded = ordinaryResult === 'completed';
+        const resultActionId = `${current.sessionId}:${current.turnNumber}:${ordinaryResult}`;
+        const drinkRule = succeeded ? round.drinkRules?.success : round.drinkRules?.failure;
+        const nextTeamProgress = addDrinksByRule({
+          amount: getResolvedPenaltySips(
+            round.resolvedPenaltySips === undefined ? challenge : round,
+            gameDataRef.current?.difficulty
+          ),
+          playerId: round.selectedPlayerId,
+          rule: drinkRule,
+          teamId: current.activeTeamId,
+          teamMembers: teamMembersRef.current,
+          teamProgress: current.teamProgress,
+        });
+        return {
+          ...current,
+          revision: (current.revision || 0) + 1,
+          teamProgress: nextTeamProgress,
+          challengeRound: {
+            ...round,
+            stage: 'result',
+            result: succeeded ? 'completed' : 'failed',
+            resultActionId,
+            drinkAwardId: drinkRule && drinkRule !== 'none' ? resultActionId : null,
+          },
+          updatedAt,
+        };
+      }
+
       if (!['guessed', 'failed', 'timeout'].includes(actionType) || round.stage !== 'playing') {
         return undefined;
       }
@@ -806,7 +865,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return undefined;
       const guessed = actionType === 'guessed';
       const pointsAwarded = guessed ? (Number(challenge.successPoints) || 10) : 0;
-      const penaltySips = guessed ? 0 : getResolvedPenaltySips(
+      const penaltySips = getResolvedPenaltySips(
         round.resolvedPenaltySips === undefined ? challenge : round,
         gameDataRef.current?.difficulty
       );
@@ -822,16 +881,32 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         teamMembersRef.current,
         current.activeTeamId
       ).find((player) => player.name === round.selectedPlayerName)?.playerId;
-      const nextPlayerDrinks = (!guessed && selectedPlayerId)
-        ? addDrinksToPlayer(prevPlayerDrinks, selectedPlayerId, penaltySips)
-        : prevPlayerDrinks;
+      const resultActionId = `${current.sessionId}:${current.turnNumber}:${actionType}`;
+      const wordDrinkRule = guessed
+        ? (round.drinkRules?.success || 'teamExceptTarget')
+        : (round.drinkRules?.failure || 'target');
+      const nextTeamProgress = addDrinksByRule({
+        amount: penaltySips,
+        playerId: selectedPlayerId,
+        rule: wordDrinkRule,
+        teamId: current.activeTeamId,
+        teamMembers: teamMembersRef.current,
+        teamProgress: {
+          ...current.teamProgress,
+          [current.activeTeamId]: {
+            ...activeProgress,
+            playerDrinks: prevPlayerDrinks,
+          },
+        },
+      });
+      const nextPlayerDrinks = nextTeamProgress[current.activeTeamId]?.playerDrinks || prevPlayerDrinks;
       const { drinks: _legacyDrinks, ...activeProgressWithoutLegacyTotal } = activeProgress;
 
       return {
         ...current,
         revision: (current.revision || 0) + 1,
         teamProgress: {
-          ...current.teamProgress,
+          ...nextTeamProgress,
           [current.activeTeamId]: {
             ...activeProgressWithoutLegacyTotal,
             challengePoints,
@@ -848,9 +923,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           stage: 'result',
           result: guessed ? 'guessed' : actionType,
           pointsAwarded,
-          drinkAwardId: penaltySips > 0
-            ? `${current.sessionId}:${current.turnNumber}:word-penalty`
-            : null,
+          resultActionId,
+          drinkAwardId: penaltySips > 0 ? resultActionId : null,
         },
         updatedAt,
       };
@@ -1010,6 +1084,6 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     serverNow: now,
     submitRoll,
     teamMembers: liveTeamMembers,
-    updateCountryWordChallenge,
+    updateChallenge,
   };
 }

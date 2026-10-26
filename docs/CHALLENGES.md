@@ -11,9 +11,16 @@ multiplayer, movement completion deterministically selects from the snapshotted 
 using the action ID and stores both `challengeStop` and `challengeId` so every client
 shows the same content.
 
-Ordinary cards are social instructions: they do not record pass/fail or change score.
-Only the active leader may complete them. Completion transactionally closes the card,
-selects the next unfinished team, clears the roll, and enters `waiting` (or `done`).
+Ordinary cards record an explicit `completed` or `failed` result before the active
+leader can start the next turn. Their `drinkRules.success` and `drinkRules.failure`
+select `target`, `teamExceptTarget`, `wholeTeam`, `opponents`, or `none`; the result
+and its drink award action ID are committed together so retries are idempotent.
+
+Challenges may declare `targeting: { role, selection: 'rotate' }`, where role is
+`describer`, `performer`, `judge`, or `captain`. Creation transactionally selects the
+next stable roster player, advances the team's `targetCursor`, and snapshots both the
+player ID and display name in `challengeRound`. `{targetPlayerName}` placeholders in
+titles, prompts, instructions, and penalty copy are replaced from that snapshot.
 
 The React Native `ChallengePopup` is a two-part travel ticket. It animates from the
 landed 3D marker, flips from branded back to front, and tears away before calling
@@ -25,16 +32,17 @@ paused to reduce mobile contention.
 
 Every bundled country includes this typed challenge with six country-themed entries,
 a 30-second duration, and 10 success points. It is excluded for one-player teams.
-The action ID deterministically selects both explainer and secret word.
+The secret word is deterministic for the action ID. The describer uses the shared
+per-team rotation cursor, so every eligible teammate is selected before anyone repeats.
 
 The active leader device runs `intro → playing → result`: pass the phone, press
 `START`, show a seven-second explanation overlay while the timer runs, then reveal
 the secret for the remaining time. Other clients never receive a secret-display UI.
 The synchronized round snapshots `resolvedPenaltySips`. The result is `guessed`,
-`failed`, or `timeout`; only `guessed` awards 10 points, while failure or timeout
-assigns the resolved penalty to the describer, exactly once through an idempotent
-transaction. Next Turn remains disabled
-until a result exists.
+`failed`, or `timeout`; `guessed` awards 10 points and assigns the scaled amount to
+every teammate except the describer, while failure or timeout assigns it only to the
+describer. The result and drink event share a stable action ID in one transaction.
+Next Turn remains disabled until a result exists.
 
 ## GeoGuessr Place Duel
 
