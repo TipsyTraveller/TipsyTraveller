@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { DEFAULT_COUNTRY_STOPS, normalizeCountryStops } from './countryStops';
 
 export const getPathRevealDuration = (moveCount) => (
-  moveCount > 0 ? 0.45 + moveCount * 0.22 : 0
+  moveCount > 0 ? 0.36 + moveCount * 0.18 : 0
 );
 
 const getTangentAngle = (curve, progress, lookWindow = 0.005) => {

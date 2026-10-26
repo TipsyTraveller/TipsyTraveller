@@ -21,6 +21,36 @@ const TEAM_COLORS = {
   team3: '#F4B942',
 };
 
+const MIN_MAP_ZOOM = 1;
+const MAX_MAP_ZOOM = 4;
+const MAP_GESTURE_MOVE_THRESHOLD = 5;
+
+const getTouchPoint = (touch) => ({
+  localX: Number.isFinite(touch?.locationX) ? touch.locationX : 0,
+  localY: Number.isFinite(touch?.locationY) ? touch.locationY : 0,
+  pageX: Number.isFinite(touch?.pageX) ? touch.pageX : 0,
+  pageY: Number.isFinite(touch?.pageY) ? touch.pageY : 0,
+});
+
+const getTouchMetrics = (nativeEvent) => {
+  const touches = nativeEvent?.touches?.length
+    ? Array.from(nativeEvent.touches)
+    : [nativeEvent];
+  const points = touches.map(getTouchPoint);
+  const pointCount = Math.max(1, points.length);
+  const centroid = points.reduce((result, point) => ({
+    localX: result.localX + point.localX / pointCount,
+    localY: result.localY + point.localY / pointCount,
+    pageX: result.pageX + point.pageX / pointCount,
+    pageY: result.pageY + point.pageY / pointCount,
+  }), { localX: 0, localY: 0, pageX: 0, pageY: 0 });
+  const distance = points.length >= 2
+    ? Math.hypot(points[0].pageX - points[1].pageX, points[0].pageY - points[1].pageY)
+    : 0;
+
+  return { centroid, distance, touchCount: points.length };
+};
+
 const GeoGuessrEuropeMap = ({
   canPlacePin,
   compact,
@@ -33,6 +63,7 @@ const GeoGuessrEuropeMap = ({
 }) => {
   const [mapLayout, setMapLayout] = useState({ width: 1, height: 1 });
   const [mapView, setMapView] = useState({ centerX: 0.5, centerY: 0.5, zoom: 1 });
+  const mapViewRef = useRef(mapView);
   const gesture = useRef(null);
 
   const clampCenter = (centerX, centerY, zoom) => {
@@ -46,41 +77,83 @@ const GeoGuessrEuropeMap = ({
   };
 
   const setZoom = (nextZoom) => {
-    const zoom = Math.max(1, Math.min(4, nextZoom));
+    const zoom = Math.max(MIN_MAP_ZOOM, Math.min(MAX_MAP_ZOOM, nextZoom));
     setMapView((current) => clampCenter(current.centerX, current.centerY, zoom));
   };
 
-  const handleResponderGrant = (event) => {
-    const { locationX, locationY } = event.nativeEvent;
+  useEffect(() => {
+    mapViewRef.current = mapView;
+  }, [mapView]);
+
+  const startGesture = (nativeEvent, inheritedMultiTouch = false) => {
+    const metrics = getTouchMetrics(nativeEvent);
     gesture.current = {
-      startX: locationX,
-      startY: locationY,
-      startView: mapView,
+      startMetrics: metrics,
+      startView: mapViewRef.current,
       moved: false,
+      usedMultiTouch: inheritedMultiTouch || metrics.touchCount >= 2,
     };
+  };
+
+  const handleResponderGrant = (event) => {
+    startGesture(event.nativeEvent);
   };
 
   const handleResponderMove = (event) => {
     if (!gesture.current) return;
-    const { locationX, locationY } = event.nativeEvent;
-    const deltaX = locationX - gesture.current.startX;
-    const deltaY = locationY - gesture.current.startY;
-    if (Math.hypot(deltaX, deltaY) > 5) gesture.current.moved = true;
-    if (mapView.zoom <= 1) return;
+    const metrics = getTouchMetrics(event.nativeEvent);
+    const activeGesture = gesture.current;
+
+    if (metrics.touchCount !== activeGesture.startMetrics.touchCount) {
+      const usedMultiTouch = activeGesture.usedMultiTouch || metrics.touchCount >= 2;
+      startGesture(event.nativeEvent, usedMultiTouch);
+      return;
+    }
+
+    const deltaX = metrics.centroid.pageX - activeGesture.startMetrics.centroid.pageX;
+    const deltaY = metrics.centroid.pageY - activeGesture.startMetrics.centroid.pageY;
+    const distanceDelta = Math.abs(metrics.distance - activeGesture.startMetrics.distance);
+    if (Math.hypot(deltaX, deltaY) > MAP_GESTURE_MOVE_THRESHOLD
+      || distanceDelta > MAP_GESTURE_MOVE_THRESHOLD) {
+      activeGesture.moved = true;
+    }
+
     const width = Math.max(1, mapLayout.width);
     const height = Math.max(1, mapLayout.height);
-    const { startView } = gesture.current;
-    setMapView(clampCenter(
-      startView.centerX - deltaX / (width * startView.zoom),
-      startView.centerY - deltaY / (height * startView.zoom),
-      startView.zoom
-    ));
+    const { startMetrics, startView } = activeGesture;
+
+    if (metrics.touchCount >= 2 && startMetrics.distance > 0) {
+      const zoom = Math.max(
+        MIN_MAP_ZOOM,
+        Math.min(MAX_MAP_ZOOM, startView.zoom * (metrics.distance / startMetrics.distance))
+      );
+      const startOffsetX = (startMetrics.centroid.localX / width) - 0.5;
+      const startOffsetY = (startMetrics.centroid.localY / height) - 0.5;
+      const currentOffsetX = (metrics.centroid.localX / width) - 0.5;
+      const currentOffsetY = (metrics.centroid.localY / height) - 0.5;
+      const anchorX = startView.centerX + startOffsetX / startView.zoom;
+      const anchorY = startView.centerY + startOffsetY / startView.zoom;
+      setMapView(clampCenter(
+        anchorX - currentOffsetX / zoom,
+        anchorY - currentOffsetY / zoom,
+        zoom
+      ));
+      return;
+    }
+
+    if (startView.zoom > MIN_MAP_ZOOM) {
+      setMapView(clampCenter(
+        startView.centerX - deltaX / (width * startView.zoom),
+        startView.centerY - deltaY / (height * startView.zoom),
+        startView.zoom
+      ));
+    }
   };
 
   const handleResponderRelease = (event) => {
     const activeGesture = gesture.current;
     gesture.current = null;
-    if (!canPlacePin || !onSelectPosition || activeGesture?.moved) return;
+    if (!canPlacePin || !onSelectPosition || activeGesture?.moved || activeGesture?.usedMultiTouch) return;
     const { locationX, locationY } = event.nativeEvent;
     if (!Number.isFinite(locationX) || !Number.isFinite(locationY)) return;
     const width = Math.max(1, mapLayout.width);
@@ -249,20 +322,20 @@ const GeoGuessrEuropeMap = ({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Zoom in on Europe map"
-            disabled={mapView.zoom >= 4}
-            style={({ pressed }) => [styles.mapControlButton, mapView.zoom >= 4 && styles.buttonDisabled, pressed && styles.buttonPressed]}
+            disabled={mapView.zoom >= MAX_MAP_ZOOM}
+            style={({ pressed }) => [styles.mapControlButton, mapView.zoom >= MAX_MAP_ZOOM && styles.buttonDisabled, pressed && styles.buttonPressed]}
             onPress={() => setZoom(mapView.zoom + 1)}
           >
             <Text style={styles.mapControlText}>+</Text>
           </Pressable>
           <View style={styles.zoomReadout}>
-            <Text style={styles.zoomReadoutText}>{`${mapView.zoom}×`}</Text>
+            <Text style={styles.zoomReadoutText}>{`${Number(mapView.zoom.toFixed(1))}×`}</Text>
           </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Zoom out on Europe map"
-            disabled={mapView.zoom <= 1}
-            style={({ pressed }) => [styles.mapControlButton, mapView.zoom <= 1 && styles.buttonDisabled, pressed && styles.buttonPressed]}
+            disabled={mapView.zoom <= MIN_MAP_ZOOM}
+            style={({ pressed }) => [styles.mapControlButton, mapView.zoom <= MIN_MAP_ZOOM && styles.buttonDisabled, pressed && styles.buttonPressed]}
             onPress={() => setZoom(mapView.zoom - 1)}
           >
             <Text style={styles.mapControlText}>−</Text>
@@ -274,7 +347,7 @@ const GeoGuessrEuropeMap = ({
         <View style={styles.mapHintPill} pointerEvents="none">
           <Text style={styles.mapHintText}>
             {canPlacePin
-              ? (draftPosition ? 'DRAG TO MOVE · ZOOM FOR PRECISION · TAP TO ADJUST' : 'ZOOM, DRAG, THEN TAP TO DROP YOUR PIN')
+              ? (draftPosition ? 'PINCH TO ZOOM · DRAG TO MOVE · TAP TO ADJUST' : 'PINCH TO ZOOM · DRAG, THEN TAP TO DROP YOUR PIN')
               : 'WAITING FOR TEAMS TO LOCK IN'}
           </Text>
         </View>

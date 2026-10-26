@@ -5,6 +5,6 @@ export const DICE_BOUNDS = {
   maxY: 1.15,
 };
 
-export const DICE_RESULT_DURATION = 1.2;
-export const DICE_RESULT_EXIT_BUFFER = 0.08;
+export const DICE_RESULT_DURATION = 0.95;
+export const DICE_RESULT_EXIT_BUFFER = 0.05;
 export const DICE_MAX_RESULT = 3;

@@ -219,7 +219,7 @@ const GamePiece = memo(({
           distance: legDistance,
           parkingOffset,
           parkingOffsetRef,
-          passedVehicleDistances,
+          passedVehicleDistances: EMPTY_PASSED_VEHICLE_DISTANCES,
           passJumpTransform: passJumpTransformRef.current,
           clockTime: 0,
           delta: 0.016,
@@ -236,7 +236,7 @@ const GamePiece = memo(({
       delayElapsedRef.current = 0;
       hasStartedDrivingRef.current = false;
     }
-  }, [activeCarProgressRef, currentLeg, driving, parkingOffset, passedVehicleDistances, pieceRef, routeModel]);
+  }, [activeCarProgressRef, currentLeg, driving, parkingOffset, pieceRef, routeModel]);
 
   useEffect(() => {
     targetLegRef.current = targetLeg;
@@ -260,7 +260,7 @@ const GamePiece = memo(({
         distance: legDistance,
         parkingOffset,
         parkingOffsetRef,
-        passedVehicleDistances,
+        passedVehicleDistances: EMPTY_PASSED_VEHICLE_DISTANCES,
         passJumpTransform: passJumpTransformRef.current,
         clockTime: 0,
         delta: 0.016,

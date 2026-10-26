@@ -1,1 +1,1 @@
-export const DRIVE_SPEED_UNITS_PER_SECOND = 2;
+export const DRIVE_SPEED_UNITS_PER_SECOND = 1.7;
