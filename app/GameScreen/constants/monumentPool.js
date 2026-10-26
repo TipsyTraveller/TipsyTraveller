@@ -1,16 +1,17 @@
-import { MAP_CY, MAP_H, MAP_W, svgPoint } from './mapCoordinates.js';
-import { EUROPE_SVG_VIEWBOX } from './europeMapPaths.js';
+import { MAP_CY, MAP_H, MAP_W } from './mapCoordinates.js';
+import {
+  EUROPE_SVG_VIEWBOX,
+  europeSvgToGeoCoords,
+  geoToEuropeSvgCoords,
+} from './europeMapPaths.js';
 
-export const MONUMENT_POOL_VERSION = 3;
+export const MONUMENT_POOL_VERSION = 5;
 export const MONUMENT_POOL_DOC_ID = 'monumentPool';
 export const GEO_GUESSR_CHALLENGE_ID = 'geo-guessr-duel';
 export const GEO_GUESSR_CHALLENGE_TYPE = 'geoGuessr';
 export const GEO_GUESSR_PHOTO_SECONDS = 18;
 export const GEO_GUESSR_PIN_SECONDS = 20;
 export const GEO_GUESSR_SUCCESS_POINTS = 15;
-
-// Approximate conversion between board units (20x15 Europe viewport) and real-world km.
-const KM_PER_BOARD_UNIT = 285;
 
 // Keep the legacy monument naming in the stored shape for multiplayer compatibility,
 // while classifying broader views so the duel can alternate between landmarks and places.
@@ -28,6 +29,79 @@ const PLACE_SCENE_IDS = new Set([
 ]);
 const PLACE_SCENE_CATEGORIES = new Set(['mountain', 'coast']);
 
+// Longitude/latitude is the source of truth for the GeoGuessr map. The old
+// svgPosition values below belong to the stylized 3D board map and are retained
+// only as legacy content fields for stored-game compatibility.
+const MONUMENT_COORDINATES = Object.freeze({
+  'is-hallgrimskirkja': [-21.9266, 64.1417],
+  'is-kirkjufell': [-23.306, 64.941],
+  'ie-cliffs-of-moher': [-9.4309, 52.9715],
+  'ie-rock-of-cashel': [-7.8906, 52.52],
+  'gb-tower-bridge': [-0.0754, 51.5055],
+  'gb-stonehenge': [-1.8262, 51.1789],
+  'gb-edinburgh-castle': [-3.2008, 55.9486],
+  'pt-belem-tower': [-9.2159, 38.6916],
+  'pt-pena-palace': [-9.391, 38.7876],
+  'es-sagrada-familia': [2.1744, 41.4036],
+  'es-alhambra': [-3.5881, 37.1761],
+  'ad-sant-joan': [1.5812, 42.598],
+  'fr-mont-saint-michel': [-1.5115, 48.636],
+  'fr-eiffel-tower': [2.2945, 48.8584],
+  'fr-pont-du-gard': [4.5355, 43.9475],
+  'mc-monte-carlo-casino': [7.4274, 43.739],
+  'be-atomium': [4.3416, 50.8949],
+  'be-bruges-belfry': [3.2249, 51.2081],
+  'nl-kinderdijk': [4.638, 51.8825],
+  'lu-vianden-castle': [6.202, 49.935],
+  'ch-chapel-bridge': [8.307, 47.0516],
+  'ch-matterhorn': [7.6586, 45.9763],
+  'li-vaduz-castle': [9.524, 47.139],
+  'de-neuschwanstein': [10.7498, 47.5576],
+  'de-brandenburg-gate': [13.3777, 52.5163],
+  'dk-nyhavn': [12.591, 55.68],
+  'no-borgund-stave-church': [7.812, 61.047],
+  'no-bryggen-bergen': [5.323, 60.397],
+  'se-turning-torso': [12.9766, 55.6134],
+  'fi-helsinki-cathedral': [24.952, 60.1699],
+  'ee-tallinn-old-town': [24.739, 59.436],
+  'lv-house-of-blackheads': [24.1052, 56.9475],
+  'lt-trakai-castle': [24.934, 54.652],
+  'pl-wawel-castle': [19.9366, 50.054],
+  'cz-charles-bridge': [14.4114, 50.0865],
+  'at-schonbrunn': [16.3122, 48.1845],
+  'at-hallstatt': [13.6493, 47.5622],
+  'sk-spis-castle': [20.768, 49.0006],
+  'hu-parliament': [19.0457, 47.5071],
+  'si-lake-bled': [14.094, 46.3625],
+  'it-colosseum': [12.4922, 41.8902],
+  'it-pisa-tower': [10.3966, 43.723],
+  'it-rialto-bridge': [12.336, 45.438],
+  'sm-guaita-tower': [12.4497, 43.9356],
+  'va-st-peters-basilica': [12.4534, 41.9022],
+  'mt-valletta-harbour': [14.519, 35.899],
+  'hr-dubrovnik-walls': [18.109, 42.641],
+  'ba-stari-most': [17.815, 43.3373],
+  'rs-kalemegdan': [20.451, 44.823],
+  'me-kotor-bay': [18.771, 42.4247],
+  'al-berat-windows': [19.944, 40.7058],
+  'xk-pristina-library': [21.1662, 42.648],
+  'mk-st-john-kaneo': [20.8, 41.114],
+  'gr-parthenon': [23.7267, 37.9715],
+  'gr-santorini-oia': [25.3753, 36.4618],
+  'bg-alexander-nevsky': [23.333, 42.6959],
+  'ro-bran-castle': [25.3672, 45.515],
+  'md-orheiul-vechi': [28.9705, 47.301],
+  'ua-st-sophia-kyiv': [30.5143, 50.4529],
+  'by-mir-castle': [26.472, 53.4512],
+  'ru-st-basils': [37.6231, 55.7525],
+  'kz-baiterek-tower': [71.4304, 51.1282],
+  'ge-gergeti-trinity': [44.559, 42.6627],
+  'am-khor-virap': [44.5761, 39.8783],
+  'az-flame-towers': [49.8671, 40.359],
+  'tr-hagia-sophia': [28.98, 41.0086],
+  'cy-tombs-of-kings': [32.407, 34.775],
+});
+
 const getSubjectType = ({ id, category, subjectType }) => {
   if (subjectType === 'place' || subjectType === 'landmark') return subjectType;
   return PLACE_SCENE_IDS.has(id) || PLACE_SCENE_CATEGORIES.has(category)
@@ -36,10 +110,11 @@ const getSubjectType = ({ id, category, subjectType }) => {
 };
 
 const toBoardPosition = (svgX, svgY) => {
-  const pt = svgPoint(svgX, svgY);
   return {
-    x: Number(pt.x.toFixed(2)),
-    y: Number(pt.y.toFixed(2)),
+    x: Number((((svgX - EUROPE_SVG_VIEWBOX.minX) / EUROPE_SVG_VIEWBOX.width) * MAP_W
+      - MAP_W / 2).toFixed(2)),
+    y: Number((MAP_CY + MAP_H / 2
+      - ((svgY - EUROPE_SVG_VIEWBOX.minY) / EUROPE_SVG_VIEWBOX.height) * MAP_H).toFixed(2)),
   };
 };
 
@@ -135,11 +210,24 @@ export const boardToSvgCoords = (position) => {
   };
 };
 
+const boardToGeoCoords = (position) => {
+  const { svgX, svgY } = boardToSvgCoords(position);
+  return europeSvgToGeoCoords(svgX, svgY);
+};
+
 export const calculateBoardDistanceKm = (fromPosition, toPosition) => {
   if (!fromPosition || !toPosition) return 9999;
-  const dx = (Number(fromPosition.x) || 0) - (Number(toPosition.x) || 0);
-  const dy = (Number(fromPosition.y) || 0) - (Number(toPosition.y) || 0);
-  return Math.max(5, Math.round(Math.hypot(dx, dy) * KM_PER_BOARD_UNIT));
+  const from = boardToGeoCoords(fromPosition);
+  const to = boardToGeoCoords(toPosition);
+  const toRadians = (degrees) => degrees * Math.PI / 180;
+  const latitudeDelta = toRadians(to.latitude - from.latitude);
+  const longitudeDelta = toRadians(to.longitude - from.longitude);
+  const fromLatitude = toRadians(from.latitude);
+  const toLatitude = toRadians(to.latitude);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+  const distanceKm = 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  return Math.max(5, Math.round(distanceKm));
 };
 
 const monument = ({
@@ -151,31 +239,43 @@ const monument = ({
   clue,
   category,
   palette,
-  svgPosition,
+  svgPosition: legacySvgPosition,
   imageUrl,
   imageSourceUrl,
   imageAuthor,
   imageLicense,
   photoSource,
   subjectType,
-}) => ({
-  id,
-  countryId,
-  countryName,
-  city,
-  name,
-  clue,
-  category: category || 'castle',
-  palette: palette || ['#4A90E2', '#D9B382', '#2C3E50'],
-  svgPosition,
-  position: toBoardPosition(svgPosition[0], svgPosition[1]),
-  imageUrl: normalizeMonumentImageUrl(imageUrl),
-  imageSourceUrl,
-  imageAuthor,
-  imageLicense,
-  photoSource,
-  subjectType: getSubjectType({ id, category: category || 'castle', subjectType }),
-});
+}) => {
+  const coordinates = MONUMENT_COORDINATES[id];
+  const projected = coordinates
+    ? geoToEuropeSvgCoords(coordinates[0], coordinates[1])
+    : { svgX: legacySvgPosition?.[0] || 500, svgY: legacySvgPosition?.[1] || 350 };
+  const svgPosition = [
+    Number(projected.svgX.toFixed(2)),
+    Number(projected.svgY.toFixed(2)),
+  ];
+
+  return {
+    id,
+    countryId,
+    countryName,
+    city,
+    name,
+    clue,
+    category: category || 'castle',
+    palette: palette || ['#4A90E2', '#D9B382', '#2C3E50'],
+    coordinates,
+    svgPosition,
+    position: toBoardPosition(svgPosition[0], svgPosition[1]),
+    imageUrl: normalizeMonumentImageUrl(imageUrl),
+    imageSourceUrl,
+    imageAuthor,
+    imageLicense,
+    photoSource,
+    subjectType: getSubjectType({ id, category: category || 'castle', subjectType }),
+  };
+};
 
 // Comprehensive European photo-location pool covering all 51 countries in the catalogue,
 // with a mix of landmarks, landscapes, waterfronts, villages, and city scenes.
@@ -733,7 +833,7 @@ export const DEFAULT_MONUMENT_POOL = [
     clue: 'Historic stone arch bridge lined with dark baroque statues and guarded by Gothic towers.',
     category: 'bridge',
     palette: ['#64B5F6', '#8D6E63', '#37474F'],
-    svgPosition: [556, 315],
+    svgPosition: [566, 313],
     imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Prague_07-2016_View_from_Petrinska_Tower_img2.jpg/960px-Prague_07-2016_View_from_Petrinska_Tower_img2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Prague_07-2016_View_from_Petrinska_Tower_img2.jpg",
     imageAuthor: "A.Savin",
@@ -845,7 +945,7 @@ export const DEFAULT_MONUMENT_POOL = [
     clue: 'Tilted white marble cylindrical bell tower ringed by open Romanesque galleries.',
     category: 'tower',
     palette: ['#64B5F6', '#7CB342', '#FAFAFA'],
-    svgPosition: [549, 339],
+    svgPosition: [553, 328],
     imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg/960px-The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:The_Duomo_and_Tower_of_Pisa_at_sunrise.jpg",
     imageAuthor: "MHoser",
@@ -1270,12 +1370,26 @@ export const normalizeMonumentPool = (rawPool) => {
     .filter((item) => item && item.id && item.name)
     .map((item) => {
       const fallback = byId.get(item.id) || {};
+      const hasValidCoordinates = Array.isArray(item.coordinates)
+        && item.coordinates.length === 2
+        && item.coordinates.every((coordinate) => Number.isFinite(Number(coordinate)));
+      const coordinates = hasValidCoordinates
+        ? [Number(item.coordinates[0]), Number(item.coordinates[1])]
+        : fallback.coordinates;
       const hasValidSvgPosition = Array.isArray(item.svgPosition)
         && item.svgPosition.length === 2
         && item.svgPosition.every((coordinate) => Number.isFinite(Number(coordinate)));
-      const svgPos = hasValidSvgPosition
-        ? [Number(item.svgPosition[0]), Number(item.svgPosition[1])]
-        : fallback.svgPosition || [550, 320];
+      const projected = coordinates
+        ? geoToEuropeSvgCoords(coordinates[0], coordinates[1])
+        : null;
+      const svgPos = projected
+        ? [Number(projected.svgX.toFixed(2)), Number(projected.svgY.toFixed(2))]
+        : hasValidSvgPosition
+          ? [Number(item.svgPosition[0]), Number(item.svgPosition[1])]
+          : fallback.svgPosition || [
+            EUROPE_SVG_VIEWBOX.width / 2,
+            EUROPE_SVG_VIEWBOX.height / 2,
+          ];
       return {
         id: String(item.id),
         countryId: String(item.countryId || fallback.countryId || 'europe'),
@@ -1287,9 +1401,10 @@ export const normalizeMonumentPool = (rawPool) => {
         palette: Array.isArray(item.palette) && item.palette.length >= 3
           ? item.palette.map(String)
           : (fallback.palette || ['#4A90E2', '#D9B382', '#2C3E50']),
+        coordinates,
         svgPosition: svgPos,
-        // svgPosition is the source of truth for this map. Recomputing avoids stale
-        // board coordinates from older Firestore/cache map transforms.
+        // Geographic coordinates are authoritative. Recomputing both projected
+        // shapes avoids stale board/SVG values from older caches and Firestore data.
         position: toBoardPosition(svgPos[0], svgPos[1]),
         imageUrl: normalizeMonumentImageUrl(item.imageUrl || fallback.imageUrl),
         imageSourceUrl: String(item.imageSourceUrl || fallback.imageSourceUrl || ''),

@@ -37,11 +37,12 @@ Every bundled country includes `geo-guessr-duel` (`type: geoGuessr`). It can be
 selected from the normal pool and is guaranteed as a Roadside Duel when the active
 vehicle lands on or passes a parked team.
 
-The version-3 bundled pool has 67 European photo locations across all 51 catalogue
+The version-5 bundled pool has 67 European photo locations across all 51 catalogue
 countries. Each record includes stable legacy-compatible ID, country/city/name, clue,
-category, `subjectType`, board position, curated Wikimedia photo URL/source, author,
-and license. SVG map positions are authoritative; board positions are derived when
-content is normalized so cached or remote values cannot drift from the reveal map.
+category, `subjectType`, longitude/latitude, board position, curated Wikimedia photo
+URL/source, author, and license. The duel map and target positions share one Web
+Mercator projection; SVG and board positions are derived from geographic coordinates
+when content is normalized so cached or remote values cannot drift from the reveal map.
 Multiplayer tracks `usedMonumentIds`; selection excludes both prior
 locations and the landed country. Place/landmark subject types alternate when
 possible. Firestore and fallback storage are described in

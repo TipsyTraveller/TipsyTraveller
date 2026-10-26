@@ -110,7 +110,9 @@ const GeoGuessrEuropeMap = ({
   const viewBoxX = EUROPE_SVG_VIEWBOX.minX + mapView.centerX * EUROPE_SVG_VIEWBOX.width - visibleWidth / 2;
   const viewBoxY = EUROPE_SVG_VIEWBOX.minY + mapView.centerY * EUROPE_SVG_VIEWBOX.height - visibleHeight / 2;
   const viewBoxString = `${viewBoxX} ${viewBoxY} ${visibleWidth} ${visibleHeight}`;
-  const markerScale = 1 / mapView.zoom;
+  // Marker dimensions were tuned against the original 290-unit-wide duel map.
+  // Keep their screen size stable when the projected map viewBox changes.
+  const markerScale = (EUROPE_SVG_VIEWBOX.width / 290) / mapView.zoom;
 
   return (
     <View
@@ -144,6 +146,7 @@ const GeoGuessrEuropeMap = ({
         <Path
           d={EUROPE_MAP_FILL_PATH_DATA}
           fill="#FFF1CD"
+          fillRule="evenodd"
         />
         <Path
           d={EUROPE_MAP_BORDER_PATH_DATA}
