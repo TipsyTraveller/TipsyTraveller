@@ -7,7 +7,7 @@ import {
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
 import { getPathRevealDuration } from './constants/route';
 
-export const GAMEPLAY_SCHEMA_VERSION = 7;
+export const GAMEPLAY_SCHEMA_VERSION = 8;
 export const POINTS_PER_STOP = 10;
 export const FINISH_BONUSES = [30, 15, 5];
 
@@ -29,7 +29,7 @@ export const createActionId = (deviceID = 'device') => (
   `${deviceID}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 );
 
-export const createInitialGameplay = (gameData, now = Date.now()) => {
+export const createInitialGameplay = (gameData, now = Date.now(), teamMembers = {}) => {
   const gamePieces = getGamePiecesForGame(gameData);
 
   return {
@@ -39,7 +39,7 @@ export const createInitialGameplay = (gameData, now = Date.now()) => {
     phase: 'waiting',
     activeTeamId: gamePieces[0]?.id || 'team1',
     turnNumber: 1,
-    teamProgress: createInitialTeamProgress(gamePieces),
+    teamProgress: createInitialTeamProgress(gamePieces, teamMembers),
     currentAction: null,
     challengeStop: null,
     challengeStopData: null,

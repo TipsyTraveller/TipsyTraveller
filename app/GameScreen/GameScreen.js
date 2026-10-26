@@ -30,6 +30,11 @@ import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gam
 import { getDefaultModelOption, getModelOption } from './constants/modelOptions';
 import { devEventBus } from '../shared/dev/devEventBus';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
+import {
+  addDrinksToPlayer,
+  addDrinksToTeam,
+  createPlayerDrinkLedger,
+} from './drinkLedger';
 import { getPathRevealDuration, createRouteModel } from './constants/route';
 import {
   createRoadblockEvent,
@@ -126,7 +131,7 @@ const GameScreen = ({ route }) => {
     }))
   ), [baseGamePieces, gameData?.teamModels]);
   const [teamProgress, setTeamProgress] = useState(() => (
-    createInitialTeamProgress(getGamePiecesForGame(gameData))
+    createInitialTeamProgress(getGamePiecesForGame(gameData), teamMembers)
   ));
   const pieceRefs = useRef({});
   const multiplayer = useMultiplayerGame({
@@ -136,6 +141,7 @@ const GameScreen = ({ route }) => {
     routeModel,
     teamMembers,
   });
+  const currentTeamMembers = multiplayerEnabled ? multiplayer.teamMembers : teamMembers;
 
   gamePieces.forEach((piece) => {
     if (!pieceRefs.current[piece.id]) pieceRefs.current[piece.id] = React.createRef();
@@ -175,8 +181,8 @@ const GameScreen = ({ route }) => {
     setLocalMovementPath(null);
     setLocalTurnNumber(1);
     localRoadblockHistoryRef.current = [];
-    setTeamProgress(createInitialTeamProgress(baseGamePieces));
-  }, [baseGamePieces, multiplayerEnabled]);
+    setTeamProgress(createInitialTeamProgress(baseGamePieces, currentTeamMembers));
+  }, [baseGamePieces, currentTeamMembers, multiplayerEnabled]);
 
   useEffect(() => {
     if (!multiplayerEnabled || !multiplayer.gameplay) return;
@@ -189,7 +195,7 @@ const GameScreen = ({ route }) => {
     const action = gameplay.currentAction;
 
     setActiveTeamIndex(nextActiveIndex);
-    setTeamProgress(gameplay.teamProgress || createInitialTeamProgress(gamePieces));
+    setTeamProgress(gameplay.teamProgress || createInitialTeamProgress(gamePieces, currentTeamMembers));
 
     if (gameplay.phase === 'roadblock' && action && gameplay.roadblock) {
       visualActionIdRef.current = `${action.id}:roadblock`;
@@ -292,7 +298,7 @@ const GameScreen = ({ route }) => {
     { fromLeg = 0, currentTeamProgress = teamProgress, forceType = null } = {}
   ) => {
     const stop = routeStops[stopIndex];
-    const players = getTeamPlayers(teamMembers, pieceId);
+    const players = getTeamPlayers(currentTeamMembers, pieceId);
     const isRoadsideDuel = didTriggerRoadsideDuel({
       fromLeg,
       targetLeg: stopIndex,
@@ -354,7 +360,7 @@ const GameScreen = ({ route }) => {
     setLocalMovementPath(null);
     setLocalTurnNumber(1);
     localRoadblockHistoryRef.current = [];
-    setTeamProgress(createInitialTeamProgress(gamePieces));
+    setTeamProgress(createInitialTeamProgress(gamePieces, currentTeamMembers));
   };
 
   const handleRestart = () => {
@@ -501,10 +507,20 @@ const GameScreen = ({ route }) => {
           requiredTeamIds.forEach((teamId) => {
             if (!evaluation.winnerTeamIds.includes(teamId)) {
               const prev = next[teamId] || {};
+              const playerDrinks = createPlayerDrinkLedger(
+                currentTeamMembers,
+                teamId,
+                prev.playerDrinks,
+                prev.drinks
+              );
               next[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(currentChallenge, gameData?.difficulty),
+                playerDrinks: addDrinksToTeam(
+                  playerDrinks,
+                  getResolvedPenaltySips(currentChallenge, gameData?.difficulty)
+                ),
               };
+              delete next[teamId].drinks;
             }
           });
           return next;
@@ -550,10 +566,20 @@ const GameScreen = ({ route }) => {
           requiredTeamIds.forEach((teamId) => {
             if (!evaluation.winnerTeamIds.includes(teamId)) {
               const prev = next[teamId] || {};
+              const playerDrinks = createPlayerDrinkLedger(
+                currentTeamMembers,
+                teamId,
+                prev.playerDrinks,
+                prev.drinks
+              );
               next[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(currentChallenge, gameData?.difficulty),
+                playerDrinks: addDrinksToTeam(
+                  playerDrinks,
+                  getResolvedPenaltySips(currentChallenge, gameData?.difficulty)
+                ),
               };
+              delete next[teamId].drinks;
             }
           });
           return next;
@@ -588,23 +614,25 @@ const GameScreen = ({ route }) => {
       setTeamProgress((progress) => {
         const current = progress[activePiece.id] || {};
         const challengePoints = (Number(current.challengePoints) || 0) + pointsAwarded;
-        const nextDrinks = (Number(current.drinks) || 0) + penaltySips;
-        const prevPlayerDrinks = current.playerDrinks && typeof current.playerDrinks === 'object'
-          ? current.playerDrinks
-          : {};
-        const nextPlayerDrinks = (!guessed && currentChallenge.selectedPlayerName)
-          ? {
-              ...prevPlayerDrinks,
-              [currentChallenge.selectedPlayerName]:
-                (Number(prevPlayerDrinks[currentChallenge.selectedPlayerName]) || 0) + penaltySips,
-            }
+        const prevPlayerDrinks = createPlayerDrinkLedger(
+          currentTeamMembers,
+          activePiece.id,
+          current.playerDrinks,
+          current.drinks
+        );
+        const selectedPlayerId = currentChallenge.selectedPlayerId || getTeamPlayers(
+          currentTeamMembers,
+          activePiece.id
+        ).find((player) => player.name === currentChallenge.selectedPlayerName)?.playerId;
+        const nextPlayerDrinks = (!guessed && selectedPlayerId)
+          ? addDrinksToPlayer(prevPlayerDrinks, selectedPlayerId, penaltySips)
           : prevPlayerDrinks;
+        const { drinks: _legacyDrinks, ...currentWithoutLegacyTotal } = current;
         return {
           ...progress,
           [activePiece.id]: {
-            ...current,
+            ...currentWithoutLegacyTotal,
             challengePoints,
-            drinks: nextDrinks,
             playerDrinks: nextPlayerDrinks,
             score: getTeamScore({
               challengePoints,
@@ -625,11 +653,11 @@ const GameScreen = ({ route }) => {
     });
   };
 
-  const handleAdjustDrinks = useCallback(({ teamId, delta = 1, playerName = null } = {}) => {
+  const handleAdjustDrinks = useCallback(({ teamId, delta = 1, playerId = null } = {}) => {
     if (!teamId || !Number.isFinite(Number(delta)) || Number(delta) === 0) return;
 
     if (multiplayerEnabled) {
-      multiplayer.adjustDrinks({ teamId, delta, playerName }).catch((error) => {
+      multiplayer.adjustDrinks({ teamId, delta, playerId }).catch((error) => {
         console.log('Unable to synchronize drink adjustment', error);
       });
       return;
@@ -640,38 +668,27 @@ const GameScreen = ({ route }) => {
       const prevTeam = progress[teamId];
       if (!prevTeam) return progress;
 
-      const currentTeamDrinks = Math.max(0, Number(prevTeam.drinks) || 0);
-      const prevPlayerDrinks = prevTeam.playerDrinks && typeof prevTeam.playerDrinks === 'object'
-        ? prevTeam.playerDrinks
-        : {};
-
-      let nextTeamDrinks = Math.max(0, currentTeamDrinks + safeDelta);
-      let nextPlayerDrinks = prevPlayerDrinks;
-
-      if (playerName) {
-        const currentPlayerDrinks = Math.max(0, Number(prevPlayerDrinks[playerName]) || 0);
-        const updatedPlayerDrinks = Math.max(0, currentPlayerDrinks + safeDelta);
-        const appliedDelta = updatedPlayerDrinks - currentPlayerDrinks;
-        if (appliedDelta === 0) return progress;
-        nextTeamDrinks = Math.max(0, currentTeamDrinks + appliedDelta);
-        nextPlayerDrinks = {
-          ...prevPlayerDrinks,
-          [playerName]: updatedPlayerDrinks,
-        };
-      } else if (nextTeamDrinks === currentTeamDrinks) {
-        return progress;
-      }
+      const prevPlayerDrinks = createPlayerDrinkLedger(
+        currentTeamMembers,
+        teamId,
+        prevTeam.playerDrinks,
+        prevTeam.drinks
+      );
+      const nextPlayerDrinks = playerId
+        ? addDrinksToPlayer(prevPlayerDrinks, playerId, safeDelta)
+        : addDrinksToTeam(prevPlayerDrinks, safeDelta);
+      if (JSON.stringify(nextPlayerDrinks) === JSON.stringify(prevPlayerDrinks)) return progress;
+      const { drinks: _legacyDrinks, ...teamWithoutLegacyTotal } = prevTeam;
 
       return {
         ...progress,
         [teamId]: {
-          ...prevTeam,
-          drinks: nextTeamDrinks,
+          ...teamWithoutLegacyTotal,
           playerDrinks: nextPlayerDrinks,
         },
       };
     });
-  }, [multiplayer, multiplayerEnabled]);
+  }, [currentTeamMembers, multiplayer, multiplayerEnabled]);
 
   const handleDiceRollStart = () => {
     if (state === 'waiting' && (!multiplayerEnabled || multiplayer.canControlTurn)) {
@@ -1421,7 +1438,7 @@ const GameScreen = ({ route }) => {
         remainingMoves={remainingMoves}
         routeStopNames={routeModel.stopNames}
         state={state}
-        teamMembers={teamMembers}
+        teamMembers={currentTeamMembers}
         teamProgress={teamProgress}
         toName={toName}
         totalStops={routeModel.finalStopIndex + 1}

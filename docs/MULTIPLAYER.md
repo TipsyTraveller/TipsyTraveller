@@ -22,10 +22,11 @@ games/{gameID}
   teamModels/{team1|team2|team3}: modelId
   routeStops[]: immutable ordered room snapshot
   gameplay
-    schemaVersion: 7
+    schemaVersion: 8
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
     teamProgress/{teamId}: currentLeg, isDone, score,
-      challengePoints, drinks, playerDrinks?, finishPosition?, detour?
+      challengePoints, finishPosition?, detour?
+      playerDrinks/{playerPushKey}: name, drinks
     currentAction: id, type, teamId, value, fromLeg, targetLeg,
       inputMethod, startedAt, movementStartsAt, movementEndsAt,
       movementPath?, detourStartStep?, detourStep?, detourSegmentType?
@@ -42,9 +43,13 @@ Null Firebase fields may be omitted. Empty team placeholders begin as empty stri
 and become objects when players are pushed. Preserve these compatibility quirks
 unless every reader and writer is migrated together.
 
-Schema 7 stores an active detour under the affected team's progress so turn ownership
-can rotate normally. In-flight schema 6 detour waypoint indexes are normalized when
-their movement or challenge completes; new sessions always write schema 7 node indexes.
+Schema 8 uses the roster push key as the stable player ID for drink totals. Team drink
+totals are derived by summing `playerDrinks`; they are not stored separately. When an
+older room is opened, its name-keyed player ledger (or team-only total) is migrated in
+a gameplay transaction. Names are retained only as display snapshots, so renaming a
+roster entry keeps the same total. Schema 7 stores an active detour under the affected
+team's progress so turn ownership can rotate normally. In-flight schema 6 detour
+waypoint indexes are normalized when their movement or challenge completes.
 
 ## Firestore content
 
@@ -96,6 +101,8 @@ finish assignment, and restart use transactions.
 Typed challenge rounds snapshot `resolvedPenaltySips` from the room difficulty when
 they are created. Result transactions record a stable `drinkAwardId` and accept only
 the expected pre-result stage, so retrying a result cannot apply its drinks twice.
+Drink adjustments update the stable per-player ledger transactionally; team-wide
+adjustments apply the delta once to every current roster player.
 
 Only the active leader's UI may roll or complete a challenge; only the host may
 restart. Any connected client may attempt idempotent movement finalization after the

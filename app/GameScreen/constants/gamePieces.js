@@ -1,3 +1,5 @@
+import { createPlayerDrinkLedger } from '../drinkLedger';
+
 export const GAME_PIECES = [
   {
     id: 'team1',
@@ -24,7 +26,7 @@ export const getGamePiecesForGame = (gameData) => {
   return GAME_PIECES.slice(0, teamCount);
 };
 
-export const createInitialTeamProgress = (gamePieces) => (
+export const createInitialTeamProgress = (gamePieces, teamMembers = {}) => (
   gamePieces.reduce((progress, piece) => ({
     ...progress,
     [piece.id]: {
@@ -32,8 +34,7 @@ export const createInitialTeamProgress = (gamePieces) => (
       isDone: false,
       score: 0,
       challengePoints: 0,
-      drinks: 0,
-      playerDrinks: {},
+      playerDrinks: createPlayerDrinkLedger(teamMembers, piece.id),
       finishPosition: null,
     },
   }), {})

@@ -121,7 +121,7 @@ export default function CharacterSelection({ navigation, route }) {
     }
 
     if (!initialGameplayRef.current) {
-      initialGameplayRef.current = createInitialGameplay(liveGameData);
+      initialGameplayRef.current = createInitialGameplay(liveGameData, Date.now(), teamMembers);
     }
 
     runTransaction(ref(db, `games/${gameID}`), (currentGame) => {

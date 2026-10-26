@@ -3,6 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onValue, ref, runTransaction } from 'firebase/database';
 import { db } from '../../../firebaseConfig';
 import {
+  addDrinksToPlayer,
+  addDrinksToTeam,
+  createPlayerDrinkLedger,
+  normalizeTeamProgressDrinks,
+} from '../drinkLedger';
+import {
   buildRollAction,
   createInitialGameplay,
   getFinishPosition,
@@ -52,14 +58,16 @@ const findLocalPlayer = (teamMembers, deviceID) => {
 
 export default function useMultiplayerGame({ enabled, gameData, gameID, routeModel, teamMembers }) {
   const [gameplay, setGameplay] = useState(gameData?.gameplay || null);
+  const [liveTeamMembers, setLiveTeamMembers] = useState(teamMembers || {});
   const [deviceID, setDeviceID] = useState(null);
   const [serverOffset, setServerOffset] = useState(0);
   const [isConnected, setIsConnected] = useState(!enabled);
   const [isLoading, setIsLoading] = useState(enabled);
   const gameDataRef = useRef(gameData);
   gameDataRef.current = gameData;
-  const teamMembersRef = useRef(teamMembers);
-  teamMembersRef.current = teamMembers;
+  const teamMembersRef = useRef(liveTeamMembers);
+  teamMembersRef.current = liveTeamMembers;
+  const now = useCallback(() => Date.now() + serverOffset, [serverOffset]);
 
   useEffect(() => {
     let active = true;
@@ -73,11 +81,15 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     if (!enabled) return undefined;
 
     const gameplayRef = ref(db, `games/${gameID}/gameplay`);
+    const playersRef = ref(db, `players/${gameID}`);
     const connectedRef = ref(db, '.info/connected');
     const offsetRef = ref(db, '.info/serverTimeOffset');
     const unsubscribeGameplay = onValue(gameplayRef, (snapshot) => {
       setGameplay(snapshot.exists() ? snapshot.val() : null);
       setIsLoading(false);
+    });
+    const unsubscribePlayers = onValue(playersRef, (snapshot) => {
+      setLiveTeamMembers(snapshot.exists() ? snapshot.val() : {});
     });
     const unsubscribeConnected = onValue(connectedRef, (snapshot) => {
       setIsConnected(snapshot.val() === true);
@@ -88,14 +100,41 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
     return () => {
       unsubscribeGameplay();
+      unsubscribePlayers();
       unsubscribeConnected();
       unsubscribeOffset();
     };
   }, [enabled, gameID]);
 
+  useEffect(() => {
+    if (!enabled) setLiveTeamMembers(teamMembers || {});
+  }, [enabled, teamMembers]);
+
+  useEffect(() => {
+    if (!enabled || !gameID || !gameplay?.teamProgress || !Object.keys(liveTeamMembers).length) {
+      return;
+    }
+
+    runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
+      if (!current?.teamProgress) return undefined;
+      const normalized = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
+      if (JSON.stringify(normalized) === JSON.stringify(current.teamProgress)) return undefined;
+
+      return {
+        ...current,
+        schemaVersion: Math.max(Number(current.schemaVersion) || 0, 8),
+        revision: (current.revision || 0) + 1,
+        teamProgress: normalized,
+        updatedAt: now(),
+      };
+    }).catch((error) => {
+      console.log('Unable to initialize player drink ledgers', error);
+    });
+  }, [enabled, gameID, gameplay?.teamProgress, liveTeamMembers, now]);
+
   const identity = useMemo(
-    () => findLocalPlayer(teamMembers, deviceID),
-    [deviceID, teamMembers]
+    () => findLocalPlayer(liveTeamMembers, deviceID),
+    [deviceID, liveTeamMembers]
   );
   const isHost = Boolean(deviceID && gameData?.hostDeviceID === deviceID);
   const canControlTurn = Boolean(
@@ -103,8 +142,6 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     && identity.localTeamId
     && identity.localTeamId === gameplay?.activeTeamId
   );
-  const now = useCallback(() => Date.now() + serverOffset, [serverOffset]);
-
   const submitRoll = useCallback(async (value, inputMethod = 'shortcut') => {
     if (!enabled || !gameID || !canControlTurn || !deviceID) return false;
 
@@ -651,13 +688,20 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           requiredTeamIds.forEach((teamId) => {
             if (!evaluation.winnerTeamIds.includes(teamId)) {
               const prev = nextTeamProgress[teamId] || {};
+              const playerDrinks = createPlayerDrinkLedger(
+                teamMembersRef.current,
+                teamId,
+                prev.playerDrinks,
+                prev.drinks
+              );
               nextTeamProgress[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(
+                playerDrinks: addDrinksToTeam(playerDrinks, getResolvedPenaltySips(
                   round.resolvedPenaltySips === undefined ? challenge : round,
                   gameDataRef.current?.difficulty
-                ),
+                )),
               };
+              delete nextTeamProgress[teamId].drinks;
             }
           });
 
@@ -706,13 +750,20 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           requiredTeamIds.forEach((teamId) => {
             if (!evaluation.winnerTeamIds.includes(teamId)) {
               const prev = nextTeamProgress[teamId] || {};
+              const playerDrinks = createPlayerDrinkLedger(
+                teamMembersRef.current,
+                teamId,
+                prev.playerDrinks,
+                prev.drinks
+              );
               nextTeamProgress[teamId] = {
                 ...prev,
-                drinks: (Number(prev.drinks) || 0) + getResolvedPenaltySips(
+                playerDrinks: addDrinksToTeam(playerDrinks, getResolvedPenaltySips(
                   round.resolvedPenaltySips === undefined ? challenge : round,
                   gameDataRef.current?.difficulty
-                ),
+                )),
               };
+              delete nextTeamProgress[teamId].drinks;
             }
           });
 
@@ -761,16 +812,20 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       );
       const activeProgress = current.teamProgress?.[current.activeTeamId] || {};
       const challengePoints = (Number(activeProgress.challengePoints) || 0) + pointsAwarded;
-      const nextDrinks = (Number(activeProgress.drinks) || 0) + penaltySips;
-      const prevPlayerDrinks = activeProgress.playerDrinks && typeof activeProgress.playerDrinks === 'object'
-        ? activeProgress.playerDrinks
-        : {};
-      const nextPlayerDrinks = (!guessed && round.selectedPlayerName)
-        ? {
-            ...prevPlayerDrinks,
-            [round.selectedPlayerName]: (Number(prevPlayerDrinks[round.selectedPlayerName]) || 0) + penaltySips,
-          }
+      const prevPlayerDrinks = createPlayerDrinkLedger(
+        teamMembersRef.current,
+        current.activeTeamId,
+        activeProgress.playerDrinks,
+        activeProgress.drinks
+      );
+      const selectedPlayerId = round.selectedPlayerId || getTeamPlayers(
+        teamMembersRef.current,
+        current.activeTeamId
+      ).find((player) => player.name === round.selectedPlayerName)?.playerId;
+      const nextPlayerDrinks = (!guessed && selectedPlayerId)
+        ? addDrinksToPlayer(prevPlayerDrinks, selectedPlayerId, penaltySips)
         : prevPlayerDrinks;
+      const { drinks: _legacyDrinks, ...activeProgressWithoutLegacyTotal } = activeProgress;
 
       return {
         ...current,
@@ -778,9 +833,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         teamProgress: {
           ...current.teamProgress,
           [current.activeTeamId]: {
-            ...activeProgress,
+            ...activeProgressWithoutLegacyTotal,
             challengePoints,
-            drinks: nextDrinks,
             playerDrinks: nextPlayerDrinks,
             score: getTeamScore({
               challengePoints,
@@ -888,7 +942,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     return result.committed;
   }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
 
-  const adjustDrinks = useCallback(async ({ teamId, delta = 1, playerName = null } = {}) => {
+  const adjustDrinks = useCallback(async ({ teamId, delta = 1, playerId = null } = {}) => {
     if (!enabled || !gameID || !teamId || !Number.isFinite(Number(delta)) || Number(delta) === 0) {
       return false;
     }
@@ -899,27 +953,17 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (!current || !current.teamProgress?.[teamId]) return undefined;
 
       const prevTeam = current.teamProgress[teamId] || {};
-      const currentTeamDrinks = Math.max(0, Number(prevTeam.drinks) || 0);
-      const prevPlayerDrinks = prevTeam.playerDrinks && typeof prevTeam.playerDrinks === 'object'
-        ? prevTeam.playerDrinks
-        : {};
-
-      let nextTeamDrinks = Math.max(0, currentTeamDrinks + safeDelta);
-      let nextPlayerDrinks = prevPlayerDrinks;
-
-      if (playerName) {
-        const currentPlayerDrinks = Math.max(0, Number(prevPlayerDrinks[playerName]) || 0);
-        const updatedPlayerDrinks = Math.max(0, currentPlayerDrinks + safeDelta);
-        const appliedDelta = updatedPlayerDrinks - currentPlayerDrinks;
-        if (appliedDelta === 0) return undefined;
-        nextTeamDrinks = Math.max(0, currentTeamDrinks + appliedDelta);
-        nextPlayerDrinks = {
-          ...prevPlayerDrinks,
-          [playerName]: updatedPlayerDrinks,
-        };
-      } else if (nextTeamDrinks === currentTeamDrinks) {
-        return undefined;
-      }
+      const prevPlayerDrinks = createPlayerDrinkLedger(
+        teamMembersRef.current,
+        teamId,
+        prevTeam.playerDrinks,
+        prevTeam.drinks
+      );
+      const nextPlayerDrinks = playerId
+        ? addDrinksToPlayer(prevPlayerDrinks, playerId, safeDelta)
+        : addDrinksToTeam(prevPlayerDrinks, safeDelta);
+      if (JSON.stringify(nextPlayerDrinks) === JSON.stringify(prevPlayerDrinks)) return undefined;
+      const { drinks: _legacyDrinks, ...teamWithoutLegacyTotal } = prevTeam;
 
       return {
         ...current,
@@ -927,8 +971,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         teamProgress: {
           ...current.teamProgress,
           [teamId]: {
-            ...prevTeam,
-            drinks: nextTeamDrinks,
+            ...teamWithoutLegacyTotal,
             playerDrinks: nextPlayerDrinks,
           },
         },
@@ -942,7 +985,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   const restart = useCallback(async () => {
     if (!enabled || !gameID || !isHost) return false;
 
-    const nextGameplay = createInitialGameplay(gameDataRef.current, now());
+    const nextGameplay = createInitialGameplay(gameDataRef.current, now(), teamMembersRef.current);
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       if (!current || current.phase !== 'done') return undefined;
       return nextGameplay;
@@ -966,6 +1009,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     resolveRoadblock,
     serverNow: now,
     submitRoll,
+    teamMembers: liveTeamMembers,
     updateCountryWordChallenge,
   };
 }

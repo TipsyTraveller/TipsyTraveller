@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTeamPlayers } from '../constants/challenges';
+import { getTeamDrinkTotal } from '../drinkLedger';
 
 const getShortTeamLabel = (label = '', index = 0) => {
   const match = String(label).match(/(\d+)/);
@@ -142,7 +143,7 @@ const GameHud = ({
                   {gamePieces.map((piece, index) => {
                     const pieceProgress = teamProgress[piece.id] || {};
                     const isActive = piece.id === activeTeamId;
-                    const drinks = Number(pieceProgress.drinks) || 0;
+                    const drinks = getTeamDrinkTotal(pieceProgress.playerDrinks);
                     const score = Number(pieceProgress.score) || 0;
 
                     return (
@@ -231,7 +232,7 @@ const GameHud = ({
                     const stopName = routeStopNames[legIndex] || fromName || 'Start';
                     const stopNumber = Math.min(legIndex + 1, Math.max(1, totalStops));
                     const score = Number(pieceProgress.score) || 0;
-                    const drinks = Number(pieceProgress.drinks) || 0;
+                    const drinks = getTeamDrinkTotal(pieceProgress.playerDrinks);
                     const playerDrinksMap = pieceProgress.playerDrinks || {};
                     const players = getTeamPlayers(teamMembers, piece.id);
 
@@ -280,7 +281,7 @@ const GameHud = ({
 
                           <View style={styles.drinkControlsWrap}>
                             <Pressable
-                              accessibilityLabel={`Remove drink from ${piece.label}`}
+                              accessibilityLabel={`Remove one drink from every player on ${piece.label}`}
                               accessibilityRole="button"
                               disabled={drinks <= 0}
                               onPress={() => onAdjustDrinks?.({ teamId: piece.id, delta: -1 })}
@@ -290,7 +291,7 @@ const GameHud = ({
                                 pressed && drinks > 0 && styles.controlButtonPressed,
                               ]}
                             >
-                              <Text style={styles.drinkAdjustBtnText}>−</Text>
+                              <Text style={styles.teamDrinkAdjustBtnText}>−1 EACH</Text>
                             </Pressable>
 
                             <View style={styles.drinkCountBox}>
@@ -301,7 +302,7 @@ const GameHud = ({
                             </View>
 
                             <Pressable
-                              accessibilityLabel={`Add drink to ${piece.label}`}
+                              accessibilityLabel={`Add one drink to every player on ${piece.label}`}
                               accessibilityRole="button"
                               onPress={() => onAdjustDrinks?.({ teamId: piece.id, delta: 1 })}
                               style={({ pressed }) => [
@@ -310,7 +311,7 @@ const GameHud = ({
                                 pressed && styles.controlButtonPressed,
                               ]}
                             >
-                              <Text style={[styles.drinkAdjustBtnText, styles.drinkAddBtnText]}>+</Text>
+                              <Text style={[styles.teamDrinkAdjustBtnText, styles.drinkAddBtnText]}>+1 EACH</Text>
                             </Pressable>
                           </View>
                         </View>
@@ -319,11 +320,12 @@ const GameHud = ({
                           <View style={styles.playersSection}>
                             {players.map((player, playerIndex) => {
                               const playerName = player.name || `Player ${playerIndex + 1}`;
-                              const pDrinks = Math.max(0, Number(playerDrinksMap[playerName]) || 0);
+                              const playerId = player.playerId;
+                              const pDrinks = Math.max(0, Number(playerDrinksMap[playerId]?.drinks) || 0);
 
                               return (
                                 <View
-                                  key={`${piece.id}-${playerName}-${playerIndex}`}
+                                  key={`${piece.id}-${playerId}`}
                                   style={styles.playerChip}
                                 >
                                   <Text numberOfLines={1} style={styles.playerChipName}>
@@ -336,7 +338,7 @@ const GameHud = ({
                                       onPress={() => onAdjustDrinks?.({
                                         teamId: piece.id,
                                         delta: -1,
-                                        playerName,
+                                        playerId,
                                       })}
                                       style={({ pressed }) => [
                                         styles.playerMiniBtn,
@@ -353,7 +355,7 @@ const GameHud = ({
                                     onPress={() => onAdjustDrinks?.({
                                       teamId: piece.id,
                                       delta: 1,
-                                      playerName,
+                                      playerId,
                                     })}
                                     style={({ pressed }) => [
                                       styles.playerMiniBtn,
@@ -389,7 +391,7 @@ const GameHud = ({
           <View style={styles.standings}>
             {standings.map((piece, index) => {
               const pieceProgress = teamProgress[piece.id] || {};
-              const drinks = Number(pieceProgress.drinks) || 0;
+              const drinks = getTeamDrinkTotal(pieceProgress.playerDrinks);
               return (
                 <View key={piece.id} style={styles.standingRow}>
                   <Text style={styles.standingPlace}>{`#${index + 1}`}</Text>
@@ -698,7 +700,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   drinkAdjustBtn: {
-    width: 24,
+    minWidth: 44,
     height: 24,
     borderRadius: 12,
     borderWidth: 1,
@@ -706,6 +708,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 241, 205, 0.78)',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 5,
   },
   drinkAdjustBtnDisabled: {
     opacity: 0.35,
@@ -718,6 +721,11 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixelbold',
     fontSize: 10,
     lineHeight: 12,
+  },
+  teamDrinkAdjustBtnText: {
+    color: '#565249',
+    fontSize: 8,
+    fontWeight: '900',
   },
   drinkAddBtnText: {
     color: '#FFFFFF',

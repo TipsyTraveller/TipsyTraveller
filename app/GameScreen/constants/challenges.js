@@ -223,6 +223,7 @@ import {
   GEO_GUESSR_SUCCESS_POINTS,
   selectMonumentFromPool,
 } from './monumentPool.js';
+import { getTeamPlayers } from '../drinkLedger';
 
 export {
   GEO_GUESSR_CHALLENGE_ID,
@@ -239,11 +240,7 @@ const hashSeed = (seed) => String(seed).split('').reduce((total, character) => (
   ((total * 31) + character.charCodeAt(0)) >>> 0
 ), 0);
 
-export const getTeamPlayers = (teamMembers, teamId) => {
-  const members = teamMembers?.[teamId];
-  if (!members || typeof members !== 'object') return [];
-  return Object.values(members).filter((member) => member?.name);
-};
+export { getTeamPlayers };
 
 export const isBotOnlyTeam = (teamMembers, teamId) => {
   const players = getTeamPlayers(teamMembers, teamId);
@@ -294,9 +291,11 @@ export const getCountryWordRound = (challenge, players, seed = '', difficulty = 
   const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
   if (!words.length) return null;
 
+  const selectedPlayer = players[hashSeed(`${seed}:player`) % players.length];
   return {
     stage: 'intro',
-    selectedPlayerName: players[hashSeed(`${seed}:player`) % players.length].name,
+    selectedPlayerId: selectedPlayer.playerId,
+    selectedPlayerName: selectedPlayer.name,
     secretWord: words[hashSeed(`${seed}:word`) % words.length],
     startedAt: null,
     result: null,
