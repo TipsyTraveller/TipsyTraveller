@@ -34,6 +34,7 @@ export const createInitialTeamProgress = (gamePieces, teamMembers = {}) => (
       isDone: false,
       score: 0,
       challengePoints: 0,
+      targetCursor: 0,
       playerDrinks: createPlayerDrinkLedger(teamMembers, piece.id),
       finishPosition: null,
     },

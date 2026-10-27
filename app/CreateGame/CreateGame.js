@@ -1,7 +1,7 @@
 import { Alert, Platform, View, StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
-import { get, ref, runTransaction } from "firebase/database";
+import { ref, runTransaction } from "firebase/database";
 import { db } from "../../firebaseConfig";
 
 //COMPONENTS
@@ -14,6 +14,7 @@ import difficultyMediumImage from "../../assets/images/2beers-flesje.png"
 import difficultyHardImage from "../../assets/images/3beers-flesje.png";
 import LowerButtonContainer from "../shared/components/LowerButtonContainer/LowerButtonContainer";
 import { getRouteSnapshotForDuration } from "../GameScreen/services/countryStopsService";
+import { countPlayers, getTeamEntries, PLAYER_CAPACITY } from "../Lobby/lobbyState";
 
 //TYPE
 /**
@@ -32,19 +33,6 @@ const DEFAULT_GAME_SETTINGS = {
     nrOfPlayers: "",
     persons: {}
 };
-
-const PLAYER_CAPACITY = {
-    "1-4": 4,
-    "5-8": 8,
-    "9-12": 12,
-};
-
-const countTeamMembers = (players) => (
-    ["team1", "team2", "team3"].reduce((total, teamKey) => {
-        const team = players?.[teamKey];
-        return total + (team && typeof team === "object" ? Object.keys(team).length : 0);
-    }, 0)
-);
 
 export default function SelectionPages ({ navigation, route }) {
 
@@ -68,41 +56,41 @@ export default function SelectionPages ({ navigation, route }) {
 
         setIsSaving(true);
         try {
-            const playersSnapshot = await get(ref(db, `players/${editingGameID}`));
-            const players = playersSnapshot.val() || {};
-            const playerCount = countTeamMembers(players);
-            const nextCapacity = PLAYER_CAPACITY[gameSettings.nrOfPlayers];
-            const team3 = players.team3;
-            const team3HasMembers = team3 && typeof team3 === "object" && Object.keys(team3).length > 0;
-
-            if (playerCount > nextCapacity) {
-                Alert.alert(
-                    "Player range too small",
-                    `${playerCount} players are already in this game. Choose a range that fits everyone.`
-                );
-                return;
-            }
-
-            if (gameSettings.nrOfPlayers !== "9-12" && team3HasMembers) {
-                Alert.alert(
-                    "Team 3 is in use",
-                    "Choose 9-12 players while Team 3 still has members."
-                );
-                return;
-            }
             const routeStops = await getRouteSnapshotForDuration(gameSettings.duration);
+            let rejectionMessage = "The room may have closed or moved on from the lobby.";
 
             const transaction = await runTransaction(
-                ref(db, `games/${editingGameID}`),
-                (currentGame) => {
+                ref(db),
+                (root) => {
+                    const currentGame = root?.games?.[editingGameID];
                     if (!currentGame || currentGame.status !== "lobby") return;
+                    const players = root?.players?.[editingGameID] || {};
+                    const playerCount = countPlayers(players);
+                    const nextCapacity = PLAYER_CAPACITY[gameSettings.nrOfPlayers];
+                    if (!nextCapacity || playerCount > nextCapacity) {
+                        rejectionMessage = `${playerCount} players are already in this game. Choose a range that fits everyone.`;
+                        return;
+                    }
+                    if (
+                        gameSettings.nrOfPlayers !== "9-12"
+                        && getTeamEntries(players, "team3").length > 0
+                    ) {
+                        rejectionMessage = "Choose 9-12 players while Team 3 still has members.";
+                        return;
+                    }
 
                     return {
-                        ...currentGame,
-                        difficulty: gameSettings.difficulty,
-                        duration: gameSettings.duration,
-                        routeStops,
-                        nrOfPlayers: gameSettings.nrOfPlayers,
+                        ...root,
+                        games: {
+                            ...(root.games || {}),
+                            [editingGameID]: {
+                                ...currentGame,
+                                difficulty: gameSettings.difficulty,
+                                duration: gameSettings.duration,
+                                routeStops,
+                                nrOfPlayers: gameSettings.nrOfPlayers,
+                            },
+                        },
                     };
                 }
             );
@@ -110,7 +98,7 @@ export default function SelectionPages ({ navigation, route }) {
             if (!transaction.committed) {
                 Alert.alert(
                     "Game can no longer be edited",
-                    "The room may have closed or moved on from the lobby."
+                    rejectionMessage
                 );
                 return;
             }

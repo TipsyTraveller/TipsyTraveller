@@ -53,21 +53,40 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
 ## Focused multiplayer flow
 
 1. Create on device A, join on B, verify team/leader assignment and realtime roster.
+   Attempt simultaneous joins at the configured capacity and verify the room never
+   overfills or inserts the same device twice. As host, move a player, reassign a
+   leader, and confirm the player's Firebase push key is unchanged. Confirm the
+   disabled lobby action names the missing team leader requirement.
 2. Start character selection, choose each required model, and verify synchronized game
    entry with Team 1 active and the immutable edge-country-to-Greece itinerary.
 3. Verify only the active leader can roll/complete, results are 1–3, route points and
    challenges match, finished teams are skipped, and re-entry restores current state.
-4. Exercise word challenge secrecy/timer/result and GeoGuessr pin/result/score.
+4. Exercise ordinary completed/failed outcomes, named-player rotation, word challenge
+   secrecy/timer/result, and GeoGuessr pin/result/score. Verify success/failure drink
+   recipients and action IDs match on both clients after reconnecting.
 5. Exercise both roadblock choices, reconnect during the choice and between detour
    turns, and verify turn ownership, intermediate challenges, per-team detour
    progress, and final canonical progress on both clients.
 6. Restart as host and verify initial progress returns without changing the route.
+7. Background and disconnect each team leader during waiting, movement, ordinary
+   challenge, word challenge, GeoGuessr, and roadblock phases. Verify presence changes
+   on both clients, only leader-owned actions pause, and movement and expired timers
+   finalize from another connected client. Reopen from the same installation and
+   verify the exact phase, target, result, timer deadline, and drink ledger return.
+8. As host, transfer host to another connected leader. Then disconnect a team leader
+   with a connected teammate, replace the leader from the game connection menu, and
+   verify the replacement can complete that team's turn without changing player IDs.
+   Separately disconnect the host before transfer and verify another connected leader
+   can take over only after the old host presence is offline.
+9. Leave Game on a client and verify its presence becomes offline without deleting
+   gameplay. Set a host disconnect timestamp older than ten minutes in a test room and
+   verify the expired-room state offers Return Home and blocks gameplay actions.
 
 ## Reconnection and performance
 
-For reconnection, let Firebase write `disconnectedAt`, rejoin from the same
-installation, verify host recovery and marker clearing, then separately verify a
-timestamp older than ten minutes is rejected.
+For reconnection, let Firebase write both device presence and `disconnectedAt`, rejoin
+from the same installation, verify host recovery and marker clearing, then separately
+verify a timestamp older than ten minutes enters the expired-room state.
 
 On representative devices inspect first load, blank scene frequency, pointer input,
 frame rate during simultaneous effects, GLTF textures, cache/memory growth, safe-area
@@ -78,11 +97,10 @@ landscape layout, and camera motion.
 - Client-generated rolls are peer-authoritative; trusted rolls require backend logic.
 - Animation deadlines use server offset but frames remain local; slow/backgrounded
   clients may snap to canonical state.
-- Difficulty is unused; duration changes only route length/snapshot.
-- Ordinary penalties are honor-based and not scored.
+- Duration changes only route length/snapshot.
 - There is no Firebase Authentication; device IDs and host UI checks are not security.
-- Room code reservation is not atomic; Realtime Database rules are not in the repo;
-  Dev Portal country/challenge writes are unauthenticated.
+- Realtime Database rules are not in the repo; Dev Portal country/challenge writes
+  are unauthenticated.
 - Expo GL is unreliable in the iOS Simulator. Android release currently uses debug
   signing. There is no CI or environment-based Firebase project selection.
 - Native folders are intentionally checked in; Expo config/native changes must agree.

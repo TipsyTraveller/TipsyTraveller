@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { onValue, ref, runTransaction } from 'firebase/database';
+import { AppState } from 'react-native';
+import {
+  onDisconnect,
+  onValue,
+  ref,
+  runTransaction,
+  serverTimestamp,
+  set,
+} from 'firebase/database';
 import { db } from '../../../firebaseConfig';
 import {
+  addDrinksByRule,
   addDrinksToPlayer,
   addDrinksToTeam,
   createPlayerDrinkLedger,
@@ -11,6 +20,7 @@ import {
 import {
   buildRollAction,
   createInitialGameplay,
+  GAMEPLAY_SCHEMA_VERSION,
   getFinishPosition,
   getNextActiveTeamId,
   getRequiredTeamIds,
@@ -22,7 +32,7 @@ import {
   GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
-  getCountryWordRound,
+  getChallengeRound,
   getGeoGuessrRound,
   getResolvedPenaltySips,
   getTeamPlayers,
@@ -56,6 +66,43 @@ const findLocalPlayer = (teamMembers, deviceID) => {
   return { localTeamId: null, isTeamLeader: false };
 };
 
+const getTeamLeaders = (teamMembers, presence = {}) => (
+  Object.entries(teamMembers || {}).flatMap(([teamId, members]) => {
+    if (!teamId.startsWith('team') || !members || typeof members !== 'object') return [];
+    const leaderEntry = Object.entries(members).find(([, member]) => (
+      member?.isLeader && member?.deviceID
+    ));
+    if (!leaderEntry) return [];
+    const [playerId, leader] = leaderEntry;
+    return [{
+      playerId,
+      teamId,
+      name: leader.name || 'Team leader',
+      deviceID: leader.deviceID,
+      connected: presence?.[leader.deviceID]?.connected === true,
+    }];
+  })
+);
+
+const getConnectedPlayers = (teamMembers, presence = {}) => (
+  Object.entries(teamMembers || {}).flatMap(([teamId, members]) => {
+    if (!teamId.startsWith('team') || !members || typeof members !== 'object') return [];
+    return Object.entries(members).flatMap(([playerId, player]) => (
+      player?.deviceID && presence?.[player.deviceID]?.connected === true
+        ? [{
+            playerId,
+            teamId,
+            name: player.name || 'Player',
+            deviceID: player.deviceID,
+            isLeader: Boolean(player.isLeader),
+          }]
+        : []
+    ));
+  })
+);
+
+const ROOM_EXPIRY_MS = 10 * 60 * 1000;
+
 export default function useMultiplayerGame({ enabled, gameData, gameID, routeModel, teamMembers }) {
   const [gameplay, setGameplay] = useState(gameData?.gameplay || null);
   const [liveTeamMembers, setLiveTeamMembers] = useState(teamMembers || {});
@@ -63,6 +110,15 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   const [serverOffset, setServerOffset] = useState(0);
   const [isConnected, setIsConnected] = useState(!enabled);
   const [isLoading, setIsLoading] = useState(enabled);
+  const [presence, setPresence] = useState({});
+  const [presenceLoaded, setPresenceLoaded] = useState(!enabled);
+  const [roomMeta, setRoomMeta] = useState(() => ({
+    disconnectedAt: gameData?.disconnectedAt || null,
+    hostDeviceID: gameData?.hostDeviceID || null,
+    status: gameData?.status || null,
+  }));
+  const [expiryClock, setExpiryClock] = useState(Date.now());
+  const presenceRegistrationRef = useRef(null);
   const gameDataRef = useRef(gameData);
   gameDataRef.current = gameData;
   const teamMembersRef = useRef(liveTeamMembers);
@@ -84,6 +140,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     const playersRef = ref(db, `players/${gameID}`);
     const connectedRef = ref(db, '.info/connected');
     const offsetRef = ref(db, '.info/serverTimeOffset');
+    const presenceRef = ref(db, `games/${gameID}/presence`);
+    const hostRef = ref(db, `games/${gameID}/hostDeviceID`);
+    const disconnectedAtRef = ref(db, `games/${gameID}/disconnectedAt`);
+    const statusRef = ref(db, `games/${gameID}/status`);
     const unsubscribeGameplay = onValue(gameplayRef, (snapshot) => {
       setGameplay(snapshot.exists() ? snapshot.val() : null);
       setIsLoading(false);
@@ -92,10 +152,25 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       setLiveTeamMembers(snapshot.exists() ? snapshot.val() : {});
     });
     const unsubscribeConnected = onValue(connectedRef, (snapshot) => {
-      setIsConnected(snapshot.val() === true);
+      const connected = snapshot.val() === true;
+      setIsConnected(connected);
+      if (!connected) setIsLoading(true);
     });
     const unsubscribeOffset = onValue(offsetRef, (snapshot) => {
       setServerOffset(Number(snapshot.val()) || 0);
+    });
+    const unsubscribePresence = onValue(presenceRef, (snapshot) => {
+      setPresence(snapshot.exists() ? snapshot.val() : {});
+      setPresenceLoaded(true);
+    });
+    const unsubscribeHost = onValue(hostRef, (snapshot) => {
+      setRoomMeta((current) => ({ ...current, hostDeviceID: snapshot.val() || null }));
+    });
+    const unsubscribeDisconnectedAt = onValue(disconnectedAtRef, (snapshot) => {
+      setRoomMeta((current) => ({ ...current, disconnectedAt: snapshot.val() || null }));
+    });
+    const unsubscribeStatus = onValue(statusRef, (snapshot) => {
+      setRoomMeta((current) => ({ ...current, status: snapshot.val() || null }));
     });
 
     return () => {
@@ -103,6 +178,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       unsubscribePlayers();
       unsubscribeConnected();
       unsubscribeOffset();
+      unsubscribePresence();
+      unsubscribeHost();
+      unsubscribeDisconnectedAt();
+      unsubscribeStatus();
     };
   }, [enabled, gameID]);
 
@@ -118,11 +197,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       if (!current?.teamProgress) return undefined;
       const normalized = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
-      if (JSON.stringify(normalized) === JSON.stringify(current.teamProgress)) return undefined;
+      if (
+        JSON.stringify(normalized) === JSON.stringify(current.teamProgress)
+        && Number(current.schemaVersion) >= GAMEPLAY_SCHEMA_VERSION
+      ) return undefined;
 
       return {
         ...current,
-        schemaVersion: Math.max(Number(current.schemaVersion) || 0, 8),
+        schemaVersion: Math.max(Number(current.schemaVersion) || 0, GAMEPLAY_SCHEMA_VERSION),
         revision: (current.revision || 0) + 1,
         teamProgress: normalized,
         updatedAt: now(),
@@ -136,12 +218,208 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     () => findLocalPlayer(liveTeamMembers, deviceID),
     [deviceID, liveTeamMembers]
   );
-  const isHost = Boolean(deviceID && gameData?.hostDeviceID === deviceID);
+  const leaders = useMemo(
+    () => getTeamLeaders(liveTeamMembers, presence),
+    [liveTeamMembers, presence]
+  );
+  const connectedPlayers = useMemo(
+    () => getConnectedPlayers(liveTeamMembers, presence),
+    [liveTeamMembers, presence]
+  );
+  const isHost = Boolean(deviceID && roomMeta.hostDeviceID === deviceID);
+  const isRoomExpired = Boolean(
+    roomMeta.disconnectedAt
+    && expiryClock + serverOffset - Number(roomMeta.disconnectedAt) >= ROOM_EXPIRY_MS
+  );
+  const activeLeader = leaders.find((leader) => leader.teamId === gameplay?.activeTeamId) || null;
+  const isActiveLeaderConnected = !activeLeader || activeLeader.connected;
+  const canClaimHost = Boolean(
+    isConnected
+    && !isRoomExpired
+    && !isHost
+    && identity.isTeamLeader
+    && roomMeta.disconnectedAt
+  );
   const canControlTurn = Boolean(
-    identity.isTeamLeader
+    isConnected
+    && !isRoomExpired
+    && identity.isTeamLeader
     && identity.localTeamId
     && identity.localTeamId === gameplay?.activeTeamId
   );
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const interval = setInterval(() => setExpiryClock(Date.now()), 15000);
+    return () => clearInterval(interval);
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled || !gameID || !deviceID || !identity.localTeamId) return undefined;
+
+    const presenceRef = ref(db, `games/${gameID}/presence/${deviceID}`);
+    const disconnectedValue = {
+      connected: false,
+      isLeader: identity.isTeamLeader,
+      lastSeenAt: serverTimestamp(),
+      teamId: identity.localTeamId,
+    };
+    const connectedValue = {
+      connected: true,
+      isLeader: identity.isTeamLeader,
+      lastSeenAt: serverTimestamp(),
+      teamId: identity.localTeamId,
+    };
+    const disconnectRegistration = onDisconnect(presenceRef);
+    presenceRegistrationRef.current = { disconnectRegistration, presenceRef, disconnectedValue };
+
+    const markConnected = async () => {
+      await disconnectRegistration.set(disconnectedValue);
+      await set(presenceRef, connectedValue);
+    };
+    const markDisconnected = () => set(presenceRef, disconnectedValue);
+
+    if (isConnected) {
+      markConnected().catch((error) => console.log('Unable to register game presence', error));
+    }
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && isConnected) {
+        markConnected().catch((error) => console.log('Unable to restore game presence', error));
+      } else if (nextState !== 'active') {
+        markDisconnected().catch(() => {});
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      presenceRegistrationRef.current = null;
+      disconnectRegistration.cancel().catch(() => {});
+      markDisconnected().catch(() => {});
+    };
+  }, [deviceID, enabled, gameID, identity.isTeamLeader, identity.localTeamId, isConnected]);
+
+  useEffect(() => {
+    if (!enabled || !gameID || !deviceID || !isHost) return undefined;
+
+    const disconnectedAtRef = ref(db, `games/${gameID}/disconnectedAt`);
+    const disconnectRegistration = onDisconnect(disconnectedAtRef);
+    const clearIfRecoverable = () => runTransaction(disconnectedAtRef, (current) => {
+      if (current && now() - Number(current) >= ROOM_EXPIRY_MS) return undefined;
+      return null;
+    });
+    if (isConnected) {
+      disconnectRegistration.set(serverTimestamp())
+        .then(clearIfRecoverable)
+        .catch((error) => console.log('Unable to register host recovery marker', error));
+    }
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        clearIfRecoverable().catch(() => {});
+      } else {
+        set(disconnectedAtRef, serverTimestamp()).catch(() => {});
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      disconnectRegistration.cancel().catch(() => {});
+    };
+  }, [deviceID, enabled, gameID, isConnected, isHost, now]);
+
+  const leaveGame = useCallback(async () => {
+    const registration = presenceRegistrationRef.current;
+    if (registration) {
+      await registration.disconnectRegistration.cancel().catch(() => {});
+      await set(registration.presenceRef, registration.disconnectedValue);
+    }
+    if (isHost) {
+      await set(ref(db, `games/${gameID}/disconnectedAt`), serverTimestamp());
+    }
+    return true;
+  }, [gameID, isHost]);
+
+  const transferHost = useCallback(async (nextHostDeviceID) => {
+    const isClaimingDisconnectedHost = canClaimHost && nextHostDeviceID === deviceID;
+    if (
+      !enabled || !gameID || !deviceID || (!isHost && !isClaimingDisconnectedHost) || !isConnected
+      || isRoomExpired || !nextHostDeviceID
+    ) return false;
+
+    const result = await runTransaction(ref(db), (root) => {
+      const game = root?.games?.[gameID];
+      const players = root?.players?.[gameID];
+      if (!game || !players) return undefined;
+
+      const callerIsCurrentHost = game.hostDeviceID === deviceID;
+      const currentHostIsDisconnected = Boolean(
+        game.disconnectedAt
+        && game.presence?.[game.hostDeviceID]?.connected !== true
+      );
+      if (
+        !callerIsCurrentHost
+        && !(currentHostIsDisconnected && nextHostDeviceID === deviceID)
+      ) return undefined;
+
+      const nextHostIsConnectedLeader = getTeamLeaders(
+        players,
+        game.presence || {}
+      ).some((leader) => (
+        leader.deviceID === nextHostDeviceID && leader.connected
+      ));
+      if (!nextHostIsConnectedLeader) return undefined;
+
+      return {
+        ...root,
+        games: {
+          ...(root.games || {}),
+          [gameID]: {
+            ...game,
+            hostDeviceID: nextHostDeviceID,
+            disconnectedAt: null,
+            hostTransferredAt: Date.now(),
+          },
+        },
+      };
+    });
+
+    return result.committed;
+  }, [canClaimHost, deviceID, enabled, gameID, isConnected, isHost, isRoomExpired]);
+
+  const replaceTeamLeader = useCallback(async ({ teamId, playerId }) => {
+    if (
+      !enabled || !gameID || !deviceID || !isHost || !isConnected
+      || isRoomExpired || !teamId || !playerId
+    ) return false;
+
+    const result = await runTransaction(ref(db), (root) => {
+      const game = root?.games?.[gameID];
+      const players = root?.players?.[gameID];
+      const team = players?.[teamId];
+      const candidate = team?.[playerId];
+      if (
+        !game
+        || game.hostDeviceID !== deviceID
+        || !candidate?.deviceID
+        || game.presence?.[candidate.deviceID]?.connected !== true
+      ) return undefined;
+
+      const nextTeam = Object.fromEntries(Object.entries(team).map(([id, player]) => [
+        id,
+        { ...player, isLeader: id === playerId },
+      ]));
+      return {
+        ...root,
+        players: {
+          ...(root.players || {}),
+          [gameID]: { ...players, [teamId]: nextTeam },
+        },
+      };
+    });
+
+    return result.committed;
+  }, [deviceID, enabled, gameID, isConnected, isHost, isRoomExpired]);
   const submitRoll = useCallback(async (value, inputMethod = 'shortcut') => {
     if (!enabled || !gameID || !canControlTurn || !deviceID) return false;
 
@@ -253,7 +531,13 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
   const resolveRoadblock = useCallback(async (choice) => {
     const isTimeout = choice === 'timeout';
-    if (!enabled || !gameID || (!canControlTurn && !isTimeout)) return false;
+    if (
+      !enabled
+      || !gameID
+      || !isConnected
+      || isRoomExpired
+      || (!canControlTurn && !isTimeout)
+    ) return false;
 
     const resolvedAt = now();
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
@@ -333,7 +617,16 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
+  }, [
+    canControlTurn,
+    enabled,
+    gameID,
+    identity.localTeamId,
+    isConnected,
+    isRoomExpired,
+    now,
+    routeModel,
+  ]);
 
   useEffect(() => {
     const roadblock = gameplay?.roadblock;
@@ -353,7 +646,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   }, [enabled, gameplay, now, resolveRoadblock]);
 
   const completeMovement = useCallback(async (actionId) => {
-    if (!enabled || !gameID || !actionId) return false;
+    if (!enabled || !gameID || !actionId || !isConnected || isRoomExpired) return false;
 
     const completedAt = now();
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
@@ -381,6 +674,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         if (!stop) return undefined;
         const challengeId = stop.challenges?.[0]?.id || null;
         const previousProgress = current.teamProgress?.[action.teamId] || {};
+        const challenge = getChallengeForStop(0, [stop], challengeId);
+        const roundData = getChallengeRound({
+          challenge,
+          difficulty: gameDataRef.current?.difficulty,
+          players: getTeamPlayers(teamMembersRef.current, action.teamId),
+          seed: action.id,
+          targetCursor: previousProgress.targetCursor,
+        });
 
         return {
           ...current,
@@ -396,12 +697,13 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
                 step: detourStep,
                 detourStep,
               },
+              targetCursor: roundData.nextTargetCursor,
             },
           },
           challengeStop: null,
           challengeStopData: stop,
           challengeId,
-          challengeRound: null,
+          challengeRound: roundData.round,
           roadblock: {
             ...current.roadblock,
             status: 'detourChallenge',
@@ -457,7 +759,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         : null;
       const previousProgress = current.teamProgress?.[action.teamId] || {};
       const challengePoints = Number(previousProgress.challengePoints) || 0;
-      const teamProgress = {
+      let teamProgress = {
         ...current.teamProgress,
         [action.teamId]: {
           ...previousProgress,
@@ -522,12 +824,21 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             usedMonumentIds = geoData.nextUsedMonumentIds;
           }
         } else {
-          challengeRound = getCountryWordRound(
+          const roundData = getChallengeRound({
             challenge,
+            difficulty: gameDataRef.current?.difficulty,
             players,
-            action.id,
-            gameDataRef.current?.difficulty
-          );
+            seed: action.id,
+            targetCursor: teamProgress[action.teamId]?.targetCursor,
+          });
+          challengeRound = roundData.round;
+          teamProgress = {
+            ...teamProgress,
+            [action.teamId]: {
+              ...teamProgress[action.teamId],
+              targetCursor: roundData.nextTargetCursor,
+            },
+          };
         }
 
         return {
@@ -564,18 +875,21 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [enabled, gameID, now, routeModel]);
+  }, [enabled, gameID, isConnected, isRoomExpired, now, routeModel]);
 
-  const updateCountryWordChallenge = useCallback(async (action) => {
-    if (!enabled || !gameID) return false;
+  const updateChallenge = useCallback(async (action) => {
+    if (!enabled || !gameID || !isConnected || isRoomExpired) return false;
 
     const actionType = typeof action === 'object' && action !== null ? action.type : action;
     const isGeoPinSubmit = actionType === 'submitPin';
+    const isAutomaticDeadlineAction = ['startPinning', 'timeoutPinning', 'timeout'].includes(actionType);
 
     // Any team leader can submit their own team's GeoGuessr pin; other stage transitions
     // require the active team's leader.
     if (isGeoPinSubmit) {
       if (!identity.isTeamLeader || !identity.localTeamId) return false;
+    } else if (isAutomaticDeadlineAction) {
+      if (!isConnected || isRoomExpired) return false;
     } else if (!canControlTurn) {
       return false;
     }
@@ -595,7 +909,9 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
       if (challenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
         if (actionType === 'startPinning' && round.stage === 'photo') {
-          if (current.activeTeamId !== identity.localTeamId) return undefined;
+          const photoDeadline = Number(round.photoStartedAt)
+            + (Number(round.photoDurationSeconds) || 0) * 1000;
+          if (!photoDeadline || updatedAt < photoDeadline) return undefined;
           return {
             ...current,
             revision: (current.revision || 0) + 1,
@@ -723,7 +1039,13 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         }
 
         if ((actionType === 'timeoutPinning' || actionType === 'finalizePinning') && round.stage === 'pinning') {
-          if (current.activeTeamId !== identity.localTeamId) return undefined;
+          if (actionType === 'timeoutPinning') {
+            const pinDeadline = Number(round.pinStartedAt)
+              + (Number(round.pinDurationSeconds) || 0) * 1000;
+            if (!pinDeadline || updatedAt < pinDeadline) return undefined;
+          } else if (current.activeTeamId !== identity.localTeamId) {
+            return undefined;
+          }
           const evaluation = evaluateGeoGuessrGuesses({
             guesses: round.guesses || {},
             requiredTeamIds,
@@ -787,7 +1109,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         return undefined;
       }
 
-      if (current.activeTeamId !== identity.localTeamId) {
+      if (current.activeTeamId !== identity.localTeamId && actionType !== 'timeout') {
         return undefined;
       }
 
@@ -799,14 +1121,57 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           updatedAt,
         };
       }
+
+      const ordinaryResult = String(actionType || '').toLowerCase();
+      if (
+        challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE
+        && ['completed', 'failed'].includes(ordinaryResult)
+        && round.stage === 'playing'
+      ) {
+        const succeeded = ordinaryResult === 'completed';
+        const resultActionId = `${current.sessionId}:${current.turnNumber}:${ordinaryResult}`;
+        const drinkRule = succeeded ? round.drinkRules?.success : round.drinkRules?.failure;
+        const nextTeamProgress = addDrinksByRule({
+          amount: getResolvedPenaltySips(
+            round.resolvedPenaltySips === undefined ? challenge : round,
+            gameDataRef.current?.difficulty
+          ),
+          playerId: round.selectedPlayerId,
+          rule: drinkRule,
+          teamId: current.activeTeamId,
+          teamMembers: teamMembersRef.current,
+          teamProgress: current.teamProgress,
+        });
+        return {
+          ...current,
+          revision: (current.revision || 0) + 1,
+          teamProgress: nextTeamProgress,
+          challengeRound: {
+            ...round,
+            stage: 'result',
+            result: succeeded ? 'completed' : 'failed',
+            resultActionId,
+            drinkAwardId: drinkRule && drinkRule !== 'none' ? resultActionId : null,
+          },
+          updatedAt,
+        };
+      }
+
       if (!['guessed', 'failed', 'timeout'].includes(actionType) || round.stage !== 'playing') {
         return undefined;
       }
 
       if (challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return undefined;
+      if (actionType === 'timeout') {
+        const challengeDeadline = Number(round.startedAt)
+          + (Number(round.durationSeconds) || Number(challenge.durationSeconds) || 30) * 1000;
+        if (!challengeDeadline || updatedAt < challengeDeadline) return undefined;
+      } else if (current.activeTeamId !== identity.localTeamId) {
+        return undefined;
+      }
       const guessed = actionType === 'guessed';
       const pointsAwarded = guessed ? (Number(challenge.successPoints) || 10) : 0;
-      const penaltySips = guessed ? 0 : getResolvedPenaltySips(
+      const penaltySips = getResolvedPenaltySips(
         round.resolvedPenaltySips === undefined ? challenge : round,
         gameDataRef.current?.difficulty
       );
@@ -822,16 +1187,32 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         teamMembersRef.current,
         current.activeTeamId
       ).find((player) => player.name === round.selectedPlayerName)?.playerId;
-      const nextPlayerDrinks = (!guessed && selectedPlayerId)
-        ? addDrinksToPlayer(prevPlayerDrinks, selectedPlayerId, penaltySips)
-        : prevPlayerDrinks;
+      const resultActionId = `${current.sessionId}:${current.turnNumber}:${actionType}`;
+      const wordDrinkRule = guessed
+        ? (round.drinkRules?.success || 'teamExceptTarget')
+        : (round.drinkRules?.failure || 'target');
+      const nextTeamProgress = addDrinksByRule({
+        amount: penaltySips,
+        playerId: selectedPlayerId,
+        rule: wordDrinkRule,
+        teamId: current.activeTeamId,
+        teamMembers: teamMembersRef.current,
+        teamProgress: {
+          ...current.teamProgress,
+          [current.activeTeamId]: {
+            ...activeProgress,
+            playerDrinks: prevPlayerDrinks,
+          },
+        },
+      });
+      const nextPlayerDrinks = nextTeamProgress[current.activeTeamId]?.playerDrinks || prevPlayerDrinks;
       const { drinks: _legacyDrinks, ...activeProgressWithoutLegacyTotal } = activeProgress;
 
       return {
         ...current,
         revision: (current.revision || 0) + 1,
         teamProgress: {
-          ...current.teamProgress,
+          ...nextTeamProgress,
           [current.activeTeamId]: {
             ...activeProgressWithoutLegacyTotal,
             challengePoints,
@@ -848,16 +1229,25 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           stage: 'result',
           result: guessed ? 'guessed' : actionType,
           pointsAwarded,
-          drinkAwardId: penaltySips > 0
-            ? `${current.sessionId}:${current.turnNumber}:word-penalty`
-            : null,
+          resultActionId,
+          drinkAwardId: penaltySips > 0 ? resultActionId : null,
         },
         updatedAt,
       };
     });
 
     return result.committed;
-  }, [canControlTurn, enabled, gameID, identity.isTeamLeader, identity.localTeamId, now, routeModel.countryStops]);
+  }, [
+    canControlTurn,
+    enabled,
+    gameID,
+    identity.isTeamLeader,
+    identity.localTeamId,
+    isConnected,
+    isRoomExpired,
+    now,
+    routeModel.countryStops,
+  ]);
 
   const completeChallenge = useCallback(async (options = {}) => {
     const { force = false } = options;
@@ -943,7 +1333,15 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
 
   const adjustDrinks = useCallback(async ({ teamId, delta = 1, playerId = null } = {}) => {
-    if (!enabled || !gameID || !teamId || !Number.isFinite(Number(delta)) || Number(delta) === 0) {
+    if (
+      !enabled
+      || !gameID
+      || !isConnected
+      || isRoomExpired
+      || !teamId
+      || !Number.isFinite(Number(delta))
+      || Number(delta) === 0
+    ) {
       return false;
     }
 
@@ -980,10 +1378,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [enabled, gameID, now]);
+  }, [enabled, gameID, isConnected, isRoomExpired, now]);
 
   const restart = useCallback(async () => {
-    if (!enabled || !gameID || !isHost) return false;
+    if (!enabled || !gameID || !isHost || !isConnected || isRoomExpired) return false;
 
     const nextGameplay = createInitialGameplay(gameDataRef.current, now(), teamMembersRef.current);
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
@@ -992,24 +1390,36 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [enabled, gameID, isHost, now]);
+  }, [enabled, gameID, isConnected, isHost, isRoomExpired, now]);
 
   return {
     ...identity,
+    activeLeader,
     adjustDrinks,
+    canClaimHost,
     canControlTurn,
+    connectedPlayers,
     completeChallenge,
     completeMovement,
     deviceID,
     gameplay,
     isConnected,
+    isActiveLeaderConnected,
     isHost,
     isLoading,
+    isRoomExpired,
+    leaders,
+    leaveGame,
+    presence,
+    presenceLoaded,
+    replaceTeamLeader,
     restart,
     resolveRoadblock,
+    roomMeta,
     serverNow: now,
     submitRoll,
     teamMembers: liveTeamMembers,
-    updateCountryWordChallenge,
+    transferHost,
+    updateChallenge,
   };
 }

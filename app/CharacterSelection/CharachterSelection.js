@@ -11,6 +11,7 @@ import { preloadBoardAssets } from '../GameScreen/constants/boardAssets';
 import { GAME_PIECES } from '../GameScreen/constants/gamePieces';
 import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
 import { createInitialGameplay } from '../GameScreen/gameplayState';
+import { getLobbyReadiness } from '../Lobby/lobbyState';
 
 const getRequiredTeamKeys = (gameData) => (
   gameData?.nrOfPlayers === '9-12'
@@ -120,23 +121,32 @@ export default function CharacterSelection({ navigation, route }) {
       return;
     }
 
-    if (!initialGameplayRef.current) {
-      initialGameplayRef.current = createInitialGameplay(liveGameData, Date.now(), teamMembers);
-    }
-
-    runTransaction(ref(db, `games/${gameID}`), (currentGame) => {
+    const startedAt = Date.now();
+    runTransaction(ref(db), (root) => {
+      const currentGame = root?.games?.[gameID];
       if (!currentGame || currentGame.status !== 'characterSelection') return undefined;
-
-      const currentRequiredTeams = getRequiredTeamKeys(currentGame);
-      const currentTeamsReady = currentRequiredTeams.every(
-        (teamKey) => Boolean(currentGame.teamModels?.[teamKey])
+      const currentPlayers = root?.players?.[gameID] || {};
+      const readiness = getLobbyReadiness(
+        currentGame,
+        currentPlayers,
+        { requireVehicles: true }
       );
-      if (!currentTeamsReady) return undefined;
+      if (!readiness.isReady) return undefined;
+
+      if (!initialGameplayRef.current) {
+        initialGameplayRef.current = createInitialGameplay(currentGame, startedAt, currentPlayers);
+      }
 
       return {
-        ...currentGame,
-        gameplay: initialGameplayRef.current,
-        status: 'game',
+        ...root,
+        games: {
+          ...(root.games || {}),
+          [gameID]: {
+            ...currentGame,
+            gameplay: initialGameplayRef.current,
+            status: 'game',
+          },
+        },
       };
     }).catch((error) => {
       console.log('Unable to start game after vehicle selection', error);

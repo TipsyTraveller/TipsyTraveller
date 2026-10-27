@@ -266,6 +266,7 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         countryName: stop.name,
         title: challenge.title,
         prompt: challenge.prompt,
+        instructions: challenge.instructions,
         penalty: challenge.penalty,
         penaltySips: challenge.penaltySips,
         type: challenge.type,
@@ -278,6 +279,8 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         monumentPoolId: challenge.monumentPoolId,
         monumentPoolVersion: challenge.monumentPoolVersion,
         countryMonumentIds: challenge.countryMonumentIds,
+        targeting: challenge.targeting,
+        drinkRules: challenge.drinkRules,
         order: index,
         updatedAt,
       }),
@@ -304,6 +307,8 @@ const hasCurrentCountryWordContent = (challenge, expected) => (
   challenge?.id === expected?.id
   && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
   && Number(challenge?.wordListVersion) === Number(expected?.wordListVersion)
+  && JSON.stringify(challenge?.targeting || null) === JSON.stringify(expected?.targeting || null)
+  && JSON.stringify(challenge?.drinkRules || null) === JSON.stringify(expected?.drinkRules || null)
   && Array.isArray(challenge?.words)
   && JSON.stringify(challenge.words) === JSON.stringify(expected.words)
 );

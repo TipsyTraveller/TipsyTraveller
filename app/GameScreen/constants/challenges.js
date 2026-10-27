@@ -235,6 +235,14 @@ export {
 
 export const COUNTRY_WORD_CHALLENGE_TYPE = 'countryWordGuess';
 export const COUNTRY_WORD_EXPLANATION_SECONDS = 7;
+export const CHALLENGE_TARGET_ROLES = ['describer', 'performer', 'judge', 'captain'];
+export const CHALLENGE_DRINK_RECIPIENTS = [
+  'target',
+  'teamExceptTarget',
+  'wholeTeam',
+  'opponents',
+  'none',
+];
 
 const hashSeed = (seed) => String(seed).split('').reduce((total, character) => (
   ((total * 31) + character.charCodeAt(0)) >>> 0
@@ -286,22 +294,66 @@ export const getChallengeIdForStop = (
   return eligibleChallenges[hash % eligibleChallenges.length]?.id || eligibleChallenges[0]?.id || null;
 };
 
-export const getCountryWordRound = (challenge, players, seed = '', difficulty = 'easy') => {
+export const replaceTargetPlayerName = (value, targetPlayerName) => (
+  typeof value === 'string'
+    ? value.replaceAll('{targetPlayerName}', targetPlayerName || 'the selected player')
+    : value
+);
+
+export const formatChallengeForTarget = (challenge, round = {}) => ({
+  ...challenge,
+  title: replaceTargetPlayerName(challenge?.title, round.selectedPlayerName),
+  prompt: replaceTargetPlayerName(challenge?.prompt, round.selectedPlayerName),
+  instructions: replaceTargetPlayerName(challenge?.instructions, round.selectedPlayerName),
+  penalty: replaceTargetPlayerName(challenge?.penalty, round.selectedPlayerName),
+});
+
+export const getChallengeRound = ({
+  challenge,
+  difficulty = 'easy',
+  players = [],
+  seed = '',
+  targetCursor = 0,
+}) => {
+  const targeting = challenge?.targeting;
+  const needsTarget = targeting?.selection === 'rotate' && CHALLENGE_TARGET_ROLES.includes(targeting?.role);
+  if (needsTarget && !players.length) return { round: null, nextTargetCursor: targetCursor };
+
+  const cursor = Math.max(0, Math.round(Number(targetCursor) || 0));
+  const selectedPlayer = needsTarget ? players[cursor % players.length] : null;
+  const round = {
+    stage: challenge?.type === COUNTRY_WORD_CHALLENGE_TYPE ? 'intro' : 'playing',
+    result: null,
+    pointsAwarded: 0,
+    resolvedPenaltySips: resolvePenaltySips(challenge?.penaltySips, difficulty),
+    targeting: targeting || null,
+    drinkRules: challenge?.drinkRules || { success: 'none', failure: 'wholeTeam' },
+    ...(selectedPlayer ? {
+      selectedPlayerId: selectedPlayer.playerId,
+      selectedPlayerName: selectedPlayer.name,
+    } : {}),
+  };
+
+  if (challenge?.type === COUNTRY_WORD_CHALLENGE_TYPE) {
+    if (players.length < 2) return { round: null, nextTargetCursor: targetCursor };
+    const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
+    if (!words.length) return { round: null, nextTargetCursor: targetCursor };
+    round.secretWord = words[hashSeed(`${seed}:word`) % words.length];
+    round.startedAt = null;
+  }
+
+  return {
+    round,
+    nextTargetCursor: needsTarget ? cursor + 1 : cursor,
+  };
+};
+
+export const getCountryWordRound = (challenge, players, seed = '', difficulty = 'easy', targetCursor = 0) => {
   if (challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || players.length < 2) return null;
   const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
   if (!words.length) return null;
 
-  const selectedPlayer = players[hashSeed(`${seed}:player`) % players.length];
-  return {
-    stage: 'intro',
-    selectedPlayerId: selectedPlayer.playerId,
-    selectedPlayerName: selectedPlayer.name,
-    secretWord: words[hashSeed(`${seed}:word`) % words.length],
-    startedAt: null,
-    result: null,
-    pointsAwarded: 0,
-    resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
-  };
+  return getChallengeRound({ challenge, difficulty, players, seed, targetCursor }).round;
 };
 
 export const getGeoGuessrRound = ({
