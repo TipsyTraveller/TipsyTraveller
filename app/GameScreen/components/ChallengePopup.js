@@ -136,6 +136,7 @@ const CardBack = ({ compact, style }) => (
 
 const ChallengePopup = ({
   canComplete = true,
+  canFinalizeTimeout = canComplete,
   challenge,
   difficulty = 'easy',
   gamePieces = [],
@@ -245,7 +246,7 @@ const ChallengePopup = ({
         const elapsedSeconds = Math.max(0, getNow() - startedAt) / 1000;
         const nextRemaining = Math.max(0, Math.ceil(activeDuration - elapsedSeconds));
         setRemainingSeconds(nextRemaining);
-        if (nextRemaining === 0 && canComplete && !timeoutReportedRef.current) {
+        if (nextRemaining === 0 && canFinalizeTimeout && !timeoutReportedRef.current) {
           timeoutReportedRef.current = true;
           challengeActionRef.current?.({
             type: challengeStage === 'photo' ? 'startPinning' : 'timeoutPinning',
@@ -271,7 +272,7 @@ const ChallengePopup = ({
       const nextExplanation = Math.max(0, Math.ceil(COUNTRY_WORD_EXPLANATION_SECONDS - elapsedSeconds));
       setRemainingSeconds(nextRemaining);
       setExplanationSeconds(nextExplanation);
-      if (nextRemaining === 0 && canComplete && !timeoutReportedRef.current) {
+      if (nextRemaining === 0 && canFinalizeTimeout && !timeoutReportedRef.current) {
         timeoutReportedRef.current = true;
         challengeActionRef.current?.('timeout');
       }
@@ -282,6 +283,7 @@ const ChallengePopup = ({
     return () => clearInterval(interval);
   }, [
     canComplete,
+    canFinalizeTimeout,
     challenge?.activePinTeamIndex,
     challenge?.photoStartedAt,
     challenge?.pinStartedAt,

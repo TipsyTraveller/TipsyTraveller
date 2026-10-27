@@ -70,7 +70,8 @@ export default function JoinGame ({ navigation }) {
                     currentUserIsHost = true;
                     // Clear the disconnected flag when host rejoins
                     await set(ref(db, `games/${gamePin}/disconnectedAt`), null);
-                    await onDisconnect(ref(db, `games/${gamePin}`)).update({disconnectedAt: serverTimestamp()});
+                    await onDisconnect(ref(db, `games/${gamePin}/disconnectedAt`))
+                        .set(serverTimestamp());
                 }
                 
                 const joinResult = await joinRoomTransaction({

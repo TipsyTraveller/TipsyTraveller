@@ -66,10 +66,8 @@ export default function HostName ({ navigation, route }) {
                 }),
             });
 
-            //testcleanup na disconnecten
-            const gamesRef = ref(db, `games/${newGameID}`);
-            // await onDisconnect(gamesRef).remove();
-            await onDisconnect(gamesRef).update({disconnectedAt: serverTimestamp()});
+            await onDisconnect(ref(db, `games/${newGameID}/disconnectedAt`))
+                .set(serverTimestamp());
             navigation.reset({
                 index: 1,
                 routes: [

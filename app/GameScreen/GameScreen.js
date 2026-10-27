@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import ChallengePopup from './components/ChallengePopup';
 import GameHud from './components/GameHud';
@@ -59,6 +59,7 @@ import {
   updateCountryStop,
 } from './services/countryStopsService';
 import CountryStopPlacementForm from './components/CountryStopPlacementForm';
+import ConnectionOverlay from './components/ConnectionOverlay';
 import { getFinishPosition, getTeamScore } from './gameplayState';
 
 const EMPTY_GAME_DATA = {};
@@ -87,7 +88,7 @@ const useLatestCallback = (callback) => {
   return useCallback((...args) => callbackRef.current(...args), []);
 };
 
-const GameScreen = ({ route }) => {
+const GameScreen = ({ navigation, route }) => {
   const gameData = route?.params?.gameData || EMPTY_GAME_DATA;
   const gameID = route?.params?.gameID;
   const teamMembers = route?.params?.teamMembers;
@@ -390,6 +391,55 @@ const GameScreen = ({ route }) => {
     }
     resetLocalGame();
   };
+
+  const returnHome = useCallback(() => {
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+  }, [navigation]);
+
+  const handleLeaveGame = useCallback(() => {
+    const hostMessage = multiplayerEnabled && multiplayer.isHost
+      ? 'The room will report that the host disconnected. Transfer host first if the group should keep playing.'
+      : 'You can rejoin with the same room code and this device to restore the current game.';
+    Alert.alert('Leave game?', hostMessage, [
+      { text: 'Stay', style: 'cancel' },
+      {
+        text: 'Leave Game',
+        style: 'destructive',
+        onPress: async () => {
+          if (multiplayerEnabled) await multiplayer.leaveGame().catch(() => {});
+          returnHome();
+        },
+      },
+    ]);
+  }, [multiplayer, multiplayerEnabled, returnHome]);
+
+  const handleTransferHost = useCallback(async (nextHostDeviceID) => {
+    try {
+      const transferred = await multiplayer.transferHost(nextHostDeviceID);
+      if (!transferred) {
+        Alert.alert('Could not transfer host', 'That team leader is no longer connected.');
+      }
+      return transferred;
+    } catch (error) {
+      console.log('Unable to transfer host', error);
+      Alert.alert('Could not transfer host', 'Check your connection and try again.');
+      return false;
+    }
+  }, [multiplayer]);
+
+  const handleReplaceLeader = useCallback(async (replacement) => {
+    try {
+      const replaced = await multiplayer.replaceTeamLeader(replacement);
+      if (!replaced) {
+        Alert.alert('Could not replace leader', 'That player is no longer connected.');
+      }
+      return replaced;
+    } catch (error) {
+      console.log('Unable to replace team leader', error);
+      Alert.alert('Could not replace leader', 'Check your connection and try again.');
+      return false;
+    }
+  }, [multiplayer]);
 
   const handleChallengeComplete = () => {
     if (multiplayerEnabled) {
@@ -929,7 +979,7 @@ const GameScreen = ({ route }) => {
       return;
     }
 
-    const takesDetour = choice === 'detour';
+    const takesDetour = choice === 'detour' || choice === 'timeout';
     const brokeThrough = choice === 'completed' && localRoadblock.status === 'challenge';
     if (!takesDetour && !brokeThrough) return;
 
@@ -1517,6 +1567,23 @@ const GameScreen = ({ route }) => {
         totalStops={routeModel.finalStopIndex + 1}
         turnNumber={multiplayerEnabled ? (multiplayer.gameplay?.turnNumber || 1) : localTurnNumber}
       />
+      <ConnectionOverlay
+        activeLeader={multiplayerEnabled ? multiplayer.activeLeader : null}
+        canClaimHost={multiplayerEnabled && multiplayer.canClaimHost}
+        connectedPlayers={multiplayerEnabled ? multiplayer.connectedPlayers : []}
+        isConnected={!multiplayerEnabled || multiplayer.isConnected}
+        isHost={multiplayerEnabled && multiplayer.isHost}
+        isLoading={multiplayerEnabled && multiplayer.isLoading}
+        isRoomExpired={multiplayerEnabled && multiplayer.isRoomExpired}
+        leaders={multiplayerEnabled ? multiplayer.leaders : []}
+        localDeviceID={multiplayerEnabled ? multiplayer.deviceID : null}
+        onLeave={handleLeaveGame}
+        onReturnHome={returnHome}
+        onReplaceLeader={handleReplaceLeader}
+        onTransferHost={handleTransferHost}
+        presenceLoaded={!multiplayerEnabled || multiplayer.presenceLoaded}
+        roomMeta={multiplayerEnabled ? multiplayer.roomMeta : {}}
+      />
       <RaceProgressTracker
         activeTeamId={activePiece?.id}
         canRoll={canRoll}
@@ -1529,6 +1596,9 @@ const GameScreen = ({ route }) => {
       />
       <RoadblockOverlay
         canChoose={!multiplayerEnabled || multiplayer.canControlTurn}
+        canFinalizeTimeout={!multiplayerEnabled || (
+          multiplayer.isConnected && !multiplayer.isRoomExpired
+        )}
         event={roadblockEvent}
         getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
         onAction={handleRoadblockAction}
@@ -1537,6 +1607,9 @@ const GameScreen = ({ route }) => {
       />
       <ChallengePopup
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
+        canFinalizeTimeout={!multiplayerEnabled || (
+          multiplayer.isConnected && !multiplayer.isRoomExpired
+        )}
         challenge={currentChallenge}
         difficulty={gameData?.difficulty}
         gamePieces={gamePieces}

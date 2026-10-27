@@ -68,12 +68,25 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
    turns, and verify turn ownership, intermediate challenges, per-team detour
    progress, and final canonical progress on both clients.
 6. Restart as host and verify initial progress returns without changing the route.
+7. Background and disconnect each team leader during waiting, movement, ordinary
+   challenge, word challenge, GeoGuessr, and roadblock phases. Verify presence changes
+   on both clients, only leader-owned actions pause, and movement and expired timers
+   finalize from another connected client. Reopen from the same installation and
+   verify the exact phase, target, result, timer deadline, and drink ledger return.
+8. As host, transfer host to another connected leader. Then disconnect a team leader
+   with a connected teammate, replace the leader from the game connection menu, and
+   verify the replacement can complete that team's turn without changing player IDs.
+   Separately disconnect the host before transfer and verify another connected leader
+   can take over only after the old host presence is offline.
+9. Leave Game on a client and verify its presence becomes offline without deleting
+   gameplay. Set a host disconnect timestamp older than ten minutes in a test room and
+   verify the expired-room state offers Return Home and blocks gameplay actions.
 
 ## Reconnection and performance
 
-For reconnection, let Firebase write `disconnectedAt`, rejoin from the same
-installation, verify host recovery and marker clearing, then separately verify a
-timestamp older than ten minutes is rejected.
+For reconnection, let Firebase write both device presence and `disconnectedAt`, rejoin
+from the same installation, verify host recovery and marker clearing, then separately
+verify a timestamp older than ten minutes enters the expired-room state.
 
 On representative devices inspect first load, blank scene frequency, pointer input,
 frame rate during simultaneous effects, GLTF textures, cache/memory growth, safe-area
