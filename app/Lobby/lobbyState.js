@@ -50,6 +50,7 @@ export const chooseTeamForJoin = (gameData, players) => (
 export const getLobbyReadiness = (gameData, players, { requireVehicles = false } = {}) => {
   const issues = [];
   const requiredTeamKeys = getRequiredTeamKeys(gameData);
+  const leaderDeviceTeams = new Map();
 
   requiredTeamKeys.forEach((teamKey, index) => {
     const label = `Team ${index + 1}`;
@@ -59,13 +60,19 @@ export const getLobbyReadiness = (gameData, players, { requireVehicles = false }
       return;
     }
 
-    const deviceLeaders = entries.filter(([, player]) => (
-      player?.isLeader && Boolean(player?.deviceID)
-    ));
-    if (deviceLeaders.length === 0) {
+    const leaders = entries.filter(([, player]) => player?.isLeader);
+    if (leaders.length === 0 || !leaders[0]?.[1]?.deviceID) {
       issues.push(`${label} needs a leader with a connected phone`);
-    } else if (deviceLeaders.length > 1) {
+    } else if (leaders.length > 1) {
       issues.push(`${label} must have exactly one leader`);
+    } else {
+      const deviceID = leaders[0][1].deviceID;
+      const otherTeamLabel = leaderDeviceTeams.get(deviceID);
+      if (otherTeamLabel) {
+        issues.push(`${label} needs a different leader phone than ${otherTeamLabel}`);
+      } else {
+        leaderDeviceTeams.set(deviceID, label);
+      }
     }
 
     if (requireVehicles && !gameData?.teamModels?.[teamKey]) {

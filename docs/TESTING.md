@@ -53,6 +53,10 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
 ## Focused multiplayer flow
 
 1. Create on device A, join on B, verify team/leader assignment and realtime roster.
+   Attempt simultaneous joins at the configured capacity and verify the room never
+   overfills or inserts the same device twice. As host, move a player, reassign a
+   leader, and confirm the player's Firebase push key is unchanged. Confirm the
+   disabled lobby action names the missing team leader requirement.
 2. Start character selection, choose each required model, and verify synchronized game
    entry with Team 1 active and the immutable edge-country-to-Greece itinerary.
 3. Verify only the active leader can roll/complete, results are 1–3, route points and
@@ -82,8 +86,8 @@ landscape layout, and camera motion.
   clients may snap to canonical state.
 - Duration changes only route length/snapshot.
 - There is no Firebase Authentication; device IDs and host UI checks are not security.
-- Room code reservation is not atomic; Realtime Database rules are not in the repo;
-  Dev Portal country/challenge writes are unauthenticated.
+- Realtime Database rules are not in the repo; Dev Portal country/challenge writes
+  are unauthenticated.
 - Expo GL is unreliable in the iOS Simulator. Android release currently uses debug
   signing. There is no CI or environment-based Firebase project selection.
 - Native folders are intentionally checked in; Expo config/native changes must agree.
