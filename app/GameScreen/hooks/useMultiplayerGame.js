@@ -111,6 +111,19 @@ const getConnectedPlayers = (teamMembers, presence = {}) => (
 
 const ROOM_EXPIRY_MS = 10 * 60 * 1000;
 
+const stableSerialize = (value) => {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+const isStructurallyEqual = (left, right) => stableSerialize(left) === stableSerialize(right);
+
 export default function useMultiplayerGame({ enabled, gameData, gameID, routeModel, teamMembers }) {
   const [gameplay, setGameplay] = useState(gameData?.gameplay || null);
   const [liveTeamMembers, setLiveTeamMembers] = useState(teamMembers || {});
@@ -127,6 +140,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   }));
   const [expiryClock, setExpiryClock] = useState(Date.now());
   const presenceRegistrationRef = useRef(null);
+  const normalizationInFlightRef = useRef(false);
   const gameDataRef = useRef(gameData);
   gameDataRef.current = gameData;
   const teamMembersRef = useRef(liveTeamMembers);
@@ -198,17 +212,24 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   }, [enabled, teamMembers]);
 
   useEffect(() => {
-    if (!enabled || !gameID || !gameplay?.teamProgress || !Object.keys(liveTeamMembers).length) {
+    if (
+      !enabled
+      || !gameID
+      || !gameplay?.teamProgress
+      || !Object.keys(liveTeamMembers).length
+      || normalizationInFlightRef.current
+    ) {
       return;
     }
 
+    normalizationInFlightRef.current = true;
     runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       if (!current?.teamProgress) return undefined;
       const normalized = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
       const careerCounters = normalizeCareerCounters(current.careerCounters, liveTeamMembers);
       if (
-        JSON.stringify(normalized) === JSON.stringify(current.teamProgress)
-        && JSON.stringify(careerCounters) === JSON.stringify(current.careerCounters || {})
+        isStructurallyEqual(normalized, current.teamProgress)
+        && isStructurallyEqual(careerCounters, current.careerCounters || {})
         && Number(current.schemaVersion) >= GAMEPLAY_SCHEMA_VERSION
       ) return undefined;
 
@@ -222,6 +243,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       };
     }).catch((error) => {
       console.log('Unable to initialize player drink ledgers', error);
+    }).finally(() => {
+      normalizationInFlightRef.current = false;
     });
   }, [enabled, gameID, gameplay?.teamProgress, liveTeamMembers, now]);
 
