@@ -24,6 +24,7 @@ import {
   getPenaltyTag,
   getResolvedPenaltySips,
 } from '../constants/challenges';
+import { AUTO_ADVANCE_COUNTDOWN_SECONDS } from '../constants/roomRules';
 
 const CARD_BACK_LOGO = require('../../../assets/icons/splash-icon-light.png');
 // Reference phone (landscape 844 x 390): card is 75% wide and 85% tall.
@@ -135,6 +136,7 @@ const CardBack = ({ compact, style }) => (
 );
 
 const ChallengePopup = ({
+  autoAdvance = false,
   canComplete = true,
   challenge,
   difficulty = 'easy',
@@ -144,6 +146,7 @@ const ChallengePopup = ({
   localTeamId = 'team1',
   multiplayerEnabled = false,
   onChallengeAction,
+  onCancelAutoAdvance,
   onComplete,
   pieceRefs,
   routeModel,
@@ -160,9 +163,13 @@ const ChallengePopup = ({
   const [ready, setReady] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(30);
   const [explanationSeconds, setExplanationSeconds] = useState(COUNTRY_WORD_EXPLANATION_SECONDS);
+  const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(null);
   const timeoutReportedRef = useRef(false);
+  const autoAdvanceSentRef = useRef(false);
   const challengeActionRef = useRef(onChallengeAction);
   challengeActionRef.current = onChallengeAction;
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
   const challengeKey = challenge ? `${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || ''}` : '';
 
@@ -293,6 +300,47 @@ const ChallengePopup = ({
     isGeoGuessrChallenge,
     photoDuration,
     pinDuration,
+    visible,
+  ]);
+
+  useEffect(() => {
+    const resultAt = Number(challenge?.resultAt) || 0;
+    const isTypedResult = (isCountryWordChallenge || isGeoGuessrChallenge)
+      && challengeStage === 'result';
+    const shouldCountDown = visible
+      && autoAdvance
+      && canComplete
+      && isTypedResult
+      && resultAt > 0
+      && !challenge?.autoAdvanceCancelled;
+
+    autoAdvanceSentRef.current = false;
+    if (!shouldCountDown) {
+      setAutoAdvanceSeconds(null);
+      return undefined;
+    }
+
+    const update = () => {
+      const elapsedSeconds = Math.max(0, getNow() - resultAt) / 1000;
+      const remaining = Math.max(0, Math.ceil(AUTO_ADVANCE_COUNTDOWN_SECONDS - elapsedSeconds));
+      setAutoAdvanceSeconds(remaining);
+      if (remaining === 0 && !autoAdvanceSentRef.current) {
+        autoAdvanceSentRef.current = true;
+        onCompleteRef.current?.();
+      }
+    };
+    update();
+    const interval = setInterval(update, 200);
+    return () => clearInterval(interval);
+  }, [
+    autoAdvance,
+    canComplete,
+    challenge?.autoAdvanceCancelled,
+    challenge?.resultAt,
+    challengeStage,
+    getNow,
+    isCountryWordChallenge,
+    isGeoGuessrChallenge,
     visible,
   ]);
 
@@ -624,6 +672,24 @@ const ChallengePopup = ({
                 <Text style={styles.teamBadgeText}>{teamLabel}</Text>
               </View>
               <View style={styles.buttonWrap}>
+                {autoAdvanceSeconds !== null ? (
+                  <View style={styles.autoAdvanceRow}>
+                    <Text style={styles.autoAdvanceText}>{`NEXT TURN IN ${autoAdvanceSeconds}`}</Text>
+                    {canComplete ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel automatic turn advance"
+                        onPress={onCancelAutoAdvance}
+                        style={({ pressed }) => [
+                          styles.cancelAutoAdvanceButton,
+                          pressed && styles.completeButtonPressed,
+                        ]}
+                      >
+                        <Text style={styles.cancelAutoAdvanceText}>CANCEL</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={canFinishChallenge
@@ -1041,6 +1107,31 @@ const styles = StyleSheet.create({
   buttonWrap: {
     alignSelf: 'stretch',
     marginTop: 10,
+  },
+  autoAdvanceRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 5,
+  },
+  autoAdvanceText: {
+    color: '#FFF1CD',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 9,
+  },
+  cancelAutoAdvanceButton: {
+    backgroundColor: '#FFF1CD',
+    borderColor: '#111111',
+    borderRadius: 4,
+    borderWidth: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  cancelAutoAdvanceText: {
+    color: '#111111',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
   },
   completeButton: {
     alignItems: 'center',

@@ -224,6 +224,7 @@ import {
   selectMonumentFromPool,
 } from './monumentPool.js';
 import { getTeamPlayers } from '../drinkLedger';
+import { resolveTimerSeconds } from './roomRules';
 
 export {
   GEO_GUESSR_CHALLENGE_ID,
@@ -286,7 +287,13 @@ export const getChallengeIdForStop = (
   return eligibleChallenges[hash % eligibleChallenges.length]?.id || eligibleChallenges[0]?.id || null;
 };
 
-export const getCountryWordRound = (challenge, players, seed = '', difficulty = 'easy') => {
+export const getCountryWordRound = (
+  challenge,
+  players,
+  seed = '',
+  difficulty = 'easy',
+  timerPace = 'relaxed'
+) => {
   if (challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || players.length < 2) return null;
   const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
   if (!words.length) return null;
@@ -300,6 +307,7 @@ export const getCountryWordRound = (challenge, players, seed = '', difficulty = 
     startedAt: null,
     result: null,
     pointsAwarded: 0,
+    durationSeconds: resolveTimerSeconds(Number(challenge.durationSeconds) || 30, timerPace),
     resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
   };
 };
@@ -314,6 +322,7 @@ export const getGeoGuessrRound = ({
   stopCountryId = null,
   usedMonumentIds = [],
   difficulty = 'easy',
+  timerPace = 'relaxed',
 }) => {
   if (challenge?.type !== GEO_GUESSR_CHALLENGE_TYPE) return null;
 
@@ -344,9 +353,15 @@ export const getGeoGuessrRound = ({
       monumentImageLicense: monument.imageLicense,
       targetPosition: monument.position,
       photoStartedAt: startedAt + 1650,
-      photoDurationSeconds: Number(challenge.durationSeconds) || GEO_GUESSR_PHOTO_SECONDS,
+      photoDurationSeconds: resolveTimerSeconds(
+        Number(challenge.durationSeconds) || GEO_GUESSR_PHOTO_SECONDS,
+        timerPace
+      ),
       pinStartedAt: null,
-      pinDurationSeconds: Number(challenge.pinDurationSeconds) || GEO_GUESSR_PIN_SECONDS,
+      pinDurationSeconds: resolveTimerSeconds(
+        Number(challenge.pinDurationSeconds) || GEO_GUESSR_PIN_SECONDS,
+        timerPace
+      ),
       requiredTeamIds: Array.isArray(requiredTeamIds) && requiredTeamIds.length
         ? requiredTeamIds
         : ['team1', 'team2'],

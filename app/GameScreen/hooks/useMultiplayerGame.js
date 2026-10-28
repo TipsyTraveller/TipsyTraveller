@@ -40,6 +40,7 @@ import {
   getRoadblockMovementTiming,
   shouldTriggerRoadblock,
 } from '../constants/roadblocks';
+import { getRoomRules } from '../constants/roomRules';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
   if (!deviceID) return { localTeamId: null, isTeamLeader: false };
@@ -153,6 +154,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       gameplay,
       inputMethod,
       now: now(),
+      roomRules: getRoomRules(gameDataRef.current),
       routeModel,
       value,
     });
@@ -215,8 +217,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         };
       }
 
+      const roomRules = getRoomRules(gameDataRef.current);
       const roadblock = shouldTriggerRoadblock({ action, gameplay: current })
-        ? createRoadblockEvent({ action, routeModel, turnNumber: current.turnNumber })
+        ? createRoadblockEvent({
+            action,
+            routeModel,
+            timerPace: roomRules.challengeTimerPace,
+            turnNumber: current.turnNumber,
+          })
         : null;
       const nextAction = roadblock
         ? {
@@ -516,6 +524,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             stopCountryId: stop?.id || null,
             usedMonumentIds,
             difficulty: gameDataRef.current?.difficulty,
+            timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
           });
           if (geoData) {
             challengeRound = geoData.round;
@@ -526,7 +535,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             challenge,
             players,
             action.id,
-            gameDataRef.current?.difficulty
+            gameDataRef.current?.difficulty,
+            getRoomRules(gameDataRef.current).challengeTimerPace
           );
         }
 
@@ -717,6 +727,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               bestDistanceKm: evaluation.bestDistanceKm,
               pointsAwarded,
               drinkAwardId: `${current.sessionId}:${current.turnNumber}:geo-penalty`,
+              resultAt: updatedAt,
             },
             updatedAt,
           };
@@ -779,6 +790,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               bestDistanceKm: evaluation.bestDistanceKm,
               pointsAwarded,
               drinkAwardId: `${current.sessionId}:${current.turnNumber}:geo-penalty`,
+              resultAt: updatedAt,
             },
             updatedAt,
           };
@@ -851,6 +863,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           drinkAwardId: penaltySips > 0
             ? `${current.sessionId}:${current.turnNumber}:word-penalty`
             : null,
+          resultAt: updatedAt,
         },
         updatedAt,
       };
@@ -942,6 +955,33 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     return result.committed;
   }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
 
+  const cancelAutoAdvance = useCallback(async () => {
+    if (!enabled || !gameID || !canControlTurn) return false;
+
+    const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
+      if (
+        !current
+        || current.phase !== 'challenge'
+        || current.activeTeamId !== identity.localTeamId
+        || current.challengeRound?.stage !== 'result'
+        || current.challengeRound.autoAdvanceCancelled
+      ) {
+        return undefined;
+      }
+      return {
+        ...current,
+        revision: (current.revision || 0) + 1,
+        challengeRound: {
+          ...current.challengeRound,
+          autoAdvanceCancelled: true,
+        },
+        updatedAt: now(),
+      };
+    });
+
+    return result.committed;
+  }, [canControlTurn, enabled, gameID, identity.localTeamId, now]);
+
   const adjustDrinks = useCallback(async ({ teamId, delta = 1, playerId = null } = {}) => {
     if (!enabled || !gameID || !teamId || !Number.isFinite(Number(delta)) || Number(delta) === 0) {
       return false;
@@ -997,6 +1037,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   return {
     ...identity,
     adjustDrinks,
+    cancelAutoAdvance,
     canControlTurn,
     completeChallenge,
     completeMovement,

@@ -3,6 +3,7 @@ import { MAP_RELIEF_DEPTH, MAP_Z } from './mapCoordinates';
 import { DEFAULT_COUNTRY_STOPS } from './countryStops';
 import { createDetourRouteModel, createRouteModel, getPathRevealDuration } from './route';
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './movement';
+import { resolveTimerSeconds } from './roomRules';
 
 export const ROADBLOCK_PALETTE = {
   cream: '#FFF1CD',
@@ -247,6 +248,7 @@ export const createRoadblockEvent = ({
   action,
   allowFallbackDetour = false,
   routeModel,
+  timerPace = 'relaxed',
   turnNumber,
 }) => {
   const fromStop = routeModel.countryStops[action.fromLeg];
@@ -275,7 +277,10 @@ export const createRoadblockEvent = ({
     choice: null,
     progressAlongLeg: selectRoadblockProgress({ detourStops, obstacleLeg, routeModel }),
     detourStops,
-    challenge,
+    challenge: {
+      ...challenge,
+      durationSeconds: resolveTimerSeconds(challenge.durationSeconds, timerPace),
+    },
   };
 };
 

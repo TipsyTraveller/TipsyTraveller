@@ -58,6 +58,13 @@ import {
 } from './services/countryStopsService';
 import CountryStopPlacementForm from './components/CountryStopPlacementForm';
 import { getFinishPosition, getTeamScore } from './gameplayState';
+import {
+  getDiceTimingMultiplier,
+  getRoomRules,
+  resolveTimerSeconds,
+} from './constants/roomRules';
+import { DEFAULT_SETTINGS, getSettings } from '../shared/storage/userSettings';
+import useGameFeedback from './hooks/useGameFeedback';
 
 const EMPTY_GAME_DATA = {};
 
@@ -87,6 +94,7 @@ const useLatestCallback = (callback) => {
 
 const GameScreen = ({ route }) => {
   const gameData = route?.params?.gameData || EMPTY_GAME_DATA;
+  const roomRules = useMemo(() => getRoomRules(gameData), [gameData?.roomRules]);
   const gameID = route?.params?.gameID;
   const teamMembers = route?.params?.teamMembers;
   const multiplayerEnabled = Boolean(gameID && !String(gameID).startsWith('DEV-'));
@@ -110,11 +118,14 @@ const GameScreen = ({ route }) => {
   const [localPendingAction, setLocalPendingAction] = useState(null);
   const [localMovementPath, setLocalMovementPath] = useState(null);
   const [localTurnNumber, setLocalTurnNumber] = useState(1);
+  const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const usedMonumentIdsRef = useRef([]);
   const devForceChallengeTypeRef = useRef(null);
   const localRoadblockHistoryRef = useRef([]);
+  const feedbackEventRef = useRef({ dice: null, challenge: null, result: null });
+  const feedback = useGameFeedback(localSettings);
   const routeStops = useMemo(
     () => devRouteStops || resolveGameRouteStops(gameData),
     [devRouteStops, gameData?.duration, gameData?.routeStops]
@@ -146,6 +157,14 @@ const GameScreen = ({ route }) => {
   gamePieces.forEach((piece) => {
     if (!pieceRefs.current[piece.id]) pieceRefs.current[piece.id] = React.createRef();
   });
+
+  useEffect(() => {
+    let active = true;
+    getSettings().then((settings) => {
+      if (active) setLocalSettings(settings);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     setDevRouteStops(null);
@@ -234,7 +253,7 @@ const GameScreen = ({ route }) => {
       setMoveStartDelay(
         action.roadblockChoice && action.detourStartStep === undefined
           ? 0
-          : DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER
+          : Math.max(0, (Number(action.movementStartsAt) - multiplayer.serverNow()) / 1000)
       );
       setMoveTargets((previousTargets) => ({
         ...previousTargets,
@@ -255,8 +274,21 @@ const GameScreen = ({ route }) => {
         ? [gameplay.challengeStopData]
         : routeStops;
       const challengeStopIndex = gameplay.challengeStopData ? 0 : gameplay.challengeStop;
+      const challenge = getChallengeForStop(
+        challengeStopIndex,
+        challengeStops,
+        gameplay.challengeId
+      );
       setCurrentChallenge({
-        ...getChallengeForStop(challengeStopIndex, challengeStops, gameplay.challengeId),
+        ...challenge,
+        ...(Number.isFinite(Number(challenge.durationSeconds))
+          ? {
+              durationSeconds: resolveTimerSeconds(
+                challenge.durationSeconds,
+                roomRules.challengeTimerPace
+              ),
+            }
+          : {}),
         ...(gameplay.challengeRound || {}),
         ...(gameplay.challengeStopData
           ? { markerPosition: gameplay.challengeStopData.position, isDetour: true }
@@ -270,7 +302,14 @@ const GameScreen = ({ route }) => {
     setLastRoll(null);
     visualActionIdRef.current = null;
     setState(gameplay.phase === 'done' ? 'done' : 'waiting');
-  }, [gamePieces, multiplayer.gameplay, multiplayerEnabled, routeModel, routeStops]);
+  }, [
+    gamePieces,
+    multiplayer.gameplay,
+    multiplayerEnabled,
+    roomRules.challengeTimerPace,
+    routeModel,
+    routeStops,
+  ]);
 
   useEffect(() => {
     const action = multiplayer.gameplay?.currentAction;
@@ -290,6 +329,28 @@ const GameScreen = ({ route }) => {
 
   const activePiece = gamePieces[activeTeamIndex] || gamePieces[0];
   const activeProgress = teamProgress[activePiece?.id] || { currentLeg: 0, isDone: false };
+
+  useEffect(() => {
+    const actionId = multiplayerEnabled
+      ? multiplayer.gameplay?.currentAction?.id
+      : (lastRoll === null ? null : `local:${localTurnNumber}:${lastRoll}`);
+    if (!actionId || feedbackEventRef.current.dice === actionId) return;
+    feedbackEventRef.current.dice = actionId;
+    feedback.dice();
+  }, [feedback, lastRoll, localTurnNumber, multiplayer.gameplay?.currentAction?.id, multiplayerEnabled]);
+
+  useEffect(() => {
+    if (state !== 'challenge' || !currentChallenge) return;
+    const challengeKey = `${multiplayerEnabled ? multiplayer.gameplay?.turnNumber : localTurnNumber}:${currentChallenge.id}`;
+    if (feedbackEventRef.current.challenge !== challengeKey) {
+      feedbackEventRef.current.challenge = challengeKey;
+      feedback.challenge();
+    }
+    if (currentChallenge.stage === 'result' && feedbackEventRef.current.result !== challengeKey) {
+      feedbackEventRef.current.result = challengeKey;
+      feedback.result();
+    }
+  }, [currentChallenge, feedback, localTurnNumber, multiplayer.gameplay?.turnNumber, multiplayerEnabled, state]);
 
   const createLocalChallenge = (
     stopIndex,
@@ -323,6 +384,7 @@ const GameScreen = ({ route }) => {
         stopCountryId: stop?.id || null,
         usedMonumentIds: usedMonumentIdsRef.current,
         difficulty: gameData?.difficulty,
+        timerPace: roomRules.challengeTimerPace,
       });
       if (geoData) {
         usedMonumentIdsRef.current = geoData.nextUsedMonumentIds;
@@ -335,7 +397,21 @@ const GameScreen = ({ route }) => {
 
     return {
       ...challenge,
-      ...(getCountryWordRound(challenge, players, seed, gameData?.difficulty) || {}),
+      ...(Number.isFinite(Number(challenge.durationSeconds))
+        ? {
+            durationSeconds: resolveTimerSeconds(
+              challenge.durationSeconds,
+              roomRules.challengeTimerPace
+            ),
+          }
+        : {}),
+      ...(getCountryWordRound(
+        challenge,
+        players,
+        seed,
+        gameData?.difficulty,
+        roomRules.challengeTimerPace
+      ) || {}),
     };
   };
 
@@ -424,6 +500,18 @@ const GameScreen = ({ route }) => {
     setActiveTeamIndex(nextActiveTeamIndex);
     setLocalTurnNumber((turn) => turn + 1);
     setState('waiting');
+  };
+
+  const handleCancelAutoAdvance = () => {
+    if (multiplayerEnabled) {
+      multiplayer.cancelAutoAdvance().catch((error) => {
+        console.log('Unable to cancel synchronized auto-advance', error);
+      });
+      return;
+    }
+    setCurrentChallenge((challenge) => challenge
+      ? { ...challenge, autoAdvanceCancelled: true }
+      : challenge);
   };
 
   const handleCountryWordAction = (action) => {
@@ -534,6 +622,7 @@ const GameScreen = ({ route }) => {
           bestDistanceKm: evaluation.bestDistanceKm,
           pointsAwarded,
           drinkAwardId: `local:${localTurnNumber}:geo-penalty`,
+          resultAt: Date.now(),
         });
         return;
       }
@@ -593,6 +682,7 @@ const GameScreen = ({ route }) => {
           bestDistanceKm: evaluation.bestDistanceKm,
           pointsAwarded,
           drinkAwardId: `local:${localTurnNumber}:geo-penalty`,
+          resultAt: Date.now(),
         });
       }
       return;
@@ -650,6 +740,7 @@ const GameScreen = ({ route }) => {
       result: guessed ? 'guessed' : actionType,
       pointsAwarded,
       drinkAwardId: penaltySips > 0 ? `local:${localTurnNumber}:word-penalty` : null,
+      resultAt: Date.now(),
     });
   };
 
@@ -775,7 +866,12 @@ const GameScreen = ({ route }) => {
       roadblockHistory: localRoadblockHistoryRef.current,
     };
     if (shouldTriggerRoadblock({ action, gameplay: localGameplay })) {
-      const event = createRoadblockEvent({ action, routeModel, turnNumber: localTurnNumber });
+      const event = createRoadblockEvent({
+        action,
+        routeModel,
+        timerPace: roomRules.challengeTimerPace,
+        turnNumber: localTurnNumber,
+      });
       if (!event) {
         setLocalPendingAction(null);
         setLocalRoadblock(null);
@@ -829,6 +925,7 @@ const GameScreen = ({ route }) => {
       action,
       allowFallbackDetour: true,
       routeModel,
+      timerPace: roomRules.challengeTimerPace,
       turnNumber: localTurnNumber,
     });
     if (!event) return;
@@ -911,7 +1008,7 @@ const GameScreen = ({ route }) => {
   const requestRoll = async (value = rollDice(), inputMethod = 'shortcut') => {
     if (!multiplayerEnabled) {
       startLocalRoll(value, inputMethod === 'boardDice'
-        ? DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER
+        ? (DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER) * getDiceTimingMultiplier(roomRules)
         : 0);
       return;
     }
@@ -1353,8 +1450,10 @@ const GameScreen = ({ route }) => {
         movementRouteModel
           ? 1
           : (moveTargetLeg !== null ? Math.max(0, moveTargetLeg - moveStartLeg) : 0)
-      );
-  const cameraMode = state === 'moving' && isCarDriving ? 'follow' : 'done';
+      ) * getDiceTimingMultiplier(roomRules);
+  const cameraMode = localSettings.cameraFollow && state === 'moving' && isCarDriving
+    ? 'follow'
+    : 'done';
   const parkAtMovementEnd = state === 'challenge'
     && roadblockEvent?.choice === 'detour'
     && roadblockEvent.status === 'detourChallenge';
@@ -1383,6 +1482,7 @@ const GameScreen = ({ route }) => {
         canvasStyle={styles.canvas}
         currentLeg={currentLeg}
         diceEnabled={canRoll && !placementRequest}
+        fastDiceAnimations={roomRules.fastDiceAnimations}
         diceVisible={!placementRequest && state !== 'roadblock'}
         detourRouteModels={detourRouteModels}
         activeDetourTeamId={activeDetour ? activePiece?.id : null}
@@ -1463,6 +1563,7 @@ const GameScreen = ({ route }) => {
         visible={state === 'roadblock'}
       />
       <ChallengePopup
+        autoAdvance={roomRules.autoAdvance}
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
         challenge={currentChallenge}
         difficulty={gameData?.difficulty}
@@ -1474,6 +1575,7 @@ const GameScreen = ({ route }) => {
         teamLabel={activePiece?.label}
         visible={state === 'challenge'}
         onChallengeAction={handleCountryWordAction}
+        onCancelAutoAdvance={handleCancelAutoAdvance}
         onComplete={handleChallengeComplete}
         pieceRefs={pieceRefs.current}
         routeModel={routeModel}

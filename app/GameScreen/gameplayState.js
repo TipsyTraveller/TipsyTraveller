@@ -6,6 +6,7 @@ import {
 } from './constants/diceBounds';
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
 import { getPathRevealDuration } from './constants/route';
+import { getDiceTimingMultiplier } from './constants/roomRules';
 
 export const GAMEPLAY_SCHEMA_VERSION = 8;
 export const POINTS_PER_STOP = 10;
@@ -68,10 +69,11 @@ export const getNextActiveTeamId = (teamIds, teamProgress, currentTeamId) => {
   return null;
 };
 
-export const getRollTiming = ({ fromLeg, routeModel, targetLeg, now }) => {
+export const getRollTiming = ({ fromLeg, roomRules, routeModel, targetLeg, now }) => {
   const moveCount = Math.max(targetLeg - fromLeg, 0);
-  const resultDuration = (DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER) * 1000;
-  const revealDuration = getPathRevealDuration(moveCount) * 1000 + 80;
+  const timingMultiplier = getDiceTimingMultiplier(roomRules);
+  const resultDuration = (DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER) * timingMultiplier * 1000;
+  const revealDuration = getPathRevealDuration(moveCount) * timingMultiplier * 1000 + 80;
   const movementDuration = Math.max(
     0,
     ((routeModel.stopDistances[targetLeg] - routeModel.stopDistances[fromLeg]) / DRIVE_SPEED_UNITS_PER_SECOND) * 1000
@@ -85,7 +87,7 @@ export const getRollTiming = ({ fromLeg, routeModel, targetLeg, now }) => {
   };
 };
 
-export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, routeModel, value }) => {
+export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, roomRules, routeModel, value }) => {
   const activeProgress = gameplay?.teamProgress?.[gameplay.activeTeamId];
   const fromLeg = activeProgress?.currentLeg ?? 0;
   const safeValue = Math.max(1, Math.min(Math.round(Number(value) || 1), DICE_MAX_RESULT));
@@ -100,6 +102,6 @@ export const buildRollAction = ({ deviceID, gameplay, inputMethod, now, routeMod
     targetLeg,
     finalStopIndex: routeModel.finalStopIndex,
     inputMethod,
-    ...getRollTiming({ fromLeg, routeModel, targetLeg, now }),
+    ...getRollTiming({ fromLeg, roomRules, routeModel, targetLeg, now }),
   };
 };

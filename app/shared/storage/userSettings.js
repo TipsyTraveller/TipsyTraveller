@@ -37,7 +37,6 @@ export const DEFAULT_SETTINGS = {
   soundEffects: true,
   ambientMusic: false,
   hapticFeedback: true,
-  drinkMode: 'alcoholic', // 'alcoholic' | 'mocktail'
   challengeTimer: 'relaxed', // 'relaxed' | 'speed'
   fastDice: false,
   autoAdvanceTurn: false,
@@ -147,9 +146,10 @@ export const getSettings = async () => {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw);
+    const { drinkMode: _legacyDrinkMode, ...currentSettings } = parsed;
     return {
       ...DEFAULT_SETTINGS,
-      ...parsed,
+      ...currentSettings,
     };
   } catch (error) {
     console.warn('[userSettings] Failed to load settings:', error);
@@ -163,7 +163,8 @@ export const getSettings = async () => {
 export const saveSettings = async (settings) => {
   try {
     const current = await getSettings();
-    const merged = { ...current, ...settings };
+    const { drinkMode: _legacyDrinkMode, ...nextSettings } = settings || {};
+    const merged = { ...current, ...nextSettings };
     await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
     return merged;
   } catch (error) {

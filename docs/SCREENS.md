@@ -35,8 +35,10 @@ Development may start on `GameScreen` when `START_ON_DEV_GAME_SCREEN` in
   overlays, limits actions by role, and unlocks orientation on unmount.
 - `AccountScreen`: local username, badges, preferred vehicles, statistics, and device
   identity management in AsyncStorage.
-- `SettingsScreen`: local audio/haptics, party mode, challenge timing, board options,
-  guide, and app information.
+- `SettingsScreen`: local audio/haptics and camera preferences, host defaults for
+  synchronized challenge timing, dice speed, and auto-advance, plus the guide and
+  app information. New rooms snapshot the host defaults; changing another device's
+  defaults does not alter an active room.
 
 ## Navigation parameter contracts
 

@@ -50,7 +50,7 @@ export default function Settings({ navigation }) {
   const handleResetSettings = () => {
     Alert.alert(
       'Restore Default Settings',
-      'Reset all sound, gameplay, and drinking rule preferences to their default values?',
+      'Reset all presentation and room rule preferences to their default values?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -147,61 +147,14 @@ export default function Settings({ navigation }) {
           </View>
         </View>
 
-        {/* Section 2: Party & Drinking Rules */}
+        {/* Section 2: Room Rules */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>PARTY & DRINKING RULES</Text>
-          </View>
-
-          <Text style={styles.fieldLabel}>BEVERAGE & CHALLENGE MODE</Text>
-          <View style={styles.modeButtonGroup}>
-            <TouchableOpacity
-              style={[
-                styles.modeButton,
-                settings.drinkMode === 'alcoholic' && styles.modeButtonActive,
-              ]}
-              onPress={() => handleUpdateToggle('drinkMode', 'alcoholic')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modeButtonEmoji}>🍺</Text>
-              <Text
-                style={[
-                  styles.modeButtonText,
-                  settings.drinkMode === 'alcoholic' && styles.modeButtonTextActive,
-                ]}
-              >
-                CLASSIC TIPSY
-              </Text>
-              <Text style={styles.modeButtonDescription}>Beer, wine & party sips</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.modeButton,
-                settings.drinkMode === 'mocktail' && styles.modeButtonActive,
-              ]}
-              onPress={() => handleUpdateToggle('drinkMode', 'mocktail')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modeButtonEmoji}>🥤</Text>
-              <Text
-                style={[
-                  styles.modeButtonText,
-                  settings.drinkMode === 'mocktail' && styles.modeButtonTextActive,
-                ]}
-              >
-                SIPS & DARES
-              </Text>
-              <Text style={styles.modeButtonDescription}>Soft drinks, juice & dares</Text>
-            </TouchableOpacity>
+            <Text style={styles.cardTitle}>HOST ROOM RULES</Text>
           </View>
           <Text style={styles.fieldHint}>
-            {settings.drinkMode === 'alcoholic'
-              ? 'Standard rules apply: challenges prescribe sips or drinks.'
-              : 'Driver and non-alcoholic friendly: challenges prescribe soft sips or funny team dares!'}
+            These choices are copied into new rooms you host, so every player uses the same timing rules.
           </Text>
-
-          <View style={[styles.divider, { marginVertical: 14 }]} />
 
           <Text style={styles.fieldLabel}>CHALLENGE TIMER PACE</Text>
           <View style={styles.modeButtonGroup}>
@@ -242,7 +195,7 @@ export default function Settings({ navigation }) {
               >
                 SPEED RUN
               </Text>
-              <Text style={styles.modeButtonDescription}>45s quick pressure</Text>
+              <Text style={styles.modeButtonDescription}>25% shorter timers</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -256,7 +209,7 @@ export default function Settings({ navigation }) {
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingName}>Fast Dice Animations</Text>
-              <Text style={styles.settingSubtext}>Settle the roll quicker without waiting for physics bounce</Text>
+              <Text style={styles.settingSubtext}>Host preference copied into new rooms for every device</Text>
             </View>
             <Switch
               value={settings.fastDice}
@@ -286,7 +239,7 @@ export default function Settings({ navigation }) {
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingName}>Auto-Advance Turn</Text>
-              <Text style={styles.settingSubtext}>Advance turn automatically after closing completed challenge card</Text>
+              <Text style={styles.settingSubtext}>Start a cancellable countdown after results and drinks are recorded</Text>
             </View>
             <Switch
               value={settings.autoAdvanceTurn}
@@ -405,7 +358,7 @@ export default function Settings({ navigation }) {
         <View style={[styles.card, styles.resetCard]}>
           <Text style={styles.resetTitle}>RESET SETTINGS</Text>
           <Text style={styles.resetSubtext}>
-            Revert all game preferences, sound switches, and rules toggles back to original factory defaults.
+            Revert all presentation preferences and room rules to their original defaults.
           </Text>
           <TouchableOpacity
             style={styles.resetButton}

@@ -126,6 +126,8 @@ PODS:
     - Yoga
   - ExpoAsset (58.0.18):
     - ExpoModulesCore
+  - ExpoAudio (58.0.10):
+    - ExpoModulesCore
   - ExpoDomWebView (58.0.2):
     - ExpoModulesCore
   - ExpoFileSystem (58.0.11):
@@ -136,6 +138,8 @@ PODS:
     - ExpoModulesCore
     - ExpoModulesJSI
     - ReactCommon/turbomodule/core
+  - ExpoHaptics (58.0.7):
+    - ExpoModulesCore
   - ExpoKeepAwake (58.0.3):
     - ExpoModulesCore
   - ExpoLogBox (58.0.13):
@@ -2242,10 +2246,12 @@ DEPENDENCIES:
   - expo-dev-menu (from `../node_modules/expo-dev-menu`)
   - expo-dev-menu-interface (from `../node_modules/expo-dev-menu-interface/ios`)
   - ExpoAsset (from `../node_modules/expo-asset/ios`)
+  - ExpoAudio (from `../node_modules/expo-audio/ios`)
   - "ExpoDomWebView (from `../node_modules/@expo/dom-webview/ios`)"
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios/ExpoFileSystem.podspec`)
   - ExpoFont (from `../node_modules/expo-font/ios/ExpoFont.podspec`)
   - ExpoGL (from `../node_modules/expo-gl`)
+  - ExpoHaptics (from `../node_modules/expo-haptics/ios`)
   - ExpoKeepAwake (from `../node_modules/expo-keep-awake/ios`)
   - "ExpoLogBox (from `../node_modules/@expo/log-box`)"
   - ExpoModulesCore (from `../node_modules/expo-modules-core/ExpoModulesCore.podspec`)
@@ -2375,6 +2381,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-dev-menu-interface/ios"
   ExpoAsset:
     :path: "../node_modules/expo-asset/ios"
+  ExpoAudio:
+    :path: "../node_modules/expo-audio/ios"
   ExpoDomWebView:
     :path: "../node_modules/@expo/dom-webview/ios"
   ExpoFileSystem:
@@ -2383,6 +2391,8 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/expo-font/ios/ExpoFont.podspec"
   ExpoGL:
     :path: "../node_modules/expo-gl"
+  ExpoHaptics:
+    :path: "../node_modules/expo-haptics/ios"
   ExpoKeepAwake:
     :path: "../node_modules/expo-keep-awake/ios"
   ExpoLogBox:
@@ -2597,10 +2607,12 @@ SPEC CHECKSUMS:
   expo-dev-menu: 467097ec7bcafceb0fd2d32328bc6315a0ed6ba9
   expo-dev-menu-interface: d304e400271187edf1534704a4a05dcc140076e2
   ExpoAsset: 9548991f0332bd8ed8819299e0b413d713104a1a
+  ExpoAudio: 7f919daf0ebf1b0e1cf8b7464b7c85be6664a412
   ExpoDomWebView: b2a6d681b9d34c23b1f584321386ca8da1d36afb
   ExpoFileSystem: b35d87e5219408a4052ee5adde99962d014efb09
   ExpoFont: b215bc738b2e3fba7ffed79903a6fccf66959dd0
   ExpoGL: 79eb0ca61f7e13317fac3beec5bd6ce94587ac8c
+  ExpoHaptics: c95d1e2162895e710b68dd912eec619900ebdf33
   ExpoKeepAwake: fd18a5d233329013c578030ad399d8e10b252b5f
   ExpoLogBox: 624d64042d73abe0dc230a24b1a9f835adb2cec9
   ExpoModulesCore: 53ee2e8700e5ea5c9a4c1c2829c1b87b53e8e485

@@ -18,6 +18,7 @@ identifies the Firebase project; it is not a secret or an authorization boundary
 ```text
 games/{gameID}
   difficulty, duration, nrOfPlayers, persons
+  roomRules/{challengeTimerPace, fastDiceAnimations, autoAdvance}
   HostName, createdAt, hostDeviceID, status, disconnectedAt?
   teamModels/{team1|team2|team3}: modelId
   routeStops[]: immutable ordered room snapshot
@@ -103,6 +104,12 @@ they are created. Result transactions record a stable `drinkAwardId` and accept 
 the expected pre-result stage, so retrying a result cannot apply its drinks twice.
 Drink adjustments update the stable per-player ledger transactionally; team-wide
 adjustments apply the delta once to every current roster player.
+
+The host snapshots challenge timer pace, fast-dice animation mode, and auto-advance
+into `roomRules` at room creation. Timer durations and roll deadlines derive from
+that snapshot on every client. Typed challenge results store `resultAt` only after
+score and drink changes are committed; auto-advance counts down from that timestamp,
+and its cancellation flag is written transactionally into the challenge round.
 
 Only the active leader's UI may roll or complete a challenge; only the host may
 restart. Any connected client may attempt idempotent movement finalization after the

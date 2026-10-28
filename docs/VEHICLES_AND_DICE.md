@@ -6,6 +6,8 @@
 The six rendered faces show 1, 2, and 3 twice each, matching the only valid gameplay
 results. `DICE_MAX_RESULT`, result timing, and interaction bounds live under
 `constants/` and must agree with synchronized validation and Dev Portal controls.
+The host's snapshotted fast-dice room rule scales the result/reveal lead-in in both
+the Firebase movement timestamps and each client's dice presentation.
 
 Local animation modes are `idle`, `held`, `throwing`, `result`, and `hidden`.
 Pointer movement projects onto a foreground hold plane; release derives a direction,

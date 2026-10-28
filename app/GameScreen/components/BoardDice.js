@@ -291,7 +291,14 @@ const ThrowMeLabel = ({ labelRef }) => (
   </group>
 );
 
-const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollAction, visible = true }) => {
+const BoardDice = memo(({
+  enabled = true,
+  fastAnimations = false,
+  onRollComplete,
+  onRollStart,
+  rollAction,
+  visible = true,
+}) => {
   const { camera } = useThree();
   const diceRef = useRef();
   const faceRefs = useRef({});
@@ -531,7 +538,8 @@ const BoardDice = memo(({ enabled = true, onRollComplete, onRollStart, rollActio
     }
 
     const elapsed = clock.elapsedTime - resultAnimationRef.current.startTime;
-    const progress = Math.min(elapsed / DICE_RESULT_DURATION, 1);
+    const resultDuration = DICE_RESULT_DURATION * (fastAnimations ? 0.55 : 1);
+    const progress = Math.min(elapsed / resultDuration, 1);
 
     resultTargetPosition
       .set(0, RESULT_SCREEN_Y_OFFSET, -RESULT_SCREEN_DISTANCE)

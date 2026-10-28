@@ -1,6 +1,6 @@
 # TipsyTraveller architecture
 
-Last reviewed against source: 25 October 2026.
+Last reviewed against source: 27 October 2026.
 
 TipsyTraveller is an Expo/React Native mobile party board game. React Native owns
 screens and overlays; React Three Fiber, Three.js, and Expo GL own the 3D board.

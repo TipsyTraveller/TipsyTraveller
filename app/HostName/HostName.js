@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import {ref, set, get, onDisconnect, child, push, serverTimestamp} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getProfile } from "../shared/storage/userSettings";
+import { getProfile, getSettings } from "../shared/storage/userSettings";
+import { roomRulesFromSettings } from "../GameScreen/constants/roomRules";
 //COMPONENTS
 import Button from "../shared/components/Button/Button"
 import Header from "../shared/components/Header/Header";
@@ -40,7 +41,12 @@ export default function HostName ({ navigation, route }) {
                 deviceID = Math.random().toString(36).substring(2) + Date.now().toString(36);
                 await AsyncStorage.setItem("deviceID", deviceID);
             }
-            const newGameID = await generateUniqueGame(gameSettings);
+            const localSettings = await getSettings();
+            const synchronizedSettings = {
+                ...gameSettings,
+                roomRules: roomRulesFromSettings(localSettings),
+            };
+            const newGameID = await generateUniqueGame(synchronizedSettings);
             await set(ref(db, `players/${newGameID}`), {playerCounter: 0, team1: "", team2: "", team3: ""});
             const playersRef = ref(db, `players/${newGameID}/team${1}`);
             await push(playersRef, {name: trimmedUserName, isLeader: true, deviceID: deviceID} );
@@ -59,7 +65,7 @@ export default function HostName ({ navigation, route }) {
                             gameID: newGameID,
                             isHost: isHost,
                             hostName: trimmedUserName,
-                            gameSettings,
+                            gameSettings: synchronizedSettings,
                         },
                     },
                 ],

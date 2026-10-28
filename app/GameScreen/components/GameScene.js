@@ -83,6 +83,7 @@ const GameScene = memo(({
   canvasStyle,
   currentLeg,
   diceEnabled,
+  fastDiceAnimations = false,
   diceVisible = true,
   detourRouteModels,
   driving,
@@ -272,6 +273,7 @@ const GameScene = memo(({
     />
     <BoardDice
       enabled={diceEnabled}
+      fastAnimations={fastDiceAnimations}
       onRollComplete={onDiceRoll}
       onRollStart={onDiceRollStart}
       rollAction={rollAction}
