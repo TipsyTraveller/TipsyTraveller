@@ -25,7 +25,7 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
 - Navigation/room setup: create, join, edit settings, start, and back-navigation flow.
 - Multiplayer/game rules: use at least two independent installations and verify all
   clients converge on the same canonical phase, action, progress, challenge, score,
-  finish order, and restart state.
+  finish order, and rematch state.
 - 3D/native/GPU: test the affected physical iOS/Android platform. Web and simulator
   results do not establish physical-device performance or Expo GL correctness.
 
@@ -61,7 +61,12 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
 5. Exercise both roadblock choices, reconnect during the choice and between detour
    turns, and verify turn ownership, intermediate challenges, per-team detour
    progress, and final canonical progress on both clients.
-6. Restart as host and verify initial progress returns without changing the route.
+6. Finish the tour and verify every client shows the same winner, finish positions,
+   scores, and per-player drinks under the correct team.
+7. Start a rematch as host and verify the room, roster, teams, vehicles, difficulty,
+   and room rules remain while the route, session ID, scores, drinks, progress,
+   challenges, roadblocks, and used content reset on every client. Verify a non-host
+   cannot start it and every player can leave to Home.
 
 ## Reconnection and performance
 

@@ -4,7 +4,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -27,13 +26,14 @@ const GameHud = ({
   activeTeamColor = '#1BA39C',
   activeTeamId,
   activeTeamLabel = 'Team 1',
-  canRestart,
+  canRematch,
   fromName = 'Start',
   gamePieces = [],
   isDetour = false,
   lastRoll,
   onAdjustDrinks,
-  onRestart,
+  onLeaveGame,
+  onRematch,
   progress = '1 / 1',
   remainingMoves = 0,
   routeStopNames = [],
@@ -401,14 +401,16 @@ const GameHud = ({
           >
             {standings.map((piece, index) => {
               const pieceProgress = teamProgress[piece.id] || {};
+              const finishPosition = Number(pieceProgress.finishPosition) || index + 1;
               const drinks = getTeamDrinkTotal(pieceProgress.playerDrinks);
               const players = getTeamPlayers(teamMembers, piece.id);
               return (
                 <View key={piece.id} style={styles.standingBlock}>
                   <View style={styles.standingRow}>
-                    <Text style={styles.standingPlace}>{`#${index + 1}`}</Text>
+                    <Text style={styles.standingPlace}>{`#${finishPosition}`}</Text>
                     <View style={[styles.teamDot, { backgroundColor: piece.color }]} />
                     <Text style={styles.standingTeam}>{piece.label}</Text>
+                    <Text style={styles.standingFinish}>{`FINISH ${finishPosition}`}</Text>
                     <Text style={styles.standingDrinks}>{`🍺 ${drinks}`}</Text>
                     <Text style={styles.standingScore}>{`${pieceProgress.score || 0} PTS`}</Text>
                   </View>
@@ -421,18 +423,35 @@ const GameHud = ({
               );
             })}
           </ScrollView>
-          {canRestart ? (
-            <TouchableOpacity
-              accessibilityLabel="Restart game"
-              accessibilityRole="button"
-              onPress={onRestart}
-              style={styles.restartButton}
-            >
-              <Text style={styles.restartText}>Restart</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={styles.hostRestartText}>Host restarts</Text>
+          {!canRematch && (
+            <Text style={styles.hostRestartText}>Waiting for the host to start a rematch</Text>
           )}
+          <View style={styles.doneActions}>
+            <Pressable
+              accessibilityLabel="Leave game"
+              accessibilityRole="button"
+              onPress={onLeaveGame}
+              style={({ pressed }) => [
+                styles.leaveButton,
+                pressed && styles.controlButtonPressed,
+              ]}
+            >
+              <Text style={styles.leaveText}>Leave game</Text>
+            </Pressable>
+            {canRematch && (
+              <Pressable
+                accessibilityLabel="Start rematch"
+                accessibilityRole="button"
+                onPress={onRematch}
+                style={({ pressed }) => [
+                  styles.restartButton,
+                  pressed && styles.controlButtonPressed,
+                ]}
+              >
+                <Text style={styles.restartText}>Rematch</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       )}
     </>
@@ -895,8 +914,18 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixelbold',
     fontSize: 8,
   },
-  restartButton: {
+  standingFinish: {
+    color: '#1BA39C',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 6,
+  },
+  doneActions: {
+    flexDirection: 'row',
+    gap: 8,
     marginTop: 8,
+  },
+  restartButton: {
+    flex: 1,
     minHeight: 32,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -905,6 +934,23 @@ const styles = StyleSheet.create({
     borderColor: '#111111',
     borderRadius: 7,
     backgroundColor: '#1BA39C',
+  },
+  leaveButton: {
+    flex: 1,
+    minHeight: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#111111',
+    borderRadius: 7,
+    backgroundColor: '#FFF1CD',
+  },
+  leaveText: {
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    textTransform: 'uppercase',
   },
   restartText: {
     color: '#FFFFFF',

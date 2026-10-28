@@ -677,3 +677,24 @@ export const reorderCountryStop = async (stopId, direction) => {
 };
 
 export const getRouteSnapshotForDuration = async (duration) => getStopsForDuration(await getCountryStops(), duration);
+
+const getRouteSignature = (routeStops) => (
+  (Array.isArray(routeStops) ? routeStops : []).map((stop) => stop?.id).join('|')
+);
+
+export const getFreshRouteSnapshotForDuration = async (duration, currentRouteStops) => {
+  const currentSignature = getRouteSignature(currentRouteStops);
+  const countryStops = await getCountryStops();
+  let nextRoute = getStopsForDuration(countryStops, duration);
+
+  for (let attempt = 0; attempt < 5 && getRouteSignature(nextRoute) === currentSignature; attempt += 1) {
+    nextRoute = getStopsForDuration(countryStops, duration);
+  }
+
+  for (let variant = 0; variant < 20 && getRouteSignature(nextRoute) === currentSignature; variant += 1) {
+    const seededValue = (variant + 0.5) / 20;
+    nextRoute = getStopsForDuration(countryStops, duration, () => seededValue);
+  }
+
+  return nextRoute;
+};

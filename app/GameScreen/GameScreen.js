@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { onValue, ref } from 'firebase/database';
+import { db } from '../../firebaseConfig';
 import ChallengePopup from './components/ChallengePopup';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
@@ -53,6 +55,7 @@ import {
 } from './constants/countryStops';
 import {
   getCachedMonumentPool,
+  getFreshRouteSnapshotForDuration,
   subscribeCountryStops,
   updateCountryStop,
 } from './services/countryStopsService';
@@ -92,7 +95,7 @@ const useLatestCallback = (callback) => {
   return useCallback((...args) => callbackRef.current(...args), []);
 };
 
-const GameScreen = ({ route }) => {
+const GameScreen = ({ navigation, route }) => {
   const gameData = route?.params?.gameData || EMPTY_GAME_DATA;
   const roomRules = useMemo(() => getRoomRules(gameData), [gameData?.roomRules]);
   const gameID = route?.params?.gameID;
@@ -110,6 +113,7 @@ const GameScreen = ({ route }) => {
   const [moveTargets, setMoveTargets] = useState({});
   const [currentChallenge, setCurrentChallenge] = useState(null);
   const [devRouteStops, setDevRouteStops] = useState(null);
+  const [multiplayerRouteStops, setMultiplayerRouteStops] = useState(null);
   const [placementRequest, setPlacementRequest] = useState(null);
   const [placementPosition, setPlacementPosition] = useState(null);
   const [isDevDrive, setIsDevDrive] = useState(false);
@@ -121,14 +125,15 @@ const GameScreen = ({ route }) => {
   const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
+  const multiplayerSessionIdRef = useRef(null);
   const usedMonumentIdsRef = useRef([]);
   const devForceChallengeTypeRef = useRef(null);
   const localRoadblockHistoryRef = useRef([]);
   const feedbackEventRef = useRef({ dice: null, challenge: null, result: null });
   const feedback = useGameFeedback(localSettings);
   const routeStops = useMemo(
-    () => devRouteStops || resolveGameRouteStops(gameData),
-    [devRouteStops, gameData?.duration, gameData?.routeStops]
+    () => devRouteStops || multiplayerRouteStops || resolveGameRouteStops(gameData),
+    [devRouteStops, gameData?.duration, gameData?.routeStops, multiplayerRouteStops]
   );
   const routeModel = useMemo(() => createRouteModel(routeStops), [routeStops]);
   const baseGamePieces = useMemo(() => getGamePiecesForGame(gameData), [gameData?.nrOfPlayers]);
@@ -173,10 +178,41 @@ const GameScreen = ({ route }) => {
   }, [gameData]);
 
   useEffect(() => {
+    if (!multiplayerEnabled) {
+      setMultiplayerRouteStops(null);
+      return undefined;
+    }
+
+    return onValue(ref(db, `games/${gameID}/routeStops`), (snapshot) => {
+      if (snapshot.exists()) setMultiplayerRouteStops(snapshot.val());
+    });
+  }, [gameID, multiplayerEnabled]);
+
+  useEffect(() => {
     if (Platform.OS === 'web') return undefined;
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     return () => ScreenOrientation.unlockAsync();
   }, []);
+
+  useEffect(() => {
+    const sessionId = multiplayer.gameplay?.sessionId;
+    if (!multiplayerEnabled || !sessionId || multiplayerSessionIdRef.current === sessionId) return;
+
+    multiplayerSessionIdRef.current = sessionId;
+    activeCarProgressRef.current = 0;
+    visualActionIdRef.current = null;
+    feedbackEventRef.current = { dice: null, challenge: null, result: null };
+    setLastRoll(null);
+    setRemainingMoves(0);
+    setMovingPieceId(null);
+    setMoveStartDelay(0);
+    setMoveStartLeg(0);
+    setPassedLeg(0);
+    setIsCarDriving(false);
+    setMoveTargets({});
+    setCurrentChallenge(null);
+    setRoadblocks([]);
+  }, [multiplayer.gameplay?.sessionId, multiplayerEnabled]);
 
   useEffect(() => {
     if (multiplayerEnabled) return;
@@ -439,12 +475,20 @@ const GameScreen = ({ route }) => {
     setTeamProgress(createInitialTeamProgress(gamePieces, currentTeamMembers));
   };
 
-  const handleRestart = () => {
+  const handleRematch = async () => {
     if (multiplayerEnabled) {
-      multiplayer.restart().catch((error) => console.log('Unable to restart game', error));
+      multiplayer.rematch().catch((error) => console.log('Unable to start rematch', error));
       return;
     }
+    setDevRouteStops(await getFreshRouteSnapshotForDuration(
+      gameData?.duration || 'long',
+      routeStops
+    ));
     resetLocalGame();
+  };
+
+  const handleLeaveGame = () => {
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   };
 
   const handleChallengeComplete = () => {
@@ -1222,8 +1266,8 @@ const GameScreen = ({ route }) => {
   const stableRoadblockTest = useLatestCallback(startLocalRoadblockTest);
   const requestRollRef = useRef(requestRoll);
   requestRollRef.current = requestRoll;
-  const handleRestartRef = useRef(handleRestart);
-  handleRestartRef.current = handleRestart;
+  const handleRestartRef = useRef(handleRematch);
+  handleRestartRef.current = handleRematch;
   const handleSkipChallengeRef = useRef(handleSkipChallenge);
   handleSkipChallengeRef.current = handleSkipChallenge;
   const activeProgressRef = useRef(activeProgress);
@@ -1527,13 +1571,14 @@ const GameScreen = ({ route }) => {
         activeTeamId={activePiece?.id}
         activeTeamLabel={activePiece?.label}
         activeTeamScore={activeProgress.score || 0}
-        canRestart={!multiplayerEnabled || multiplayer.isHost}
+        canRematch={!multiplayerEnabled || multiplayer.isHost}
         fromName={fromName}
         gamePieces={gamePieces}
         isDetour={Boolean(activeDetour || (roadblockEvent && roadblockEvent.choice === 'detour'))}
         lastRoll={lastRoll}
         onAdjustDrinks={handleAdjustDrinks}
-        onRestart={handleRestart}
+        onLeaveGame={handleLeaveGame}
+        onRematch={handleRematch}
         progress={progress}
         remainingMoves={remainingMoves}
         routeStopNames={routeModel.stopNames}

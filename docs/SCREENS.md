@@ -32,7 +32,8 @@ Development may start on `GameScreen` when `START_ON_DEV_GAME_SCREEN` in
   preferred vehicle, lets leaders choose one vehicle per team, observes readiness,
   and enters the game when host initialization completes. Non-leaders spectate readiness.
 - `GameScreen`: locks landscape, restores canonical gameplay, coordinates board and
-  overlays, limits actions by role, and unlocks orientation on unmount.
+  overlays, limits actions by role, shows canonical final standings, lets every player
+  leave, lets only the host start a rematch, and unlocks orientation on unmount.
 - `AccountScreen`: local username, badges, preferred vehicles, and gameplay-driven
   career statistics in AsyncStorage. Device identity regeneration remains in the
   development portal rather than the player account.

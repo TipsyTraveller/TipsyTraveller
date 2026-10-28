@@ -24,8 +24,9 @@ Duration chooses a fresh
 Ireland, Portugal, Norway, or Finland and ending in Greece. Selection preserves
 geographic order, unique countries, at least 0.75 board units between stops, turns
 no sharper than 110 degrees, and non-crossing legs. The route families and the
-51-country fallback catalogue are in `constants/countryStops.js`; a room snapshot
-never changes when authored content later changes.
+51-country fallback catalogue are in `constants/countryStops.js`; a session snapshot
+does not change when authored content later changes. A rematch replaces it with a
+new route generated for the same duration.
 
 ## Scoring and movement
 
@@ -50,7 +51,7 @@ never changes when authored content later changes.
 | `roadblock` | Leader chooses hard challenge or detour | Active leader chooses |
 | `moving` | Vehicle travels to a canonical target | No roll |
 | `challenge` | Landing or detour challenge is open | Active leader completes it |
-| `done` | All teams finished | Host may restart |
+| `done` | All teams finished | Host may start a rematch; everyone may leave |
 
 `GameScreen` renders the local state machine. In real rooms, the versioned Firebase
 record is authoritative; development mock rooms use the local path. The controller
@@ -65,8 +66,10 @@ auto-advance is enabled, a four-second countdown starts only from a synchronized
 typed-challenge result timestamp, after score and drink changes are recorded; the
 active leader can cancel it for every client.
 
-Restart is host-only in multiplayer and transactionally replaces the gameplay record
-with a new session ID and initial progress. It does not replace the room route.
+Rematch is host-only in multiplayer and transactionally replaces the route snapshot
+and gameplay record together. It keeps the room, roster, team vehicles, difficulty,
+duration, and room rules, while assigning a new session ID and clearing scores,
+drinks, progress, finish order, challenges, roadblocks, and used content.
 
 ## Roadblocks
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { onValue, ref, runTransaction } from 'firebase/database';
+import { get, onValue, ref, runTransaction } from 'firebase/database';
 import { db } from '../../../firebaseConfig';
 import {
   addDrinksToPlayer,
@@ -43,6 +43,7 @@ import {
 import { getRoomRules } from '../constants/roomRules';
 import { incrementTeamCareerCounter, normalizeCareerCounters } from '../careerStats';
 import { getProfile, syncCareerStats } from '../../shared/storage/userSettings';
+import { getFreshRouteSnapshotForDuration } from '../services/countryStopsService';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
   if (!deviceID) return { localTeamId: null, localPlayerId: null, isTeamLeader: false };
@@ -1094,17 +1095,40 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     return result.committed;
   }, [enabled, gameID, now]);
 
-  const restart = useCallback(async () => {
+  const rematch = useCallback(async () => {
     if (!enabled || !gameID || !isHost) return false;
 
-    const nextGameplay = createInitialGameplay(gameDataRef.current, now(), teamMembersRef.current);
-    const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
-      if (!current || current.phase !== 'done') return undefined;
-      return nextGameplay;
+    const expectedSessionId = gameplay?.sessionId;
+    const routeSnapshot = await get(ref(db, `games/${gameID}/routeStops`));
+    const currentRouteStops = routeSnapshot.exists()
+      ? routeSnapshot.val()
+      : gameDataRef.current?.routeStops;
+    const nextRouteStops = await getFreshRouteSnapshotForDuration(
+      gameDataRef.current?.duration,
+      currentRouteStops
+    );
+    const nextGameplay = createInitialGameplay(
+      { ...gameDataRef.current, routeStops: nextRouteStops },
+      now(),
+      teamMembersRef.current
+    );
+    const result = await runTransaction(ref(db, `games/${gameID}`), (currentGame) => {
+      if (
+        !currentGame
+        || currentGame.gameplay?.phase !== 'done'
+        || currentGame.gameplay?.sessionId !== expectedSessionId
+      ) return undefined;
+
+      return {
+        ...currentGame,
+        routeStops: nextRouteStops,
+        gameplay: nextGameplay,
+        status: 'game',
+      };
     });
 
     return result.committed;
-  }, [enabled, gameID, isHost, now]);
+  }, [enabled, gameID, gameplay?.sessionId, isHost, now]);
 
   return {
     ...identity,
@@ -1118,7 +1142,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     isConnected,
     isHost,
     isLoading,
-    restart,
+    rematch,
     resolveRoadblock,
     serverNow: now,
     submitRoll,
