@@ -41,20 +41,22 @@ import {
   shouldTriggerRoadblock,
 } from '../constants/roadblocks';
 import { getRoomRules } from '../constants/roomRules';
+import { incrementTeamCareerCounter, normalizeCareerCounters } from '../careerStats';
+import { getProfile, syncCareerStats } from '../../shared/storage/userSettings';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
-  if (!deviceID) return { localTeamId: null, isTeamLeader: false };
+  if (!deviceID) return { localTeamId: null, localPlayerId: null, isTeamLeader: false };
 
   for (const [teamId, members] of Object.entries(teamMembers || {})) {
     if (!teamId.startsWith('team') || !members || typeof members !== 'object') continue;
 
-    const player = Object.values(members).find((member) => member?.deviceID === deviceID);
+    const player = Object.entries(members).find(([, member]) => member?.deviceID === deviceID);
     if (player) {
-      return { localTeamId: teamId, isTeamLeader: Boolean(player.isLeader) };
+      return { localTeamId: teamId, localPlayerId: player[0], isTeamLeader: Boolean(player[1].isLeader) };
     }
   }
 
-  return { localTeamId: null, isTeamLeader: false };
+  return { localTeamId: null, localPlayerId: null, isTeamLeader: false };
 };
 
 export default function useMultiplayerGame({ enabled, gameData, gameID, routeModel, teamMembers }) {
@@ -119,13 +121,19 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       if (!current?.teamProgress) return undefined;
       const normalized = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
-      if (JSON.stringify(normalized) === JSON.stringify(current.teamProgress)) return undefined;
+      const careerCounters = normalizeCareerCounters(current.careerCounters, liveTeamMembers);
+      if (
+        JSON.stringify(normalized) === JSON.stringify(current.teamProgress)
+        && JSON.stringify(careerCounters) === JSON.stringify(current.careerCounters || {})
+        && Number(current.schemaVersion) >= 9
+      ) return undefined;
 
       return {
         ...current,
-        schemaVersion: Math.max(Number(current.schemaVersion) || 0, 8),
+        schemaVersion: Math.max(Number(current.schemaVersion) || 0, 9),
         revision: (current.revision || 0) + 1,
         teamProgress: normalized,
+        careerCounters,
         updatedAt: now(),
       };
     }).catch((error) => {
@@ -143,6 +151,27 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     && identity.localTeamId
     && identity.localTeamId === gameplay?.activeTeamId
   );
+
+  useEffect(() => {
+    if (!enabled || !gameplay?.sessionId || !identity.localPlayerId || !identity.localTeamId) return;
+    const rosterProfileId = liveTeamMembers?.[identity.localTeamId]?.[identity.localPlayerId]?.profileId;
+    if (!rosterProfileId) return;
+
+    getProfile().then((profile) => {
+      if (!profile.isPersistent || profile.profileId !== rosterProfileId) return;
+      const counters = gameplay.careerCounters?.[identity.localPlayerId] || {};
+      const sips = gameplay.teamProgress?.[identity.localTeamId]
+        ?.playerDrinks?.[identity.localPlayerId]?.drinks || 0;
+      return syncCareerStats({
+        profileId: profile.profileId,
+        sessionId: gameplay.sessionId,
+        playerId: identity.localPlayerId,
+        sessionStats: { ...counters, sipsLogged: sips },
+      });
+    }).catch((error) => {
+      console.warn('Unable to synchronize career statistics', error);
+    });
+  }, [enabled, gameplay, identity.localPlayerId, identity.localTeamId, liveTeamMembers]);
   const submitRoll = useCallback(async (value, inputMethod = 'shortcut') => {
     if (!enabled || !gameID || !canControlTurn || !deviceID) return false;
 
@@ -203,6 +232,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             detourStep: targetStep,
             detourSegmentType: targetStep >= finalStep ? 'destination' : 'waypoint',
           },
+          careerCounters: incrementTeamCareerCounter(
+            current.careerCounters,
+            teamMembersRef.current,
+            current.activeTeamId,
+            'diceRolls'
+          ),
           challengeStop: null,
           challengeStopData: null,
           challengeId: null,
@@ -240,6 +275,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         phase: roadblock ? 'roadblock' : 'moving',
         revision: (current.revision || 0) + 1,
         currentAction: nextAction,
+        careerCounters: incrementTeamCareerCounter(
+          current.careerCounters,
+          teamMembersRef.current,
+          current.activeTeamId,
+          'diceRolls'
+        ),
         challengeStop: null,
         challengeStopData: null,
         challengeId: null,
@@ -449,6 +490,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
           revision: (current.revision || 0) + 1,
           teamProgress,
+          careerCounters: hasFinishedRoute
+            ? incrementTeamCareerCounter(
+                current.careerCounters,
+                teamMembersRef.current,
+                action.teamId,
+                'toursCompleted'
+              )
+            : current.careerCounters,
           currentAction: null,
           challengeStop: null,
           challengeStopData: null,
@@ -476,6 +525,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           finishPosition,
         },
       };
+      const careerCounters = hasFinishedRoute
+        ? incrementTeamCareerCounter(
+            current.careerCounters,
+            teamMembersRef.current,
+            action.teamId,
+            'toursCompleted'
+          )
+        : current.careerCounters;
 
       if (action.roadblockChoice) {
         const nextTeamId = getNextActiveTeamId(teamIds, teamProgress, action.teamId);
@@ -486,6 +543,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
           revision: (current.revision || 0) + 1,
           teamProgress,
+          careerCounters,
           currentAction: null,
           challengeStop: null,
           challengeStopData: null,
@@ -545,6 +603,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           phase: 'challenge',
           revision: (current.revision || 0) + 1,
           teamProgress,
+          careerCounters,
           challengeStop: action.targetLeg,
           challengeStopData: null,
           challengeId,
@@ -563,6 +622,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
         revision: (current.revision || 0) + 1,
         teamProgress,
+        careerCounters,
         currentAction: null,
         challengeStop: null,
         challengeStopData: null,
@@ -919,6 +979,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
               },
             },
           },
+          careerCounters: incrementTeamCareerCounter(
+            current.careerCounters,
+            teamMembersRef.current,
+            current.activeTeamId,
+            'challengesCompleted'
+          ),
           currentAction: null,
           challengeStop: null,
           challengeStopData: null,
@@ -942,6 +1008,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         activeTeamId: nextTeamId || current.activeTeamId,
         turnNumber: nextTeamId ? (current.turnNumber || 1) + 1 : current.turnNumber,
         revision: (current.revision || 0) + 1,
+        careerCounters: incrementTeamCareerCounter(
+          current.careerCounters,
+          teamMembersRef.current,
+          current.activeTeamId,
+          'challengesCompleted'
+        ),
         currentAction: null,
         challengeStop: null,
         challengeStopData: null,

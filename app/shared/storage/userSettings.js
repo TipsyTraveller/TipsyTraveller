@@ -4,7 +4,9 @@ export const STORAGE_KEYS = {
   PLAYER_NAME: '@tipsy_player_name',
   PLAYER_BADGE: '@tipsy_player_badge',
   PREFERRED_VEHICLE: '@tipsy_preferred_vehicle',
+  PROFILE_ID: '@tipsy_profile_id',
   STATS: '@tipsy_player_stats',
+  CAREER_SYNC: '@tipsy_career_sync',
   SETTINGS: '@tipsy_settings',
   DEVICE_ID: 'deviceID',
 };
@@ -23,7 +25,7 @@ export const BADGE_OPTIONS = [
 export const DEFAULT_PROFILE = {
   name: '',
   badge: 'legend',
-  preferredVehicle: 'car1',
+  preferredVehicle: 'barrel_roadster',
 };
 
 export const DEFAULT_STATS = {
@@ -48,15 +50,23 @@ export const DEFAULT_SETTINGS = {
  */
 export const getProfile = async () => {
   try {
-    const [name, badge, vehicle] = await Promise.all([
+    const [name, badge, vehicle, storedProfileId] = await Promise.all([
       AsyncStorage.getItem(STORAGE_KEYS.PLAYER_NAME),
       AsyncStorage.getItem(STORAGE_KEYS.PLAYER_BADGE),
       AsyncStorage.getItem(STORAGE_KEYS.PREFERRED_VEHICLE),
+      AsyncStorage.getItem(STORAGE_KEYS.PROFILE_ID),
     ]);
+    let profileId = storedProfileId;
+    if (name && !profileId) {
+      profileId = `profile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      await AsyncStorage.setItem(STORAGE_KEYS.PROFILE_ID, profileId);
+    }
     return {
       name: name || DEFAULT_PROFILE.name,
       badge: badge || DEFAULT_PROFILE.badge,
-      preferredVehicle: vehicle || DEFAULT_PROFILE.preferredVehicle,
+      preferredVehicle: vehicle === 'car1' ? DEFAULT_PROFILE.preferredVehicle : (vehicle || DEFAULT_PROFILE.preferredVehicle),
+      profileId: name ? profileId : null,
+      isPersistent: Boolean(name && profileId),
     };
   } catch (error) {
     console.warn('[userSettings] Failed to load profile:', error);
@@ -71,7 +81,12 @@ export const saveProfile = async ({ name, badge, preferredVehicle }) => {
   try {
     const operations = [];
     if (typeof name === 'string') {
-      operations.push(AsyncStorage.setItem(STORAGE_KEYS.PLAYER_NAME, name.trim()));
+      const trimmedName = name.trim();
+      operations.push(AsyncStorage.setItem(STORAGE_KEYS.PLAYER_NAME, trimmedName));
+      if (trimmedName && !await AsyncStorage.getItem(STORAGE_KEYS.PROFILE_ID)) {
+        const profileId = `profile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        operations.push(AsyncStorage.setItem(STORAGE_KEYS.PROFILE_ID, profileId));
+      }
     }
     if (typeof badge === 'string') {
       operations.push(AsyncStorage.setItem(STORAGE_KEYS.PLAYER_BADGE, badge));
@@ -120,22 +135,45 @@ export const saveStats = async (stats) => {
   }
 };
 
+let careerSyncQueue = Promise.resolve();
+
 /**
- * Increments an individual statistic counter.
+ * Applies absolute per-session gameplay counters to the local saved profile.
+ * The stored checkpoint makes repeated Firebase snapshots and reconnects idempotent.
  */
-export const incrementStat = async (key, amount = 1) => {
-  try {
-    const current = await getStats();
-    const updated = {
-      ...current,
-      [key]: Math.max(0, (current[key] || 0) + amount),
+export const syncCareerStats = ({ profileId, sessionId, playerId, sessionStats }) => {
+  careerSyncQueue = careerSyncQueue.then(async () => {
+    if (!profileId || !sessionId || !playerId || !sessionStats) return null;
+
+    const rawSync = await AsyncStorage.getItem(STORAGE_KEYS.CAREER_SYNC);
+    const syncState = rawSync ? JSON.parse(rawSync) : {};
+    const checkpointKey = `${profileId}:${sessionId}:${playerId}`;
+    const previous = syncState[checkpointKey] || DEFAULT_STATS;
+    const current = {
+      toursCompleted: Math.max(0, Number(sessionStats.toursCompleted) || 0),
+      challengesCompleted: Math.max(0, Number(sessionStats.challengesCompleted) || 0),
+      sipsLogged: Math.max(0, Number(sessionStats.sipsLogged) || 0),
+      diceRolls: Math.max(0, Number(sessionStats.diceRolls) || 0),
     };
-    await saveStats(updated);
+    const lifetime = await getStats();
+    const updated = Object.keys(DEFAULT_STATS).reduce((next, key) => ({
+      ...next,
+      [key]: Math.max(0, (Number(lifetime[key]) || 0) + current[key] - (Number(previous[key]) || 0)),
+    }), {});
+
+    delete syncState[checkpointKey];
+    const recentEntries = Object.entries({ ...syncState, [checkpointKey]: current }).slice(-40);
+    await Promise.all([
+      saveStats(updated),
+      AsyncStorage.setItem(STORAGE_KEYS.CAREER_SYNC, JSON.stringify(Object.fromEntries(recentEntries))),
+    ]);
     return updated;
-  } catch (error) {
-    console.warn('[userSettings] Failed to increment stat:', error);
+  }).catch((error) => {
+    console.warn('[userSettings] Failed to synchronize career stats:', error);
     return null;
-  }
+  });
+
+  return careerSyncQueue;
 };
 
 /**
@@ -195,6 +233,8 @@ export const resetAccountData = async () => {
       AsyncStorage.removeItem(STORAGE_KEYS.PLAYER_NAME),
       AsyncStorage.removeItem(STORAGE_KEYS.PLAYER_BADGE),
       AsyncStorage.removeItem(STORAGE_KEYS.PREFERRED_VEHICLE),
+      AsyncStorage.removeItem(STORAGE_KEYS.PROFILE_ID),
+      AsyncStorage.removeItem(STORAGE_KEYS.CAREER_SYNC),
       AsyncStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(DEFAULT_STATS)),
     ]);
     return true;

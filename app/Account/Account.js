@@ -12,14 +12,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Header from '../shared/components/Header/Header';
 import {
   BADGE_OPTIONS,
   DEFAULT_STATS,
   getProfile,
   getStats,
-  incrementStat,
   resetAccountData,
   saveProfile,
   saveStats,
@@ -29,38 +27,39 @@ import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
 export default function Account({ navigation }) {
   const [userName, setUserName] = useState('');
   const [selectedBadge, setSelectedBadge] = useState('legend');
-  const [selectedVehicle, setSelectedVehicle] = useState('car1');
+  const [selectedVehicle, setSelectedVehicle] = useState('barrel_roadster');
   const [stats, setStats] = useState(DEFAULT_STATS);
-  const [deviceId, setDeviceId] = useState('Loading...');
   const [saveBanner, setSaveBanner] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadAccountData();
+    const unsubscribeFocus = navigation.addListener('focus', loadAccountData);
 
-    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+    const unsubscribeBeforeRemove = navigation.addListener('beforeRemove', (e) => {
       if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
         e.preventDefault();
         navigation.navigate('Home');
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeFocus();
+      unsubscribeBeforeRemove();
+    };
   }, [navigation]);
 
   const loadAccountData = async () => {
     try {
-      const [profileData, statsData, currentDeviceId] = await Promise.all([
+      const [profileData, statsData] = await Promise.all([
         getProfile(),
         getStats(),
-        AsyncStorage.getItem('deviceID'),
       ]);
 
       setUserName(profileData.name || '');
       setSelectedBadge(profileData.badge || 'legend');
-      setSelectedVehicle(profileData.preferredVehicle || 'car1');
+      setSelectedVehicle(profileData.preferredVehicle || 'barrel_roadster');
       setStats(statsData || DEFAULT_STATS);
-      setDeviceId(currentDeviceId || 'Not generated yet');
     } catch (error) {
       console.warn('Error loading account info:', error);
     }
@@ -85,11 +84,6 @@ export default function Account({ navigation }) {
     }
   };
 
-  const handleIncrementStat = async (key) => {
-    const updated = await incrementStat(key, 1);
-    if (updated) setStats(updated);
-  };
-
   const handleResetStats = () => {
     Alert.alert(
       'Reset Career Stats',
@@ -103,27 +97,6 @@ export default function Account({ navigation }) {
             await saveStats(DEFAULT_STATS);
             setStats(DEFAULT_STATS);
             setSaveBanner('STATS RESET');
-            setTimeout(() => setSaveBanner(''), 2500);
-          },
-        },
-      ]
-    );
-  };
-
-  const handleRegenerateDeviceId = () => {
-    Alert.alert(
-      'Regenerate Device ID',
-      'Generating a new device ID simulates a fresh install. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Regenerate',
-          style: 'destructive',
-          onPress: async () => {
-            const newId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-            await AsyncStorage.setItem('deviceID', newId);
-            setDeviceId(newId);
-            setSaveBanner('NEW DEVICE ID CREATED');
             setTimeout(() => setSaveBanner(''), 2500);
           },
         },
@@ -281,48 +254,24 @@ export default function Account({ navigation }) {
                 <Text style={styles.statEmoji}>🏆</Text>
                 <Text style={styles.statValue}>{stats.toursCompleted}</Text>
                 <Text style={styles.statLabel}>TOURS COMPLETED</Text>
-                <TouchableOpacity
-                  style={styles.statAddBtn}
-                  onPress={() => handleIncrementStat('toursCompleted')}
-                >
-                  <Text style={styles.statAddBtnText}>+1 Tour</Text>
-                </TouchableOpacity>
               </View>
 
               <View style={styles.statBox}>
                 <Text style={styles.statEmoji}>🎯</Text>
                 <Text style={styles.statValue}>{stats.challengesCompleted}</Text>
                 <Text style={styles.statLabel}>CHALLENGES WON</Text>
-                <TouchableOpacity
-                  style={styles.statAddBtn}
-                  onPress={() => handleIncrementStat('challengesCompleted')}
-                >
-                  <Text style={styles.statAddBtnText}>+1 Challenge</Text>
-                </TouchableOpacity>
               </View>
 
               <View style={styles.statBox}>
                 <Text style={styles.statEmoji}>🍻</Text>
                 <Text style={styles.statValue}>{stats.sipsLogged}</Text>
                 <Text style={styles.statLabel}>SIPS LOGGED</Text>
-                <TouchableOpacity
-                  style={styles.statAddBtn}
-                  onPress={() => handleIncrementStat('sipsLogged')}
-                >
-                  <Text style={styles.statAddBtnText}>+1 Sip</Text>
-                </TouchableOpacity>
               </View>
 
               <View style={styles.statBox}>
                 <Text style={styles.statEmoji}>🎲</Text>
                 <Text style={styles.statValue}>{stats.diceRolls}</Text>
                 <Text style={styles.statLabel}>DICE ROLLED</Text>
-                <TouchableOpacity
-                  style={styles.statAddBtn}
-                  onPress={() => handleIncrementStat('diceRolls')}
-                >
-                  <Text style={styles.statAddBtnText}>+1 Roll</Text>
-                </TouchableOpacity>
               </View>
             </View>
 
@@ -333,31 +282,6 @@ export default function Account({ navigation }) {
             >
               <Text style={styles.secondaryButtonText}>RESET CAREER STATS</Text>
             </TouchableOpacity>
-          </View>
-
-          {/* Device & Connection */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>DEVICE & MULTIPLAYER IDENTITY</Text>
-            </View>
-            <Text style={styles.fieldLabel}>ANONYMOUS DEVICE ID</Text>
-            <View style={styles.deviceIdContainer}>
-              <Text style={styles.deviceIdText} numberOfLines={1} selectable>
-                {deviceId}
-              </Text>
-            </View>
-            <Text style={styles.fieldHint}>
-              Used by Firebase to recognize team leadership, room re-entry, and turn ownership.
-            </Text>
-
-            <View style={styles.deviceRow}>
-              <TouchableOpacity
-                style={[styles.smallActionButton, { marginTop: 12 }]}
-                onPress={handleRegenerateDeviceId}
-              >
-                <Text style={styles.smallActionButtonText}>🔄 REGENERATE DEVICE ID</Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
           {/* Account Reset */}
@@ -663,19 +587,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
   },
-  statAddBtn: {
-    backgroundColor: '#FFF1CD',
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#2C3E50',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  statAddBtnText: {
-    fontFamily: 'dogicapixelbold',
-    fontSize: 8,
-    color: '#2C3E50',
-  },
   secondaryButton: {
     backgroundColor: '#FFF1CD',
     borderRadius: 10,
@@ -688,35 +599,6 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontFamily: 'dogicapixelbold',
     fontSize: 9.5,
-    color: '#2C3E50',
-  },
-  deviceIdContainer: {
-    backgroundColor: '#FAF3E0',
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#2C3E50',
-    padding: 10,
-  },
-  deviceIdText: {
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    color: '#2C3E50',
-  },
-  deviceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  smallActionButton: {
-    backgroundColor: '#FFF1CD',
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#2C3E50',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  smallActionButtonText: {
-    fontFamily: 'dogicapixelbold',
-    fontSize: 9,
     color: '#2C3E50',
   },
   dangerCard: {

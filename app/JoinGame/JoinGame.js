@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {ref, set, get, onDisconnect, child, push, serverTimestamp} from "firebase/database";
+import {ref, set, get, onDisconnect, child, push, serverTimestamp, update} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProfile } from "../shared/storage/userSettings";
@@ -100,13 +100,21 @@ export default function JoinGame ({ navigation }) {
 
         if(snapshot.exists()){
             const playerData = snapshot.val();
+            const profile = await getProfile();
+            const playerProfile = {
+                name: userName.trim(),
+                deviceID: deviceID,
+                badge: profile.badge,
+                ...(profile.isPersistent ? { profileId: profile.profileId } : {}),
+            };
             
             // Check if user is already in a team
             for (const teamKey of ['team1', 'team2', 'team3']) {
                 const team = playerData[teamKey];
                 if (team) {
-                    const isAlreadyInTeam = Object.values(team).some(player => player.deviceID === deviceID);
-                    if (isAlreadyInTeam) {
+                    const existingPlayer = Object.entries(team).find(([, player]) => player.deviceID === deviceID);
+                    if (existingPlayer) {
+                        await update(ref(db, `players/${gamePin}/${teamKey}/${existingPlayer[0]}`), playerProfile);
                         return true; // Already joined, proceed to lobby
                     }
                 }
@@ -126,9 +134,8 @@ export default function JoinGame ({ navigation }) {
                 const isLeader = teamNr === 2 && team2Count === 0;
 
                 await push(ref(db, `players/${gamePin}/team${teamNr}`), {
-                    name: userName.trim(),
+                    ...playerProfile,
                     isLeader: isLeader,
-                    deviceID: deviceID
                 });
 
                 return true;
@@ -144,9 +151,8 @@ export default function JoinGame ({ navigation }) {
                 const isLeader = teamNr === 2 && team2Count === 0;
 
                 await push(ref(db, `players/${gamePin}/team${teamNr}`), {
-                    name: userName.trim(),
+                    ...playerProfile,
                     isLeader: isLeader,
-                    deviceID: deviceID
                 });
 
                 return true;
@@ -171,9 +177,8 @@ export default function JoinGame ({ navigation }) {
                 const isLeader = currentTeamCount === 0;
 
                 await push(ref(db, `players/${gamePin}/team${teamNr}`), {
-                    name: userName.trim(),
+                    ...playerProfile,
                     isLeader: isLeader,
-                    deviceID: deviceID
                 });
 
                 return true;

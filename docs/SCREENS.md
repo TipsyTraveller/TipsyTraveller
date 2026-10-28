@@ -28,13 +28,14 @@ Development may start on `GameScreen` when `START_ON_DEV_GAME_SCREEN` in
   avoids duplicate insertion, assigns the least populated valid team, and joins.
 - `LobbyScreen`: listens to room and roster, supports host removal and local players,
   starts character selection, and exposes the concise Rules summary.
-- `CharacterSelection`: identifies the local team role, lets leaders choose one
-  vehicle per team, observes readiness, and enters the game when host initialization
-  completes. Non-leaders spectate readiness.
+- `CharacterSelection`: identifies the local team role, preselects the leader's saved
+  preferred vehicle, lets leaders choose one vehicle per team, observes readiness,
+  and enters the game when host initialization completes. Non-leaders spectate readiness.
 - `GameScreen`: locks landscape, restores canonical gameplay, coordinates board and
   overlays, limits actions by role, and unlocks orientation on unmount.
-- `AccountScreen`: local username, badges, preferred vehicles, statistics, and device
-  identity management in AsyncStorage.
+- `AccountScreen`: local username, badges, preferred vehicles, and gameplay-driven
+  career statistics in AsyncStorage. Device identity regeneration remains in the
+  development portal rather than the player account.
 - `SettingsScreen`: local audio/haptics and camera preferences, host defaults for
   synchronized challenge timing, dice speed, and auto-advance, plus the guide and
   app information. New rooms snapshot the host defaults; changing another device's

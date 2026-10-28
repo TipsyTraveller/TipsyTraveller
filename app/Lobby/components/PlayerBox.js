@@ -1,7 +1,11 @@
 import {StyleSheet, Text, TouchableOpacity, View} from "react-native";
-export default function PlayerBox ({ name, isLeader, onRemovePlayer, canRemove }) {
+import { BADGE_OPTIONS } from '../../shared/storage/userSettings';
+
+export default function PlayerBox ({ name, badge, isLeader, onRemovePlayer, canRemove }) {
+    const badgeInfo = BADGE_OPTIONS.find((option) => option.id === badge) || BADGE_OPTIONS[0];
     return (
         <View style={ style.playerBoxContainer }>
+            <Text style={style.badgeEmoji}>{badgeInfo.emoji}</Text>
             <Text style={ style.text }>
                 { name }
             </Text>
@@ -36,6 +40,10 @@ const style = StyleSheet.create({
     text: {
         fontSize: 16,
         fontFamily: "dogicapixel"
+    },
+    badgeEmoji: {
+        fontSize: 16,
+        marginRight: 6,
     },
     removePlayerContainer: {
         marginLeft: 10,

@@ -7,8 +7,9 @@ import {
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './constants/movement';
 import { getPathRevealDuration } from './constants/route';
 import { getDiceTimingMultiplier } from './constants/roomRules';
+import { createSessionCareerCounters } from './careerStats';
 
-export const GAMEPLAY_SCHEMA_VERSION = 8;
+export const GAMEPLAY_SCHEMA_VERSION = 9;
 export const POINTS_PER_STOP = 10;
 export const FINISH_BONUSES = [30, 15, 5];
 
@@ -41,6 +42,7 @@ export const createInitialGameplay = (gameData, now = Date.now(), teamMembers = 
     activeTeamId: gamePieces[0]?.id || 'team1',
     turnNumber: 1,
     teamProgress: createInitialTeamProgress(gamePieces, teamMembers),
+    careerCounters: createSessionCareerCounters(teamMembers),
     currentAction: null,
     challengeStop: null,
     challengeStopData: null,

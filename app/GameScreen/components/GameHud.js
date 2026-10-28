@@ -11,6 +11,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTeamPlayers } from '../constants/challenges';
 import { getTeamDrinkTotal } from '../drinkLedger';
+import { BADGE_OPTIONS } from '../../shared/storage/userSettings';
+
+const getBadgeEmoji = (badgeId) => (
+  BADGE_OPTIONS.find((badge) => badge.id === badgeId)?.emoji || '🙂'
+);
 
 const getShortTeamLabel = (label = '', index = 0) => {
   const match = String(label).match(/(\d+)/);
@@ -384,25 +389,38 @@ const GameHud = ({
 
       {state === 'done' && (
         <View
-          pointerEvents={canRestart ? 'auto' : 'none'}
+          pointerEvents="auto"
           style={[styles.doneOverlay, { top: insets.top + 8 }]}
         >
           <Text style={styles.doneText}>{standings[0]?.label} wins!</Text>
-          <View style={styles.standings}>
+          <ScrollView
+            bounces={false}
+            contentContainerStyle={styles.standingsContent}
+            showsVerticalScrollIndicator={false}
+            style={styles.standings}
+          >
             {standings.map((piece, index) => {
               const pieceProgress = teamProgress[piece.id] || {};
               const drinks = getTeamDrinkTotal(pieceProgress.playerDrinks);
+              const players = getTeamPlayers(teamMembers, piece.id);
               return (
-                <View key={piece.id} style={styles.standingRow}>
-                  <Text style={styles.standingPlace}>{`#${index + 1}`}</Text>
-                  <View style={[styles.teamDot, { backgroundColor: piece.color }]} />
-                  <Text style={styles.standingTeam}>{piece.label}</Text>
-                  <Text style={styles.standingDrinks}>{`🍺 ${drinks}`}</Text>
-                  <Text style={styles.standingScore}>{`${pieceProgress.score || 0} PTS`}</Text>
+                <View key={piece.id} style={styles.standingBlock}>
+                  <View style={styles.standingRow}>
+                    <Text style={styles.standingPlace}>{`#${index + 1}`}</Text>
+                    <View style={[styles.teamDot, { backgroundColor: piece.color }]} />
+                    <Text style={styles.standingTeam}>{piece.label}</Text>
+                    <Text style={styles.standingDrinks}>{`🍺 ${drinks}`}</Text>
+                    <Text style={styles.standingScore}>{`${pieceProgress.score || 0} PTS`}</Text>
+                  </View>
+                  {players.map((player) => (
+                    <Text key={player.playerId} style={styles.standingPlayer}>
+                      {`${getBadgeEmoji(player.badge)} ${player.name} · 🍺 ${pieceProgress.playerDrinks?.[player.playerId]?.drinks || 0}`}
+                    </Text>
+                  ))}
                 </View>
               );
             })}
-          </View>
+          </ScrollView>
           {canRestart ? (
             <TouchableOpacity
               accessibilityLabel="Restart game"
@@ -835,12 +853,24 @@ const styles = StyleSheet.create({
   },
   standings: {
     marginTop: 9,
+    maxHeight: 220,
+  },
+  standingsContent: {
     gap: 5,
   },
   standingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  standingBlock: {
+    gap: 3,
+  },
+  standingPlayer: {
+    marginLeft: 34,
+    color: '#4A5568',
+    fontFamily: 'dogicapixel',
+    fontSize: 7,
   },
   standingPlace: {
     width: 22,

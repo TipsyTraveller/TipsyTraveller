@@ -11,6 +11,7 @@ import { preloadBoardAssets } from '../GameScreen/constants/boardAssets';
 import { GAME_PIECES } from '../GameScreen/constants/gamePieces';
 import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
 import { createInitialGameplay } from '../GameScreen/gameplayState';
+import { getProfile } from '../shared/storage/userSettings';
 
 const getRequiredTeamKeys = (gameData) => (
   gameData?.nrOfPlayers === '9-12'
@@ -41,6 +42,12 @@ export default function CharacterSelection({ navigation, route }) {
 
   useEffect(() => {
     preloadBoardAssets();
+    getProfile().then((profile) => {
+      const preferredIndex = MODEL_OPTIONS.findIndex(
+        (model) => model.id === profile.preferredVehicle
+      );
+      if (preferredIndex >= 0) setSelectedModelIndex(preferredIndex);
+    });
   }, []);
 
   const requiredTeamKeys = useMemo(

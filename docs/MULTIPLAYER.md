@@ -4,7 +4,7 @@
 
 | Data | Owner |
 |---|---|
-| Device ID, player preferences | AsyncStorage |
+| Device ID, saved profile, career sync checkpoints | AsyncStorage |
 | Room settings, route snapshot, roster, vehicle choices | Realtime Database |
 | Turn, roll, progress, challenge, roadblock, score, completion | Realtime Database gameplay record |
 | Country and challenge authoring | Cloud Firestore |
@@ -23,11 +23,12 @@ games/{gameID}
   teamModels/{team1|team2|team3}: modelId
   routeStops[]: immutable ordered room snapshot
   gameplay
-    schemaVersion: 8
+    schemaVersion: 9
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
     teamProgress/{teamId}: currentLeg, isDone, score,
       challengePoints, finishPosition?, detour?
       playerDrinks/{playerPushKey}: name, drinks
+    careerCounters/{playerPushKey}: diceRolls, challengesCompleted, toursCompleted
     currentAction: id, type, teamId, value, fromLeg, targetLeg,
       inputMethod, startedAt, movementStartsAt, movementEndsAt,
       movementPath?, detourStartStep?, detourStep?, detourSegmentType?
@@ -43,6 +44,11 @@ gameContent/monumentPool: mirrored GeoGuessr fallback
 Null Firebase fields may be omitted. Empty team placeholders begin as empty strings
 and become objects when players are pushed. Preserve these compatibility quirks
 unless every reader and writer is migrated together.
+
+Schema 9 adds monotonic per-session career counters keyed by the stable roster player
+ID. A saved local profile synchronizes only its matching roster entry into lifetime
+AsyncStorage statistics, using per-session checkpoints so reconnects and rematches do
+not replay increments. Session sips continue to come from the canonical drink ledger.
 
 Schema 8 uses the roster push key as the stable player ID for drink totals. Team drink
 totals are derived by summing `playerDrinks`; they are not stored separately. When an
@@ -104,6 +110,10 @@ they are created. Result transactions record a stable `drinkAwardId` and accept 
 the expected pre-result stage, so retrying a result cannot apply its drinks twice.
 Drink adjustments update the stable per-player ledger transactionally; team-wide
 adjustments apply the delta once to every current roster player.
+
+Roster entries may include a badge and a persistent local `profileId`. The latter is
+used only to associate that device's saved profile with career statistics; names are
+never used to merge career records.
 
 The host snapshots challenge timer pace, fast-dice animation mode, and auto-advance
 into `roomRules` at room creation. Timer durations and roll deadlines derive from

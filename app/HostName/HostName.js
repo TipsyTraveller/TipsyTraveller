@@ -49,7 +49,14 @@ export default function HostName ({ navigation, route }) {
             const newGameID = await generateUniqueGame(synchronizedSettings);
             await set(ref(db, `players/${newGameID}`), {playerCounter: 0, team1: "", team2: "", team3: ""});
             const playersRef = ref(db, `players/${newGameID}/team${1}`);
-            await push(playersRef, {name: trimmedUserName, isLeader: true, deviceID: deviceID} );
+            const profile = await getProfile();
+            await push(playersRef, {
+                name: trimmedUserName,
+                isLeader: true,
+                deviceID: deviceID,
+                badge: profile.badge,
+                ...(profile.isPersistent ? { profileId: profile.profileId } : {}),
+            });
 
             //testcleanup na disconnecten
             const gamesRef = ref(db, `games/${newGameID}`);

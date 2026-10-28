@@ -18,6 +18,7 @@ export default function TeamContainer ({ team, index, onRemovePlayer, canRemove 
                     <PlayerBox
                         canRemove={canRemove}
                         name={player.name}
+                        badge={player.badge}
                         isLeader={player.isLeader}
                         key={playerKey}
                         onRemovePlayer={() => onRemovePlayer(index, player)}
