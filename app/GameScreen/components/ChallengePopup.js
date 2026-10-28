@@ -138,6 +138,7 @@ const CardBack = ({ compact, style }) => (
 const ChallengePopup = ({
   autoAdvance = false,
   canComplete = true,
+  canFinalizeTimeout = canComplete,
   challenge,
   difficulty = 'easy',
   gamePieces = [],
@@ -230,7 +231,7 @@ const ChallengePopup = ({
 
   const isCountryWordChallenge = challenge?.type === 'countryWordGuess';
   const isGeoGuessrChallenge = challenge?.type === GEO_GUESSR_CHALLENGE_TYPE;
-  const challengeStage = challenge?.stage || (isGeoGuessrChallenge ? 'photo' : 'intro');
+  const challengeStage = challenge?.stage || (isGeoGuessrChallenge ? 'photo' : isCountryWordChallenge ? 'intro' : 'playing');
   const challengeDuration = Number(challenge?.durationSeconds) || 30;
   const photoDuration = Number(challenge?.photoDurationSeconds) || GEO_GUESSR_PHOTO_SECONDS;
   const pinDuration = Number(challenge?.pinDurationSeconds) || GEO_GUESSR_PIN_SECONDS;
@@ -252,7 +253,7 @@ const ChallengePopup = ({
         const elapsedSeconds = Math.max(0, getNow() - startedAt) / 1000;
         const nextRemaining = Math.max(0, Math.ceil(activeDuration - elapsedSeconds));
         setRemainingSeconds(nextRemaining);
-        if (nextRemaining === 0 && canComplete && !timeoutReportedRef.current) {
+        if (nextRemaining === 0 && canFinalizeTimeout && !timeoutReportedRef.current) {
           timeoutReportedRef.current = true;
           challengeActionRef.current?.({
             type: challengeStage === 'photo' ? 'startPinning' : 'timeoutPinning',
@@ -278,7 +279,7 @@ const ChallengePopup = ({
       const nextExplanation = Math.max(0, Math.ceil(COUNTRY_WORD_EXPLANATION_SECONDS - elapsedSeconds));
       setRemainingSeconds(nextRemaining);
       setExplanationSeconds(nextExplanation);
-      if (nextRemaining === 0 && canComplete && !timeoutReportedRef.current) {
+      if (nextRemaining === 0 && canFinalizeTimeout && !timeoutReportedRef.current) {
         timeoutReportedRef.current = true;
         challengeActionRef.current?.('timeout');
       }
@@ -289,6 +290,7 @@ const ChallengePopup = ({
     return () => clearInterval(interval);
   }, [
     canComplete,
+    canFinalizeTimeout,
     challenge?.activePinTeamIndex,
     challenge?.photoStartedAt,
     challenge?.pinStartedAt,
@@ -487,6 +489,14 @@ const ChallengePopup = ({
   );
   const challengeTitle = replaceTargetName(challenge.title);
   const challengePrompt = replaceTargetName(challenge.prompt);
+  const getDrinkRuleCopy = (rule) => {
+    const amount = `${resolvedPenaltySips} ${resolvedPenaltySips === 1 ? 'sip' : 'sips'}`;
+    if (rule === 'target') return `${challenge.selectedPlayerName || 'The selected player'} takes ${amount}.`;
+    if (rule === 'teamExceptTarget') return `Every teammate except ${challenge.selectedPlayerName || 'the selected player'} takes ${amount}.`;
+    if (rule === 'opponents') return `Every player on the opposing teams takes ${amount}.`;
+    if (rule === 'wholeTeam') return `Every teammate takes ${amount}.`;
+    return 'No drinks are assigned.';
+  };
   const canFinishChallenge = canComplete
     && ((!isCountryWordChallenge && !isGeoGuessrChallenge) || challengeStage === 'result');
   const missionCode = challenge.code
@@ -601,13 +611,16 @@ const ChallengePopup = ({
     }
 
     const guessed = challenge.result === 'guessed';
+    const successDrinkCopy = challenge.drinkRules?.success === 'teamExceptTarget'
+      ? ` Everyone except ${challenge.selectedPlayerName || 'the describer'} takes ${resolvedPenaltySips} ${resolvedPenaltySips === 1 ? 'sip' : 'sips'}.`
+      : '';
     return (
       <View style={styles.wordCenteredContent}>
         <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{guessed ? 'GUESSED!' : 'NOT GUESSED'}</Text>
         <Text style={styles.resultPoints}>{guessed ? `+${challenge.pointsAwarded || challenge.successPoints || 10} POINTS` : '0 POINTS'}</Text>
         <Text style={[styles.prompt, compact && styles.promptCompact]}>
           {guessed
-            ? 'Great teamwork!'
+            ? `Great teamwork!${successDrinkCopy}`
             : `${challenge.result === 'timeout' ? 'Time ran out.' : 'Better luck at the next stop.'} ${challenge.selectedPlayerName || 'The describer'} takes ${resolvedPenaltySips} ${resolvedPenaltySips === 1 ? 'sip' : 'sips'}.`}
         </Text>
       </View>
@@ -758,7 +771,18 @@ const ChallengePopup = ({
                   penaltySips={resolvedPenaltySips}
                   remainingSeconds={remainingSeconds}
                 />
-              ) : isCountryWordChallenge ? renderCountryWordContent() : (
+              ) : isCountryWordChallenge ? renderCountryWordContent() : challengeStage === 'result' ? (
+                <View style={styles.wordCenteredContent}>
+                  <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>
+                    {challenge.result === 'completed' ? 'COMPLETED!' : 'CHALLENGE FAILED'}
+                  </Text>
+                  <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>
+                    {challenge.result === 'completed'
+                      ? `Challenge complete. ${getDrinkRuleCopy(challenge.drinkRules?.success)}`
+                      : getDrinkRuleCopy(challenge.drinkRules?.failure || 'wholeTeam')}
+                  </Text>
+                </View>
+              ) : (
                 <>
                   {challenge.selectedPlayerName && canComplete ? (
                     <View style={styles.phoneHandoff}>
@@ -777,9 +801,41 @@ const ChallengePopup = ({
                       <Text style={styles.penaltyTagText}>{getPenaltyTag(challenge, difficulty)}</Text>
                     </View>
                     <Text style={styles.penaltyText}>
-                      {`Failure: take ${resolvedPenaltySips} ${resolvedPenaltySips === 1 ? 'sip' : 'sips'}.`}
+                      {`Failure: ${getDrinkRuleCopy(challenge.drinkRules?.failure || 'wholeTeam')}`}
                     </Text>
                   </View>
+                  {challenge?.stage ? (
+                    <View style={styles.wordResultActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Mark challenge completed"
+                        disabled={!canComplete}
+                        style={({ pressed }) => [
+                          styles.wordActionButton,
+                          styles.guessedButton,
+                          !canComplete && styles.completeButtonDisabled,
+                          pressed && canComplete && styles.completeButtonPressed,
+                        ]}
+                        onPress={() => onChallengeAction?.('COMPLETED')}
+                      >
+                        <Text style={styles.wordActionText}>COMPLETED</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Mark challenge failed"
+                        disabled={!canComplete}
+                        style={({ pressed }) => [
+                          styles.wordActionButton,
+                          styles.failedButton,
+                          !canComplete && styles.completeButtonDisabled,
+                          pressed && canComplete && styles.completeButtonPressed,
+                        ]}
+                        onPress={() => onChallengeAction?.('FAILED')}
+                      >
+                        <Text style={styles.wordActionText}>FAILED</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </>
               )}
               </View>

@@ -236,6 +236,14 @@ export {
 
 export const COUNTRY_WORD_CHALLENGE_TYPE = 'countryWordGuess';
 export const COUNTRY_WORD_EXPLANATION_SECONDS = 7;
+export const CHALLENGE_TARGET_ROLES = ['describer', 'performer', 'judge', 'captain'];
+export const CHALLENGE_DRINK_RECIPIENTS = [
+  'target',
+  'teamExceptTarget',
+  'wholeTeam',
+  'opponents',
+  'none',
+];
 
 const hashSeed = (seed) => String(seed).split('').reduce((total, character) => (
   ((total * 31) + character.charCodeAt(0)) >>> 0

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { onValue, ref } from 'firebase/database';
 import { db } from '../../firebaseConfig';
@@ -38,6 +38,7 @@ import { getDefaultModelOption, getModelOption } from './constants/modelOptions'
 import { devEventBus } from '../shared/dev/devEventBus';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
 import {
+  addDrinksByRule,
   addDrinksToPlayer,
   addDrinksToTeam,
   createPlayerDrinkLedger,
@@ -65,6 +66,7 @@ import {
   updateCountryStop,
 } from './services/countryStopsService';
 import CountryStopPlacementForm from './components/CountryStopPlacementForm';
+import ConnectionOverlay from './components/ConnectionOverlay';
 import { getFinishPosition, getTeamScore } from './gameplayState';
 import {
   getDiceTimingMultiplier,
@@ -544,9 +546,54 @@ const GameScreen = ({ navigation, route }) => {
     resetLocalGame();
   };
 
-  const handleLeaveGame = () => {
+  const returnHome = useCallback(() => {
     navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-  };
+  }, [navigation]);
+
+  const handleLeaveGame = useCallback(() => {
+    const hostMessage = multiplayerEnabled && multiplayer.isHost
+      ? 'The room will report that the host disconnected. Transfer host first if the group should keep playing.'
+      : 'You can rejoin with the same room code and this device to restore the current game.';
+    Alert.alert('Leave game?', hostMessage, [
+      { text: 'Stay', style: 'cancel' },
+      {
+        text: 'Leave Game',
+        style: 'destructive',
+        onPress: async () => {
+          if (multiplayerEnabled) await multiplayer.leaveGame().catch(() => {});
+          returnHome();
+        },
+      },
+    ]);
+  }, [multiplayer, multiplayerEnabled, returnHome]);
+
+  const handleTransferHost = useCallback(async (nextHostDeviceID) => {
+    try {
+      const transferred = await multiplayer.transferHost(nextHostDeviceID);
+      if (!transferred) {
+        Alert.alert('Could not transfer host', 'That team leader is no longer connected.');
+      }
+      return transferred;
+    } catch (error) {
+      console.log('Unable to transfer host', error);
+      Alert.alert('Could not transfer host', 'Check your connection and try again.');
+      return false;
+    }
+  }, [multiplayer]);
+
+  const handleReplaceLeader = useCallback(async (replacement) => {
+    try {
+      const replaced = await multiplayer.replaceTeamLeader(replacement);
+      if (!replaced) {
+        Alert.alert('Could not replace leader', 'That player is no longer connected.');
+      }
+      return replaced;
+    } catch (error) {
+      console.log('Unable to replace team leader', error);
+      Alert.alert('Could not replace leader', 'Check your connection and try again.');
+      return false;
+    }
+  }, [multiplayer]);
 
   const handleChallengeComplete = () => {
     if (multiplayerEnabled) {
@@ -617,7 +664,7 @@ const GameScreen = ({ navigation, route }) => {
 
   const handleCountryWordAction = (action) => {
     if (multiplayerEnabled) {
-      multiplayer.updateCountryWordChallenge(action).catch((error) => {
+      multiplayer.updateChallenge(action).catch((error) => {
         console.log('Unable to update synchronized challenge', error);
       });
       return;
@@ -789,7 +836,35 @@ const GameScreen = ({ navigation, route }) => {
       return;
     }
 
-    if (currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return;
+    if (currentChallenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) {
+      const ordinaryResult = String(actionType || '').toLowerCase();
+      if (!['completed', 'failed'].includes(ordinaryResult) || currentChallenge.stage !== 'playing') {
+        return;
+      }
+      const succeeded = ordinaryResult === 'completed';
+      const drinkRule = succeeded
+        ? currentChallenge.drinkRules?.success
+        : currentChallenge.drinkRules?.failure;
+      setTeamProgress((progress) => addDrinksByRule({
+        amount: getResolvedPenaltySips(currentChallenge, gameData?.difficulty),
+        playerId: currentChallenge.selectedPlayerId,
+        rule: drinkRule,
+        teamId: activePiece.id,
+        teamMembers: currentTeamMembers,
+        teamProgress: progress,
+      }));
+      setCurrentChallenge({
+        ...currentChallenge,
+        stage: 'result',
+        result: ordinaryResult,
+        resultActionId: `local:${localTurnNumber}:${ordinaryResult}`,
+        drinkAwardId: drinkRule && drinkRule !== 'none'
+          ? `local:${localTurnNumber}:${ordinaryResult}`
+          : null,
+      });
+      return;
+    }
+
     if ((actionType === 'start' || actionType === 'ready') && (currentChallenge.stage === 'intro' || currentChallenge.stage === 'secret')) {
       setCurrentChallenge({ ...currentChallenge, stage: 'playing', startedAt: Date.now() });
       return;
@@ -800,7 +875,7 @@ const GameScreen = ({ navigation, route }) => {
 
     const guessed = actionType === 'guessed';
     const pointsAwarded = guessed ? (Number(currentChallenge.successPoints) || 10) : 0;
-    const penaltySips = guessed ? 0 : getResolvedPenaltySips(currentChallenge, gameData?.difficulty);
+    const penaltySips = getResolvedPenaltySips(currentChallenge, gameData?.difficulty);
     if ((pointsAwarded || penaltySips) && activePiece?.id) {
       setTeamProgress((progress) => {
         const current = progress[activePiece.id] || {};
@@ -815,12 +890,26 @@ const GameScreen = ({ navigation, route }) => {
           currentTeamMembers,
           activePiece.id
         ).find((player) => player.name === currentChallenge.selectedPlayerName)?.playerId;
-        const nextPlayerDrinks = (!guessed && selectedPlayerId)
-          ? addDrinksToPlayer(prevPlayerDrinks, selectedPlayerId, penaltySips)
-          : prevPlayerDrinks;
+        const withAward = addDrinksByRule({
+          amount: penaltySips,
+          playerId: selectedPlayerId,
+          rule: guessed
+            ? (currentChallenge.drinkRules?.success || 'teamExceptTarget')
+            : (currentChallenge.drinkRules?.failure || 'target'),
+          teamId: activePiece.id,
+          teamMembers: currentTeamMembers,
+          teamProgress: {
+            ...progress,
+            [activePiece.id]: {
+              ...current,
+              playerDrinks: prevPlayerDrinks,
+            },
+          },
+        });
+        const nextPlayerDrinks = withAward[activePiece.id]?.playerDrinks || prevPlayerDrinks;
         const { drinks: _legacyDrinks, ...currentWithoutLegacyTotal } = current;
         return {
-          ...progress,
+          ...withAward,
           [activePiece.id]: {
             ...currentWithoutLegacyTotal,
             challengePoints,
@@ -840,7 +929,8 @@ const GameScreen = ({ navigation, route }) => {
       stage: 'result',
       result: guessed ? 'guessed' : actionType,
       pointsAwarded,
-      drinkAwardId: penaltySips > 0 ? `local:${localTurnNumber}:word-penalty` : null,
+      resultActionId: `local:${localTurnNumber}:${actionType}`,
+      drinkAwardId: penaltySips > 0 ? `local:${localTurnNumber}:${actionType}` : null,
       resultAt: Date.now(),
     });
   };
@@ -1064,7 +1154,7 @@ const GameScreen = ({ navigation, route }) => {
       return;
     }
 
-    const takesDetour = choice === 'detour';
+    const takesDetour = choice === 'detour' || choice === 'timeout';
     const brokeThrough = choice === 'completed' && localRoadblock.status === 'challenge';
     if (!takesDetour && !brokeThrough) return;
 
@@ -1695,6 +1785,23 @@ const GameScreen = ({ navigation, route }) => {
         totalStops={routeModel.finalStopIndex + 1}
         turnNumber={multiplayerEnabled ? (multiplayer.gameplay?.turnNumber || 1) : localTurnNumber}
       />
+      <ConnectionOverlay
+        activeLeader={multiplayerEnabled ? multiplayer.activeLeader : null}
+        canClaimHost={multiplayerEnabled && multiplayer.canClaimHost}
+        connectedPlayers={multiplayerEnabled ? multiplayer.connectedPlayers : []}
+        isConnected={!multiplayerEnabled || multiplayer.isConnected}
+        isHost={multiplayerEnabled && multiplayer.isHost}
+        isLoading={multiplayerEnabled && multiplayer.isLoading}
+        isRoomExpired={multiplayerEnabled && multiplayer.isRoomExpired}
+        leaders={multiplayerEnabled ? multiplayer.leaders : []}
+        localDeviceID={multiplayerEnabled ? multiplayer.deviceID : null}
+        onLeave={handleLeaveGame}
+        onReturnHome={returnHome}
+        onReplaceLeader={handleReplaceLeader}
+        onTransferHost={handleTransferHost}
+        presenceLoaded={!multiplayerEnabled || multiplayer.presenceLoaded}
+        roomMeta={multiplayerEnabled ? multiplayer.roomMeta : {}}
+      />
       <RaceProgressTracker
         activeTeamId={activePiece?.id}
         canRoll={canRoll}
@@ -1715,6 +1822,9 @@ const GameScreen = ({ navigation, route }) => {
       />
       <RoadblockOverlay
         canChoose={!multiplayerEnabled || multiplayer.canControlTurn}
+        canFinalizeTimeout={!multiplayerEnabled || (
+          multiplayer.isConnected && !multiplayer.isRoomExpired
+        )}
         event={roadblockEvent}
         getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
         onAction={handleRoadblockAction}
@@ -1724,6 +1834,9 @@ const GameScreen = ({ navigation, route }) => {
       <ChallengePopup
         autoAdvance={roomRules.autoAdvance}
         canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
+        canFinalizeTimeout={!multiplayerEnabled || (
+          multiplayer.isConnected && !multiplayer.isRoomExpired
+        )}
         challenge={currentChallenge}
         difficulty={gameData?.difficulty}
         gamePieces={gamePieces}

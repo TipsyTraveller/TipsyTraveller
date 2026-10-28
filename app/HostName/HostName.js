@@ -1,7 +1,7 @@
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
-import {ref, set, get, onDisconnect, child, push, serverTimestamp} from "firebase/database";
+import {ref, onDisconnect, push, serverTimestamp} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getProfile, getSettings } from "../shared/storage/userSettings";
@@ -12,6 +12,7 @@ import Header from "../shared/components/Header/Header";
 import MainAnimation from "../shared/components/MainAnimation/MainAnimation";
 import InputField from "../shared/components/InputField/InputField";
 import { getRouteSnapshotForDuration } from "../GameScreen/services/countryStopsService";
+import { reserveRoomCode } from "../Lobby/lobbyService";
 
 export default function HostName ({ navigation, route }) {
     const [userName, setUserName] = useState('');
@@ -46,22 +47,36 @@ export default function HostName ({ navigation, route }) {
                 ...gameSettings,
                 roomRules: roomRulesFromSettings(localSettings),
             };
-            const newGameID = await generateUniqueGame(synchronizedSettings);
-            await set(ref(db, `players/${newGameID}`), {playerCounter: 0, team1: "", team2: "", team3: ""});
-            const playersRef = ref(db, `players/${newGameID}/team${1}`);
             const profile = await getProfile();
-            await push(playersRef, {
-                name: trimmedUserName,
-                isLeader: true,
-                deviceID: deviceID,
-                badge: profile.badge,
-                ...(profile.isPersistent ? { profileId: profile.profileId } : {}),
+            const routeStops = await getRouteSnapshotForDuration(gameSettings.duration);
+            const hostPlayerId = push(ref(db, 'playerKeys')).key;
+            const newGameID = await reserveRoomCode({
+                createGame: () => ({
+                    ...synchronizedSettings,
+                    routeStops,
+                    HostName: trimmedUserName,
+                    createdAt: Date.now(),
+                    hostDeviceID: deviceID,
+                    status: "lobby"
+                }),
+                createPlayers: () => ({
+                    playerCounter: 1,
+                    team1: {
+                        [hostPlayerId]: {
+                            name: trimmedUserName,
+                            isLeader: true,
+                            deviceID,
+                            badge: profile.badge,
+                            ...(profile.isPersistent ? { profileId: profile.profileId } : {}),
+                        },
+                    },
+                    team2: "",
+                    team3: "",
+                }),
             });
 
-            //testcleanup na disconnecten
-            const gamesRef = ref(db, `games/${newGameID}`);
-            // await onDisconnect(gamesRef).remove();
-            await onDisconnect(gamesRef).update({disconnectedAt: serverTimestamp()});
+            await onDisconnect(ref(db, `games/${newGameID}/disconnectedAt`))
+                .set(serverTimestamp());
             navigation.reset({
                 index: 1,
                 routes: [
@@ -83,38 +98,6 @@ export default function HostName ({ navigation, route }) {
         } finally {
             setIsCreating(false);
         }
-    }
-    const generateRandomNumber = () => {
-        let code ="";
-        for(let i =0;i<4; i++){
-            code += Math.floor(Math.random() * (10));
-        }
-        return code;
-    }
-    const generateUniqueGame = async (settings) => {
-        let newGameID = generateRandomNumber();
-        let gameExists = true;
-
-        while(gameExists){
-            const snapshot = await get(child(ref(db),`games/${newGameID}`));
-            if(!snapshot.exists()){
-                gameExists = false;
-                let deviceID = await AsyncStorage.getItem("deviceID");
-                await set(ref(db, `games/${newGameID}`),{
-                    ...settings,
-                    routeStops: await getRouteSnapshotForDuration(settings.duration),
-                    HostName: userName.trim(),
-                    createdAt: Date.now(),
-                    hostDeviceID: deviceID,
-                    status: "lobby"
-                });
-                return newGameID;
-            }
-            else {
-                newGameID = generateRandomNumber();
-            }
-        }
-
     }
     return(
         <SafeAreaView style={style.mainContainer}>

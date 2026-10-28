@@ -27,6 +27,7 @@ const HazardStrip = () => (
 
 const RoadblockOverlay = memo(({
   canChoose,
+  canFinalizeTimeout = canChoose,
   event,
   getNow = Date.now,
   onAction,
@@ -40,8 +41,8 @@ const RoadblockOverlay = memo(({
   const timeoutSentRef = useRef(false);
   const onActionRef = useRef(onAction);
   onActionRef.current = onAction;
-  const canChooseRef = useRef(canChoose);
-  canChooseRef.current = canChoose;
+  const canFinalizeTimeoutRef = useRef(canFinalizeTimeout);
+  canFinalizeTimeoutRef.current = canFinalizeTimeout;
 
   const isChallenge = event?.status === 'challenge';
   const detourNames = useMemo(
@@ -63,9 +64,9 @@ const RoadblockOverlay = memo(({
       const elapsed = Math.max(0, (getNow() - startedAt) / 1000);
       const remaining = Math.max(0, Math.ceil(duration - elapsed));
       setSecondsLeft(remaining);
-      if (remaining === 0 && canChooseRef.current && !timeoutSentRef.current) {
+      if (remaining === 0 && canFinalizeTimeoutRef.current && !timeoutSentRef.current) {
         timeoutSentRef.current = true;
-        onActionRef.current?.('detour');
+        onActionRef.current?.('timeout');
       }
     };
 

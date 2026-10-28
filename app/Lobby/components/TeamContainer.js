@@ -3,7 +3,16 @@ import { StyleSheet, Text, View } from "react-native";
 //COMPONENTS
 import PlayerBox from "./PlayerBox";
 
-export default function TeamContainer ({ team, index, onRemovePlayer, canRemove }) {
+export default function TeamContainer ({
+    team,
+    teamKey,
+    index,
+    requiredTeamKeys,
+    onRemovePlayer,
+    onMovePlayer,
+    onAssignLeader,
+    canManage,
+}) {
 
     return (
         <View style={ style.teamContainer}>
@@ -16,12 +25,18 @@ export default function TeamContainer ({ team, index, onRemovePlayer, canRemove 
             <View style={ style.teamMemberContainer }>
                 {team && Object.entries(team).map(([playerKey, player]) => (
                     <PlayerBox
-                        canRemove={canRemove}
+                        canManage={canManage}
                         name={player.name}
                         badge={player.badge}
                         isLeader={player.isLeader}
+                        hasDevice={Boolean(player.deviceID)}
                         key={playerKey}
-                        onRemovePlayer={() => onRemovePlayer(index, player)}
+                        moveTargets={requiredTeamKeys.filter((key) => key !== teamKey)}
+                        onRemovePlayer={() => onRemovePlayer(teamKey, playerKey, player)}
+                        onMovePlayer={(destinationTeamKey) => (
+                            onMovePlayer(teamKey, destinationTeamKey, playerKey)
+                        )}
+                        onAssignLeader={() => onAssignLeader(teamKey, playerKey)}
                     />
                 ))}
             </View>
