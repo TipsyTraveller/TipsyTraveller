@@ -11,6 +11,15 @@ multiplayer, movement completion deterministically selects from the snapshotted 
 using the action ID and stores both `challengeStop` and `challengeId` so every client
 shows the same content.
 
+Bundled countries expose six ordinary cards spanning performance, coordination,
+trivia, storytelling, and country-specific social play, plus the typed word and
+GeoGuessr challenges. Every record has a stable ID, minimum player count, expected
+duration, numeric base penalty, and result drink rules. Named cards declare a
+rotating `describer`, `performer`, `judge`, or `captain`; the selected player and
+per-team role cursor are snapshotted with gameplay so reconnects cannot retarget the
+card. Selection excludes session `usedChallengeKeys` and cards that need more players
+than the active team has.
+
 Ordinary cards are social instructions: they do not record pass/fail or change score.
 Only the active leader may complete them. Completion transactionally closes the card,
 selects the next unfinished team, clears the roll, and enters `waiting` (or `done`).

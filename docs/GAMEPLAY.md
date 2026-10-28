@@ -19,7 +19,7 @@
 | `9-12` | 3 | 12 | 3 |
 
 Difficulty scales authored drink penalties by ×1, ×2, or ×3 with a nine-sip cap.
-Duration chooses a fresh
+Duration targets roughly 20, 30, or 40 minutes for Short, Medium, and Long by choosing a fresh
 6-, 9-, or 12-stop route snapshot from a curated family beginning in Iceland,
 Ireland, Portugal, Norway, or Finland and ending in Greece. Selection preserves
 geographic order, unique countries, at least 0.75 board units between stops, turns

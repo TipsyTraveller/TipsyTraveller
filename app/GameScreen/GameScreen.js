@@ -14,10 +14,13 @@ import {
   GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
+  getChallengeKey,
   getCountryWordRound,
   getGeoGuessrRound,
   getResolvedPenaltySips,
   getTeamPlayers,
+  getTargetCursorKey,
+  getTargetedChallengeRound,
 } from './constants/challenges';
 import {
   calculateBoardDistanceKm,
@@ -127,6 +130,8 @@ const GameScreen = ({ navigation, route }) => {
   const visualActionIdRef = useRef(null);
   const multiplayerSessionIdRef = useRef(null);
   const usedMonumentIdsRef = useRef([]);
+  const usedChallengeKeysRef = useRef([]);
+  const targetCursorsRef = useRef({});
   const devForceChallengeTypeRef = useRef(null);
   const localRoadblockHistoryRef = useRef([]);
   const feedbackEventRef = useRef({ dice: null, challenge: null, result: null });
@@ -219,6 +224,8 @@ const GameScreen = ({ navigation, route }) => {
 
     activeCarProgressRef.current = 0;
     usedMonumentIdsRef.current = [];
+    usedChallengeKeysRef.current = [];
+    targetCursorsRef.current = {};
     setState('waiting');
     setActiveTeamIndex(0);
     setLastRoll(null);
@@ -404,10 +411,15 @@ const GameScreen = ({ navigation, route }) => {
     });
     const effectiveForceType = forceType || (isRoadsideDuel ? GEO_GUESSR_CHALLENGE_TYPE : null);
     const challengeId = getChallengeIdForStop(stop, seed, {
-      teamPlayerCount: Math.max(players.length, 2),
+      teamPlayerCount: Math.max(players.length, 1),
       forceType: effectiveForceType,
+      usedChallengeKeys: usedChallengeKeysRef.current,
     });
     const challenge = getChallengeForStop(stopIndex, routeStops, challengeId);
+    const challengeKey = getChallengeKey(stop, challengeId);
+    if (challengeKey) {
+      usedChallengeKeysRef.current = [...new Set([...usedChallengeKeysRef.current, challengeKey])];
+    }
 
     if (challenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
       const geoData = getGeoGuessrRound({
@@ -431,6 +443,30 @@ const GameScreen = ({ navigation, route }) => {
       }
     }
 
+    const role = challenge.targeting?.role;
+    const cursorKey = role ? getTargetCursorKey(pieceId, role) : null;
+    const challengeRound = challenge.type === COUNTRY_WORD_CHALLENGE_TYPE
+      ? getCountryWordRound(
+          challenge,
+          players,
+          seed,
+          gameData?.difficulty,
+          roomRules.challengeTimerPace,
+          targetCursorsRef.current[getTargetCursorKey(pieceId, 'describer')]
+        )
+      : role
+        ? getTargetedChallengeRound(
+            challenge,
+            players,
+            targetCursorsRef.current[cursorKey],
+            gameData?.difficulty
+          )
+        : null;
+    if (challengeRound) {
+      const resolvedCursorKey = getTargetCursorKey(pieceId, challengeRound.targetRole);
+      targetCursorsRef.current[resolvedCursorKey] = (Number(targetCursorsRef.current[resolvedCursorKey]) || 0) + 1;
+    }
+
     return {
       ...challenge,
       ...(Number.isFinite(Number(challenge.durationSeconds))
@@ -441,19 +477,15 @@ const GameScreen = ({ navigation, route }) => {
             ),
           }
         : {}),
-      ...(getCountryWordRound(
-        challenge,
-        players,
-        seed,
-        gameData?.difficulty,
-        roomRules.challengeTimerPace
-      ) || {}),
+      ...(challengeRound || {}),
     };
   };
 
   const resetLocalGame = () => {
     activeCarProgressRef.current = 0;
     usedMonumentIdsRef.current = [];
+    usedChallengeKeysRef.current = [];
+    targetCursorsRef.current = {};
     setState('waiting');
     setActiveTeamIndex(0);
     setLastRoll(null);
@@ -1101,7 +1133,38 @@ const GameScreen = ({ navigation, route }) => {
       const detourStep = Number(localPendingAction.detourStep) || 0;
       const stop = localRoadblock.detourStops?.[detourStep - 1];
       if (!stop) return;
-      const challengeId = stop.challenges?.[0]?.id || null;
+      const detourPlayers = getTeamPlayers(currentTeamMembers, pieceId);
+      const challengeId = getChallengeIdForStop(stop, `detour:${localTurnNumber}:${pieceId}`, {
+        teamPlayerCount: Math.max(detourPlayers.length, 1),
+        usedChallengeKeys: usedChallengeKeysRef.current,
+      });
+      const challengeKey = getChallengeKey(stop, challengeId);
+      if (challengeKey) {
+        usedChallengeKeysRef.current = [...new Set([...usedChallengeKeysRef.current, challengeKey])];
+      }
+      const detourChallenge = getChallengeForStop(0, [stop], challengeId);
+      const targetRole = detourChallenge.targeting?.role;
+      const cursorKey = targetRole ? getTargetCursorKey(pieceId, targetRole) : null;
+      const detourRound = detourChallenge.type === COUNTRY_WORD_CHALLENGE_TYPE
+        ? getCountryWordRound(
+            detourChallenge,
+            detourPlayers,
+            `detour:${localTurnNumber}:${pieceId}`,
+            gameData?.difficulty,
+            roomRules.challengeTimerPace,
+            targetCursorsRef.current[cursorKey]
+          )
+        : targetRole
+          ? getTargetedChallengeRound(
+            detourChallenge,
+            detourPlayers,
+            targetCursorsRef.current[cursorKey],
+            gameData?.difficulty
+          )
+          : null;
+      if (detourRound) {
+        targetCursorsRef.current[cursorKey] = (Number(targetCursorsRef.current[cursorKey]) || 0) + 1;
+      }
       const previousProgress = teamProgress[pieceId] || {};
       setTeamProgress({
         ...teamProgress,
@@ -1119,7 +1182,8 @@ const GameScreen = ({ navigation, route }) => {
       setRemainingMoves(0);
       setLocalRoadblock({ ...localRoadblock, status: 'detourChallenge', detourStep });
       setCurrentChallenge({
-        ...getChallengeForStop(0, [stop], challengeId),
+        ...detourChallenge,
+        ...(detourRound || {}),
         markerPosition: stop.position,
         isDetour: true,
       });

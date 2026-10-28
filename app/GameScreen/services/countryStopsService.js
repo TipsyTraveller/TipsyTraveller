@@ -268,6 +268,11 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         prompt: challenge.prompt,
         penalty: challenge.penalty,
         penaltySips: challenge.penaltySips,
+        minPlayers: challenge.minPlayers,
+        expectedDurationSeconds: challenge.expectedDurationSeconds,
+        category: challenge.category,
+        targeting: challenge.targeting,
+        drinkRules: challenge.drinkRules,
         type: challenge.type,
         penaltyTag: challenge.penaltyTag,
         durationSeconds: challenge.durationSeconds,
@@ -316,6 +321,20 @@ const hasCurrentGeoGuessrContent = (challenge, expected) => (
   && JSON.stringify(challenge.countryMonumentIds) === JSON.stringify(expected.countryMonumentIds)
 );
 
+const hasCurrentChallengeCatalogue = (value, expectedChallenges) => {
+  const challengesById = new Map(toChallengeList(value).map((challenge) => [challenge.id, challenge]));
+  return toChallengeList(expectedChallenges).every((expected) => {
+    const challenge = challengesById.get(expected.id);
+    return challenge
+      && Number(challenge.penaltySips) === Number(expected.penaltySips)
+      && Number(challenge.minPlayers || 1) === Number(expected.minPlayers || 1)
+      && Number(challenge.expectedDurationSeconds || challenge.durationSeconds)
+        === Number(expected.expectedDurationSeconds || expected.durationSeconds)
+      && JSON.stringify(challenge.targeting || null) === JSON.stringify(expected.targeting || null)
+      && JSON.stringify(challenge.drinkRules || null) === JSON.stringify(expected.drinkRules || null);
+  });
+};
+
 const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
   if (countryWordMigrationPromise) return countryWordMigrationPromise;
 
@@ -336,7 +355,9 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
           getGeoGuessrChallenge(rawStop),
           expectedGeo
         );
-        return wordCurrent && geoCurrent;
+        return wordCurrent
+          && geoCurrent
+          && hasCurrentChallengeCatalogue(rawStop?.challenges, stop.challenges);
       });
       if (countryWordMigrationVerified && embeddedContentIsCurrent) return 0;
 
@@ -358,8 +379,13 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
           !hasCurrentGeoGuessrContent(getGeoGuessrChallenge(rawStop), expectedGeo)
           || !hasCurrentGeoGuessrContent(challengeDocsById.get(`${stop.id}__${expectedGeo.id}`), expectedGeo)
         );
+        const catalogueMismatch = !hasCurrentChallengeCatalogue(rawStop?.challenges, stop.challenges)
+          || !stop.challenges.every((expected) => hasCurrentChallengeCatalogue(
+            [challengeDocsById.get(`${stop.id}__${expected.id}`)].filter(Boolean),
+            [expected]
+          ));
 
-        return Boolean(wordMismatch || geoMismatch);
+        return Boolean(wordMismatch || geoMismatch || catalogueMismatch);
       });
 
       if (!targets.length) {

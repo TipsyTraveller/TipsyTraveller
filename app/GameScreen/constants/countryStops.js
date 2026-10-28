@@ -11,6 +11,7 @@ import {
 } from './monumentPool.js';
 
 export const DURATION_STOP_COUNTS = { short: 6, medium: 9, long: 12 };
+export const DURATION_TARGET_MINUTES = { short: 20, medium: 30, long: 40 };
 
 export const ROUTE_START_IDS = ['iceland', 'ireland', 'portugal', 'norway', 'finland'];
 
@@ -32,13 +33,92 @@ const position = (x, y) => {
   return { x: point.x, y: point.y };
 };
 
-const challenge = (id, title, prompt, penalty = 'If the team cannot do it, apply the sip penalty or choose water.') => ([{
+const ordinaryChallenge = ({
+  category,
+  drinkRules = { success: 'none', failure: 'wholeTeam' },
+  durationSeconds,
+  id,
+  minPlayers = 1,
+  penalty = 'If the team cannot do it, apply the sip penalty or choose water.',
+  prompt,
+  targeting,
+  title,
+}) => ({
   id,
   title,
   prompt,
   penalty,
   penaltySips: 1,
-}]);
+  minPlayers,
+  durationSeconds,
+  expectedDurationSeconds: durationSeconds,
+  category,
+  drinkRules,
+  ...(targeting ? { targeting } : {}),
+});
+
+// Each country keeps its original authored card and receives five predictable,
+// data-driven variants. IDs are country-scoped so a room snapshot remains stable.
+const challenge = (id, title, prompt, penalty) => ([
+  ordinaryChallenge({
+    id,
+    title,
+    prompt,
+    penalty,
+    durationSeconds: 30,
+    category: 'country',
+  }),
+]);
+
+const expandOrdinaryChallenges = (country) => ([
+  ...country.challenge,
+  ordinaryChallenge({
+    id: `${country.id}-performer-spotlight`,
+    title: '{targetPlayerName}, Take the Stage',
+    prompt: '{targetPlayerName} gives a silent 20-second performance inspired by this country. Teammates must guess the scene.',
+    durationSeconds: 20,
+    category: 'performance',
+    targeting: { role: 'performer', selection: 'rotate' },
+    drinkRules: { success: 'none', failure: 'target' },
+  }),
+  ordinaryChallenge({
+    id: `${country.id}-captain-coordination`,
+    title: 'Captain {targetPlayerName}',
+    prompt: '{targetPlayerName} leads the team through a three-move routine. Everyone must repeat it in sync twice.',
+    durationSeconds: 30,
+    category: 'coordination',
+    targeting: { role: 'captain', selection: 'rotate' },
+    drinkRules: { success: 'none', failure: 'wholeTeam' },
+  }),
+  ordinaryChallenge({
+    id: `${country.id}-judge-trivia`,
+    title: 'Judge {targetPlayerName}',
+    prompt: 'The team names three facts, foods, places, or traditions linked to this country. {targetPlayerName} accepts or rejects each answer.',
+    durationSeconds: 35,
+    minPlayers: 2,
+    category: 'trivia',
+    targeting: { role: 'judge', selection: 'rotate' },
+    drinkRules: { success: 'none', failure: 'teamExceptTarget' },
+  }),
+  ordinaryChallenge({
+    id: `${country.id}-describer-story`,
+    title: '{targetPlayerName}\'s Travel Tale',
+    prompt: '{targetPlayerName} tells a 30-second story set in this country using three random words chosen by teammates.',
+    durationSeconds: 40,
+    minPlayers: 2,
+    category: 'storytelling',
+    targeting: { role: 'describer', selection: 'rotate' },
+    drinkRules: { success: 'teamExceptTarget', failure: 'target' },
+  }),
+  ordinaryChallenge({
+    id: `${country.id}-physical-balance`,
+    title: 'Border Balance',
+    prompt: 'Every teammate holds a safe one-leg travel pose for 20 seconds. Restart the count if anyone steps down.',
+    durationSeconds: 20,
+    category: 'physical',
+    drinkRules: { success: 'none', failure: 'wholeTeam' },
+  }),
+]);
 
 const COUNTRY_WORDS = {
   iceland: ['Thingvellir', 'Eyjafjallajokull', 'skyr', 'puffin colony', 'medieval saga', 'geothermal lagoon'],
@@ -110,6 +190,10 @@ const getCountryWordChallenge = (countryId) => {
     successPoints: 10,
     wordListVersion: 2,
     words,
+    minPlayers: 2,
+    expectedDurationSeconds: 30,
+    targeting: { role: 'describer', selection: 'rotate' },
+    drinkRules: { success: 'teamExceptTarget', failure: 'target' },
   };
 };
 
@@ -133,6 +217,9 @@ const getGeoGuessrChallenge = (countryId) => ({
   monumentPoolId: MONUMENT_POOL_DOC_ID,
   monumentPoolVersion: MONUMENT_POOL_VERSION,
   countryMonumentIds: COUNTRY_MONUMENT_IDS[countryId] || [],
+  minPlayers: 1,
+  expectedDurationSeconds: GEO_GUESSR_PHOTO_SECONDS + GEO_GUESSR_PIN_SECONDS,
+  drinkRules: { success: 'none', failure: 'opponents' },
 });
 
 const ensureCountryWordChallenge = (countryId, challenges) => {
@@ -150,7 +237,7 @@ const ensureCountryWordChallenge = (countryId, challenges) => {
   ];
 };
 
-const stop = ({ accent, challenge: stopChallenge, city, code, id, name, sourcePosition }, order) => ({
+const stop = ({ accent, challenge: _challenge, city, code, id, name, sourcePosition, ...country }, order) => ({
   id,
   name,
   code,
@@ -159,7 +246,7 @@ const stop = ({ accent, challenge: stopChallenge, city, code, id, name, sourcePo
   position: position(...sourcePosition),
   positionVersion: COUNTRY_POSITION_VERSION,
   accent,
-  challenges: stopChallenge,
+  challenges: expandOrdinaryChallenges({ accent, challenge: _challenge, city, code, id, name, sourcePosition, ...country }),
 });
 
 // Inclusive 51-country catalogue: sovereign states wholly or partly in Europe,
@@ -262,15 +349,20 @@ export const normalizeCountryStops = (value) => {
   const source = toList(value);
   const stops = source.length >= 2 ? source : DEFAULT_COUNTRY_STOPS;
   return stops.map((stop, index) => {
+    const stopId = String(stop.id || `stop-${index}`);
+    const authoredChallenges = toList(stop.challenges);
+    const authoredChallengeIds = new Set(authoredChallenges.map((item) => item?.id));
+    const bundledFallbacks = (DEFAULT_COUNTRY_STOP_BY_ID.get(stopId)?.challenges || [])
+      .filter((item) => !authoredChallengeIds.has(item.id));
     const normalized = {
-      id: String(stop.id || `stop-${index}`),
+      id: stopId,
       name: String(stop.name || `Stop ${index + 1}`),
       order: Number.isFinite(Number(stop.order)) ? Number(stop.order) : index,
       position: { x: Number(stop.position?.x) || 0, y: Number(stop.position?.y) || 0 },
       accent: stop.accent || '#1ba39c',
       challenges: ensureCountryWordChallenge(
-        String(stop.id || `stop-${index}`),
-        toList(stop.challenges).map((challenge, challengeIndex) => ({
+        stopId,
+        [...authoredChallenges, ...bundledFallbacks].map((challenge, challengeIndex) => ({
           id: String(challenge.id || `challenge-${challengeIndex}`),
           title: String(challenge.title || 'Border Check'),
           prompt: String(challenge.prompt || 'Tell the table why your team stopped here.'),
@@ -278,6 +370,27 @@ export const normalizeCountryStops = (value) => {
           penaltySips: Number.isFinite(Number(challenge.penaltySips))
             ? Math.max(0, Math.round(Number(challenge.penaltySips)))
             : challenge.type === GEO_GUESSR_CHALLENGE_TYPE ? 2 : 1,
+          minPlayers: Number.isFinite(Number(challenge.minPlayers))
+            ? Math.max(1, Math.round(Number(challenge.minPlayers)))
+            : challenge.type === 'countryWordGuess' ? 2 : 1,
+          expectedDurationSeconds: Number.isFinite(Number(challenge.expectedDurationSeconds))
+            ? Math.max(1, Math.round(Number(challenge.expectedDurationSeconds)))
+            : Number.isFinite(Number(challenge.durationSeconds))
+              ? Math.max(1, Math.round(Number(challenge.durationSeconds)))
+              : 30,
+          ...(challenge.category ? { category: String(challenge.category) } : {}),
+          ...(challenge.targeting?.role ? {
+              targeting: {
+                role: String(challenge.targeting.role),
+                selection: 'rotate',
+              },
+            } : {}),
+          ...(challenge.drinkRules ? {
+              drinkRules: {
+                success: String(challenge.drinkRules.success || 'none'),
+                failure: String(challenge.drinkRules.failure || 'wholeTeam'),
+              },
+            } : {}),
           ...(challenge.type ? { type: String(challenge.type) } : {}),
           ...(challenge.penaltyTag ? { penaltyTag: String(challenge.penaltyTag) } : {}),
           ...(Number.isFinite(Number(challenge.durationSeconds))

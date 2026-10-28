@@ -23,7 +23,7 @@ games/{gameID}
   teamModels/{team1|team2|team3}: modelId
   routeStops[]: ordered snapshot, immutable during one session and replaced on rematch
   gameplay
-    schemaVersion: 9
+    schemaVersion: 10
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
     teamProgress/{teamId}: currentLeg, isDone, score,
       challengePoints, finishPosition?, detour?
@@ -33,7 +33,8 @@ games/{gameID}
       inputMethod, startedAt, movementStartsAt, movementEndsAt,
       movementPath?, detourStartStep?, detourStep?, detourSegmentType?
     challengeStop, challengeStopData, challengeId, challengeRound
-    roadblock, roadblockHistory[], usedMonumentIds[]
+    roadblock, roadblockHistory[], usedMonumentIds[], usedChallengeKeys[]
+    targetCursors/{teamId:role}: next roster index
 players/{gameID}
   playerCounter
   team1|team2|team3/{pushKey}: name, isLeader, deviceID

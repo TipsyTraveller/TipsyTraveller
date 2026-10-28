@@ -22,10 +22,13 @@ import {
   GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
+  getChallengeKey,
   getCountryWordRound,
   getGeoGuessrRound,
   getResolvedPenaltySips,
   getTeamPlayers,
+  getTargetCursorKey,
+  getTargetedChallengeRound,
   isBotOnlyTeam,
 } from '../constants/challenges';
 import {
@@ -429,7 +432,34 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           : (Number(action.detourStep) || 0);
         const stop = current.roadblock.detourStops?.[detourStep - 1];
         if (!stop) return undefined;
-        const challengeId = stop.challenges?.[0]?.id || null;
+        const detourPlayers = getTeamPlayers(teamMembersRef.current, action.teamId);
+        const challengeId = getChallengeIdForStop(stop, action.id, {
+          teamPlayerCount: detourPlayers.length,
+          usedChallengeKeys: current.usedChallengeKeys,
+        });
+        const challengeKey = getChallengeKey(stop, challengeId);
+        const detourChallenge = getChallengeForStop(0, [stop], challengeId);
+        const targetCursors = { ...(current.targetCursors || {}) };
+        const targetRole = detourChallenge.targeting?.role;
+        const cursorKey = targetRole ? getTargetCursorKey(action.teamId, targetRole) : null;
+        const challengeRound = detourChallenge.type === COUNTRY_WORD_CHALLENGE_TYPE
+          ? getCountryWordRound(
+              detourChallenge,
+              detourPlayers,
+              action.id,
+              gameDataRef.current?.difficulty,
+              getRoomRules(gameDataRef.current).challengeTimerPace,
+              targetCursors[cursorKey]
+            )
+          : targetRole
+            ? getTargetedChallengeRound(
+              detourChallenge,
+              detourPlayers,
+              targetCursors[cursorKey],
+              gameDataRef.current?.difficulty
+            )
+            : null;
+        if (challengeRound) targetCursors[cursorKey] = (Number(targetCursors[cursorKey]) || 0) + 1;
         const previousProgress = current.teamProgress?.[action.teamId] || {};
 
         return {
@@ -451,7 +481,11 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           challengeStop: null,
           challengeStopData: stop,
           challengeId,
-          challengeRound: null,
+          challengeRound,
+          targetCursors,
+          usedChallengeKeys: challengeKey
+            ? [...new Set([...(current.usedChallengeKeys || []), challengeKey])]
+            : (current.usedChallengeKeys || []),
           roadblock: {
             ...current.roadblock,
             status: 'detourChallenge',
@@ -567,10 +601,16 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         const challengeId = getChallengeIdForStop(stop, action.id, {
           teamPlayerCount: players.length,
           forceType: isRoadsideDuel ? GEO_GUESSR_CHALLENGE_TYPE : null,
+          usedChallengeKeys: current.usedChallengeKeys,
         });
         const challenge = getChallengeForStop(action.targetLeg, routeModel.countryStops, challengeId);
         let challengeRound = null;
         let usedMonumentIds = Array.isArray(current.usedMonumentIds) ? current.usedMonumentIds : [];
+        const challengeKey = getChallengeKey(stop, challengeId);
+        const usedChallengeKeys = challengeKey
+          ? [...new Set([...(current.usedChallengeKeys || []), challengeKey])]
+          : (current.usedChallengeKeys || []);
+        const targetCursors = { ...(current.targetCursors || {}) };
 
         if (challenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
           const geoData = getGeoGuessrRound({
@@ -589,14 +629,26 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             challengeRound = geoData.round;
             usedMonumentIds = geoData.nextUsedMonumentIds;
           }
-        } else {
+        } else if (challenge.type === COUNTRY_WORD_CHALLENGE_TYPE) {
+          const cursorKey = getTargetCursorKey(action.teamId, 'describer');
           challengeRound = getCountryWordRound(
             challenge,
             players,
             action.id,
             gameDataRef.current?.difficulty,
-            getRoomRules(gameDataRef.current).challengeTimerPace
+            getRoomRules(gameDataRef.current).challengeTimerPace,
+            targetCursors[cursorKey]
           );
+          if (challengeRound) targetCursors[cursorKey] = (Number(targetCursors[cursorKey]) || 0) + 1;
+        } else if (challenge.targeting?.role) {
+          const cursorKey = getTargetCursorKey(action.teamId, challenge.targeting.role);
+          challengeRound = getTargetedChallengeRound(
+            challenge,
+            players,
+            targetCursors[cursorKey],
+            gameDataRef.current?.difficulty
+          );
+          if (challengeRound) targetCursors[cursorKey] = (Number(targetCursors[cursorKey]) || 0) + 1;
         }
 
         return {
@@ -610,6 +662,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           challengeId,
           challengeRound,
           usedMonumentIds,
+          usedChallengeKeys,
+          targetCursors,
           roadblock: null,
           updatedAt: completedAt,
         };

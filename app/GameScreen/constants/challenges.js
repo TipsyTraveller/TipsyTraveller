@@ -270,7 +270,7 @@ export const didTriggerRoadsideDuel = ({ fromLeg = 0, targetLeg = 0, teamId, tea
 export const getChallengeIdForStop = (
   stop,
   seed = '',
-  { teamPlayerCount = 0, forceType = null } = {}
+  { teamPlayerCount = 0, forceType = null, usedChallengeKeys = [] } = {}
 ) => {
   const challenges = Array.isArray(stop?.challenges)
     ? stop.challenges
@@ -279,12 +279,42 @@ export const getChallengeIdForStop = (
     const forced = challenges.find((challenge) => challenge?.type === forceType);
     if (forced?.id) return forced.id;
   }
+  const used = new Set(Array.isArray(usedChallengeKeys) ? usedChallengeKeys : []);
   const eligibleChallenges = challenges.filter((challenge) => (
-    challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || teamPlayerCount >= 2
+    teamPlayerCount >= (Number(challenge?.minPlayers) || (
+      challenge?.type === COUNTRY_WORD_CHALLENGE_TYPE ? 2 : 1
+    ))
+    && !used.has(`${stop?.id}:${challenge?.id}`)
   ));
   if (!eligibleChallenges.length) return null;
   const hash = hashSeed(seed);
   return eligibleChallenges[hash % eligibleChallenges.length]?.id || eligibleChallenges[0]?.id || null;
+};
+
+export const getChallengeKey = (stop, challengeId) => (
+  stop?.id && challengeId ? `${stop.id}:${challengeId}` : null
+);
+
+export const getTargetCursorKey = (teamId, role = 'performer') => `${teamId}:${role}`;
+
+export const getTargetedChallengeRound = (
+  challenge,
+  players,
+  targetCursor = 0,
+  difficulty = 'easy'
+) => {
+  const role = challenge?.targeting?.role;
+  if (!role || !players.length) return null;
+  const cursor = Math.max(0, Math.round(Number(targetCursor) || 0));
+  const selectedPlayer = players[cursor % players.length];
+  return {
+    stage: 'result',
+    selectedPlayerId: selectedPlayer.playerId,
+    selectedPlayerName: selectedPlayer.name,
+    targetRole: role,
+    targetCursor: cursor,
+    resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
+  };
 };
 
 export const getCountryWordRound = (
@@ -292,13 +322,15 @@ export const getCountryWordRound = (
   players,
   seed = '',
   difficulty = 'easy',
-  timerPace = 'relaxed'
+  timerPace = 'relaxed',
+  targetCursor = 0
 ) => {
   if (challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || players.length < 2) return null;
   const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
   if (!words.length) return null;
 
-  const selectedPlayer = players[hashSeed(`${seed}:player`) % players.length];
+  const cursor = Math.max(0, Math.round(Number(targetCursor) || 0));
+  const selectedPlayer = players[cursor % players.length];
   return {
     stage: 'intro',
     selectedPlayerId: selectedPlayer.playerId,
@@ -309,6 +341,8 @@ export const getCountryWordRound = (
     pointsAwarded: 0,
     durationSeconds: resolveTimerSeconds(Number(challenge.durationSeconds) || 30, timerPace),
     resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
+    targetRole: challenge.targeting?.role || 'describer',
+    targetCursor: cursor,
   };
 };
 

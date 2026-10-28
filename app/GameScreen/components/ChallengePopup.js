@@ -481,6 +481,12 @@ const ChallengePopup = ({
       ? 'REVEALED'
       : getChallengeTimer(challenge);
   const resolvedPenaltySips = getResolvedPenaltySips(challenge, difficulty);
+  const replaceTargetName = (value) => String(value || '').replace(
+    /\{targetPlayerName\}/g,
+    challenge.selectedPlayerName || 'the selected player'
+  );
+  const challengeTitle = replaceTargetName(challenge.title);
+  const challengePrompt = replaceTargetName(challenge.prompt);
   const canFinishChallenge = canComplete
     && ((!isCountryWordChallenge && !isGeoGuessrChallenge) || challengeStage === 'result');
   const missionCode = challenge.code
@@ -754,8 +760,13 @@ const ChallengePopup = ({
                 />
               ) : isCountryWordChallenge ? renderCountryWordContent() : (
                 <>
-                  <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{challenge.title}</Text>
-                  <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>{challenge.prompt}</Text>
+                  {challenge.selectedPlayerName ? (
+                    <Text style={styles.missionCode}>
+                      {`${String(challenge.targetRole || 'player').toUpperCase()}: ${challenge.selectedPlayerName.toUpperCase()}`}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{challengeTitle}</Text>
+                  <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>{challengePrompt}</Text>
                   <View style={styles.bodySpacer} />
                   <View style={styles.penaltyBox}>
                     <View style={styles.penaltyTag}>
