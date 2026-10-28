@@ -4,10 +4,12 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { onValue, ref } from 'firebase/database';
 import { db } from '../../firebaseConfig';
 import ChallengePopup from './components/ChallengePopup';
+import GameOnboarding from './components/GameOnboarding';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
 import RoadblockOverlay from './components/RoadblockOverlay';
+import TurnHandoff from './components/TurnHandoff';
 import {
   COUNTRY_WORD_CHALLENGE_TYPE,
   didTriggerRoadsideDuel,
@@ -69,7 +71,12 @@ import {
   getRoomRules,
   resolveTimerSeconds,
 } from './constants/roomRules';
-import { DEFAULT_SETTINGS, getSettings } from '../shared/storage/userSettings';
+import {
+  completeGameplayOnboarding,
+  DEFAULT_SETTINGS,
+  getSettings,
+  hasCompletedGameplayOnboarding,
+} from '../shared/storage/userSettings';
 import useGameFeedback from './hooks/useGameFeedback';
 
 const EMPTY_GAME_DATA = {};
@@ -126,6 +133,7 @@ const GameScreen = ({ navigation, route }) => {
   const [localMovementPath, setLocalMovementPath] = useState(null);
   const [localTurnNumber, setLocalTurnNumber] = useState(1);
   const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const multiplayerSessionIdRef = useRef(null);
@@ -134,7 +142,7 @@ const GameScreen = ({ navigation, route }) => {
   const targetCursorsRef = useRef({});
   const devForceChallengeTypeRef = useRef(null);
   const localRoadblockHistoryRef = useRef([]);
-  const feedbackEventRef = useRef({ dice: null, challenge: null, result: null });
+  const feedbackEventRef = useRef({ dice: null, challenge: null, movement: null, result: null, roadblock: null, victory: null });
   const feedback = useGameFeedback(localSettings);
   const routeStops = useMemo(
     () => devRouteStops || multiplayerRouteStops || resolveGameRouteStops(gameData),
@@ -170,10 +178,17 @@ const GameScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     let active = true;
-    getSettings().then((settings) => {
-      if (active) setLocalSettings(settings);
+    Promise.all([getSettings(), hasCompletedGameplayOnboarding()]).then(([settings, completed]) => {
+      if (!active) return;
+      setLocalSettings(settings);
+      setShowOnboarding(!completed);
     });
     return () => { active = false; };
+  }, []);
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    completeGameplayOnboarding();
   }, []);
 
   useEffect(() => {
@@ -206,7 +221,7 @@ const GameScreen = ({ navigation, route }) => {
     multiplayerSessionIdRef.current = sessionId;
     activeCarProgressRef.current = 0;
     visualActionIdRef.current = null;
-    feedbackEventRef.current = { dice: null, challenge: null, result: null };
+    feedbackEventRef.current = { dice: null, challenge: null, movement: null, result: null, roadblock: null, victory: null };
     setLastRoll(null);
     setRemainingMoves(0);
     setMovingPieceId(null);
@@ -394,6 +409,16 @@ const GameScreen = ({ navigation, route }) => {
       feedback.result();
     }
   }, [currentChallenge, feedback, localTurnNumber, multiplayer.gameplay?.turnNumber, multiplayerEnabled, state]);
+
+  useEffect(() => {
+    if (state !== 'moving') return;
+    const actionId = multiplayerEnabled
+      ? multiplayer.gameplay?.currentAction?.id
+      : localPendingAction?.id;
+    if (!actionId || feedbackEventRef.current.movement === actionId) return;
+    feedbackEventRef.current.movement = actionId;
+    feedback.movement();
+  }, [feedback, localPendingAction?.id, multiplayer.gameplay?.currentAction?.id, multiplayerEnabled, state]);
 
   const createLocalChallenge = (
     stopIndex,
@@ -1474,6 +1499,23 @@ const GameScreen = ({ navigation, route }) => {
   const activeDetour = teamProgress[activePiece?.id]?.detour || null;
   const roadblockEvent = (multiplayerEnabled ? multiplayer.gameplay?.roadblock : localRoadblock)
     || activeDetour;
+  useEffect(() => {
+    if (state !== 'roadblock' || !roadblockEvent?.id) return;
+    const eventKey = `${roadblockEvent.id}:${roadblockEvent.status || 'choice'}`;
+    if (feedbackEventRef.current.roadblock === eventKey) return;
+    feedbackEventRef.current.roadblock = eventKey;
+    feedback.roadblock();
+  }, [feedback, roadblockEvent?.id, roadblockEvent?.status, state]);
+
+  useEffect(() => {
+    if (state !== 'done') return;
+    const victoryKey = multiplayerEnabled
+      ? (multiplayer.gameplay?.sessionId || 'multiplayer')
+      : `local:${gameData?.createdAt || 'game'}`;
+    if (feedbackEventRef.current.victory === victoryKey) return;
+    feedbackEventRef.current.victory = victoryKey;
+    feedback.victory();
+  }, [feedback, gameData?.createdAt, multiplayer.gameplay?.sessionId, multiplayerEnabled, state]);
   const movementPath = multiplayerEnabled
     ? multiplayer.gameplay?.currentAction?.movementPath
     : localMovementPath;
@@ -1663,6 +1705,14 @@ const GameScreen = ({ navigation, route }) => {
         teamProgress={teamProgress}
         visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading)}
       />
+      <TurnHandoff
+        activeTeamId={activePiece?.id}
+        activeTeamLabel={activePiece?.label || 'Team'}
+        isConnected={!multiplayerEnabled || multiplayer.isConnected}
+        localTeamId={multiplayer.localTeamId}
+        multiplayerEnabled={multiplayerEnabled}
+        visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading) && !showOnboarding}
+      />
       <RoadblockOverlay
         canChoose={!multiplayerEnabled || multiplayer.canControlTurn}
         event={roadblockEvent}
@@ -1689,6 +1739,7 @@ const GameScreen = ({ navigation, route }) => {
         pieceRefs={pieceRefs.current}
         routeModel={routeModel}
       />
+      <GameOnboarding onDismiss={dismissOnboarding} visible={showOnboarding} />
       {placementRequest && (
         <CountryStopPlacementForm
           mode={placementRequest.mode}

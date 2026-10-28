@@ -165,7 +165,7 @@ export default function Lobby ({ navigation, route }) {
     const handleRules = () => {
         Alert.alert(
             "How to play",
-            "Teams take turns rolling the die and moving along the route. Complete the country challenge after each stop. The tour ends when every team reaches the finish."
+            "Use one phone per team; that phone stays with the team leader. When your team is called, roll the die, move, and complete the country challenge. Pass the phone when a challenge names a player. Roadblocks make a leading team beat a hard challenge or take a detour. Progress, challenges, and finishing position earn points. If a phone disconnects, rejoin with the same device to restore the current turn."
         );
     }
 

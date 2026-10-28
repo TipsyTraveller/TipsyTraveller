@@ -71,6 +71,21 @@ and gameplay record together. It keeps the room, roster, team vehicles, difficul
 duration, and room rules, while assigning a new session ID and clearing scores,
 drinks, progress, finish order, challenges, roadblocks, and used content.
 
+## Onboarding and turn feedback
+
+The first GameScreen visit shows a skippable four-page guide covering one leader
+phone per team, named-player phone handoff, turn flow, scoring, roadblocks, and
+reconnection. The lobby Rules action and Settings game guide keep the same essential
+instructions available later.
+
+During `waiting`, every device shows the active team explicitly. The controlling
+device is prompted to roll while other teams see who they are waiting for; offline
+devices show that synchronized game state will be restored. Targeted challenge cards
+name the player who must receive the phone. Dice, movement, challenges, roadblocks,
+results, and victory use local sound/haptic feedback according to presentation
+settings. A completed game opens with a short, skippable winner celebration before
+the full standings remain available.
+
 ## Roadblocks
 
 A roadblock can occur only when the active team is at least two stops ahead of the

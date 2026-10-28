@@ -760,10 +760,14 @@ const ChallengePopup = ({
                 />
               ) : isCountryWordChallenge ? renderCountryWordContent() : (
                 <>
-                  {challenge.selectedPlayerName ? (
-                    <Text style={styles.missionCode}>
-                      {`${String(challenge.targetRole || 'player').toUpperCase()}: ${challenge.selectedPlayerName.toUpperCase()}`}
-                    </Text>
+                  {challenge.selectedPlayerName && canComplete ? (
+                    <View style={styles.phoneHandoff}>
+                      <Text style={styles.phoneHandoffLabel}>PASS THE PHONE TO</Text>
+                      <Text style={styles.phoneHandoffName}>{challenge.selectedPlayerName.toUpperCase()}</Text>
+                      <Text style={styles.phoneHandoffRole}>
+                        {`${String(challenge.targetRole || 'player').toUpperCase()} FOR THIS CHALLENGE`}
+                      </Text>
+                    </View>
                   ) : null}
                   <Text style={[styles.title, compact && styles.titleCompact, roomy && styles.titleRoomy]}>{challengeTitle}</Text>
                   <Text style={[styles.prompt, compact && styles.promptCompact, roomy && styles.promptRoomy]}>{challengePrompt}</Text>
@@ -1211,6 +1215,34 @@ const styles = StyleSheet.create({
     fontFamily: 'dogicapixelbold',
     fontSize: 8,
     textTransform: 'uppercase',
+  },
+  phoneHandoff: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    backgroundColor: '#FFD700',
+    borderWidth: 2,
+    borderColor: '#111111',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 8,
+  },
+  phoneHandoffLabel: {
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    color: '#E8412F',
+  },
+  phoneHandoffName: {
+    fontFamily: 'dogicapixelbold',
+    fontSize: 14,
+    color: '#111111',
+    marginTop: 3,
+  },
+  phoneHandoffRole: {
+    fontFamily: 'dogicapixel',
+    fontSize: 7,
+    color: '#2C3E50',
+    marginTop: 3,
   },
   timerChip: {
     paddingVertical: 3,

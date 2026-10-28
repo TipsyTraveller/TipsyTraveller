@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,6 +22,56 @@ const getShortTeamLabel = (label = '', index = 0) => {
   const match = String(label).match(/(\d+)/);
   if (match) return `T${match[1]}`;
   return String(label).slice(0, 3).toUpperCase() || `T${index + 1}`;
+};
+
+const CELEBRATION_COLORS = ['#E8412F', '#FFD700', '#1BA39C', '#FFFFFF', '#6C5CE7'];
+
+const WinnerCelebration = ({ onSkip, winnerLabel }) => {
+  const { height } = useWindowDimensions();
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 3400,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    animation.start();
+    const timeout = setTimeout(onSkip, 4000);
+    return () => {
+      animation.stop();
+      clearTimeout(timeout);
+    };
+  }, [onSkip, progress]);
+
+  return (
+    <View accessibilityViewIsModal style={styles.celebrationOverlay}>
+      {Array.from({ length: 22 }, (_, index) => (
+        <Animated.View
+          key={index}
+          pointerEvents="none"
+          style={[
+            styles.confetti,
+            {
+              left: `${(index * 37) % 96}%`,
+              backgroundColor: CELEBRATION_COLORS[index % CELEBRATION_COLORS.length],
+              transform: [
+                { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-80 - (index % 4) * 30, height + 50] }) },
+                { rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${360 + index * 45}deg`] }) },
+              ],
+            },
+          ]}
+        />
+      ))}
+      <Text style={styles.trophy}>🏆</Text>
+      <Text style={styles.celebrationTitle}>{`${winnerLabel || 'A TEAM'} WINS!`}</Text>
+      <Text style={styles.celebrationSubtitle}>TOUR COMPLETE</Text>
+      <Pressable accessibilityLabel="Skip winner celebration" onPress={onSkip} style={styles.skipCelebrationButton}>
+        <Text style={styles.skipCelebrationText}>VIEW RESULTS</Text>
+      </Pressable>
+    </View>
+  );
 };
 
 const GameHud = ({
@@ -47,6 +99,12 @@ const GameHud = ({
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const dismissCelebration = useCallback(() => setShowCelebration(false), []);
+
+  useEffect(() => {
+    setShowCelebration(state === 'done');
+  }, [state]);
 
   useEffect(() => {
     if (state === 'done' || state === 'roadblock' || state === 'challenge') {
@@ -454,11 +512,32 @@ const GameHud = ({
           </View>
         </View>
       )}
+      {state === 'done' && showCelebration && (
+        <WinnerCelebration
+          onSkip={dismissCelebration}
+          winnerLabel={standings[0]?.label}
+        />
+      )}
     </>
   );
 };
 
 const styles = StyleSheet.create({
+  celebrationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 40,
+    elevation: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(21, 34, 46, 0.94)',
+    overflow: 'hidden',
+  },
+  confetti: { position: 'absolute', top: 0, width: 10, height: 18, borderRadius: 2 },
+  trophy: { fontSize: 56, marginBottom: 10 },
+  celebrationTitle: { fontFamily: 'dogicapixelbold', fontSize: 25, color: '#FFD700', textAlign: 'center', textTransform: 'uppercase' },
+  celebrationSubtitle: { fontFamily: 'dogicapixelbold', fontSize: 10, color: '#FFFFFF', marginTop: 10 },
+  skipCelebrationButton: { marginTop: 24, backgroundColor: '#FFF1CD', borderWidth: 2, borderColor: '#111111', borderRadius: 8, paddingHorizontal: 18, paddingVertical: 12 },
+  skipCelebrationText: { fontFamily: 'dogicapixelbold', fontSize: 9, color: '#111111' },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(17, 17, 17, 0.18)',

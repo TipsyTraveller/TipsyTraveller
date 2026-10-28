@@ -270,7 +270,7 @@ export default function Settings({ navigation }) {
             {expandedSection === 'rules_overview' && (
               <View style={styles.accordionBody}>
                 <Text style={styles.guideText}>
-                  Teams take turns rolling the 3D die. You can drag and throw the die physically on screen or tap the ROLL button on the HUD. Your vehicle moves forward by the rolled number of stops.
+                  Each team uses its leader’s phone. A handoff banner announces the active team. That leader can drag and throw the 3D die or tap ROLL; every other phone follows the synchronized turn.
                 </Text>
               </View>
             )}
@@ -288,7 +288,7 @@ export default function Settings({ navigation }) {
             {expandedSection === 'rules_challenges' && (
               <View style={styles.accordionBody}>
                 <Text style={styles.guideText}>
-                  Every country stop triggers a unique themed challenge card (trivia, dares, or drinking games). The team completes the challenge together and taps DONE / NEXT TURN to proceed.
+                  Country stops trigger themed challenges. When a card names a describer, performer, judge, or captain, pass the leader’s phone to that player. Complete or fail the card explicitly so points and drinks are recorded before the next turn.
                 </Text>
               </View>
             )}
@@ -298,7 +298,7 @@ export default function Settings({ navigation }) {
               onPress={() => toggleAccordion('rules_kickflip')}
               activeOpacity={0.8}
             >
-              <Text style={styles.accordionTitle}>🛹 3. Passing & Mid-Air Kickflip</Text>
+              <Text style={styles.accordionTitle}>🚧 3. Roadblocks & Scoring</Text>
               <Text style={styles.accordionArrow}>
                 {expandedSection === 'rules_kickflip' ? '▲' : '▼'}
               </Text>
@@ -306,7 +306,7 @@ export default function Settings({ navigation }) {
             {expandedSection === 'rules_kickflip' && (
               <View style={styles.accordionBody}>
                 <Text style={styles.guideText}>
-                  When your vehicle passes an opponent parked at a destination stop, your vehicle performs an airborne 360° kickflip stunt over them! Multiple vehicles parked at the same stop take designated side slots.
+                  Route progress, challenges, and finishing position earn points. A leading team may hit a roadblock: beat its timed hard challenge or take the marked detour. Passing or landing near opponents can also start a GeoGuessr duel.
                 </Text>
               </View>
             )}
@@ -324,7 +324,7 @@ export default function Settings({ navigation }) {
             {expandedSection === 'rules_finish' && (
               <View style={styles.accordionBody}>
                 <Text style={styles.guideText}>
-                  Movement is capped at the finish stop. Finished teams are skipped in turn rotation while remaining teams catch up. Once every team crosses the finish line, the road trip is complete!
+                  Finished teams are skipped while the others catch up. If a phone disconnects, reopen the room on the same device: the active turn, challenge, selected player, scores, and drinks are restored. The game ends once every team finishes.
                 </Text>
               </View>
             )}

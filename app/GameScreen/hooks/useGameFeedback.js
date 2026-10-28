@@ -51,10 +51,22 @@ export default function useGameFeedback(settings) {
       challengePlayer,
       () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
     ), [challengePlayer, play]),
+    movement: useCallback(() => play(
+      dicePlayer,
+      () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    ), [dicePlayer, play]),
+    roadblock: useCallback(() => play(
+      challengePlayer,
+      () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+    ), [challengePlayer, play]),
     result: useCallback(() => {
       if (settings.hapticFeedback) {
         safely(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
       }
     }, [settings.hapticFeedback]),
+    victory: useCallback(() => play(
+      challengePlayer,
+      () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    ), [challengePlayer, play]),
   };
 }

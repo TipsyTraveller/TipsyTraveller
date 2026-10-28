@@ -35,6 +35,7 @@ export default function CharacterSelection({ navigation, route }) {
   const [playerTeam, setPlayerTeam] = useState(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [gameDataToStart, setGameDataToStart] = useState(null);
   const { height } = useWindowDimensions();
   const hasNavigatedRef = useRef(false);
   const initialGameplayRef = useRef(null);
@@ -102,16 +103,30 @@ export default function CharacterSelection({ navigation, route }) {
 
       if (nextGameData.status === 'game' && !hasNavigatedRef.current) {
         hasNavigatedRef.current = true;
-        navigation.replace('GameScreen', {
-          gameID,
-          gameData: nextGameData,
-          teamMembers,
-        });
+        setGameDataToStart(nextGameData);
       }
     });
 
     return unsubscribe;
   }, [gameID, navigation, teamMembers]);
+
+  useEffect(() => {
+    if (!gameDataToStart) return undefined;
+
+    // Native devices can fail to create the board's Expo GL context while the
+    // vehicle-preview context is still being removed. Rendering the loading
+    // state first gives React a frame to unmount that Canvas before the new
+    // screen creates its own one.
+    const frame = requestAnimationFrame(() => {
+      navigation.replace('GameScreen', {
+        gameID,
+        gameData: gameDataToStart,
+        teamMembers,
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [gameDataToStart, gameID, navigation, teamMembers]);
 
   useEffect(() => {
     if (!playerTeam || !confirmedModelId) return;
@@ -180,6 +195,17 @@ export default function CharacterSelection({ navigation, route }) {
   };
 
   const choiceIsSaved = confirmedModelId === selectedModel.id;
+
+  if (gameDataToStart) {
+    return (
+      <SafeAreaView style={styles.mainContainer}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingTitle}>LOADING MAP...</Text>
+          <Text style={styles.loadingText}>Getting every team onto the starting line.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.mainContainer}>
@@ -326,6 +352,24 @@ const styles = StyleSheet.create({
   },
   scroll: {
     width: '100%',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  loadingTitle: {
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 20,
+    textAlign: 'center',
+  },
+  loadingText: {
+    color: '#59636A',
+    fontSize: 14,
+    marginTop: 12,
+    textAlign: 'center',
   },
   titleContainer: {
     width: '90%',

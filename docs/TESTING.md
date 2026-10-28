@@ -50,6 +50,20 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
    verify the affected team resumes the original route on its following turn.
 9. Restore any temporary development flag.
 
+## Onboarding and feedback smoke flow
+
+1. Clear the gameplay-onboarding AsyncStorage key, open GameScreen, page through the
+   guide, and verify Skip and Let’s Play both dismiss it and persist completion.
+2. With two team devices, verify the active leader sees “you’re up” while the other
+   device names the team it is waiting for; disconnect once and verify the recovery
+   message replaces the turn prompt.
+3. Open a named-player challenge and confirm only the controlling device asks for the
+   phone to be passed to the synchronized target player.
+4. Toggle sound effects and haptics separately, then exercise a roll, movement,
+   challenge, roadblock, and finish. Confirm each cue follows its local setting.
+5. Finish the game and verify the winner celebration dismisses automatically after
+   four seconds, can be skipped immediately, and leaves the full standings visible.
+
 ## Focused multiplayer flow
 
 1. Create on device A, join on B, verify team/leader assignment and realtime roster.

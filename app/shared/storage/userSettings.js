@@ -8,7 +8,24 @@ export const STORAGE_KEYS = {
   STATS: '@tipsy_player_stats',
   CAREER_SYNC: '@tipsy_career_sync',
   SETTINGS: '@tipsy_settings',
+  GAMEPLAY_ONBOARDING: '@tipsy_gameplay_onboarding_v1',
   DEVICE_ID: 'deviceID',
+};
+
+export const hasCompletedGameplayOnboarding = async () => {
+  try {
+    return await AsyncStorage.getItem(STORAGE_KEYS.GAMEPLAY_ONBOARDING) === 'complete';
+  } catch (_error) {
+    return false;
+  }
+};
+
+export const completeGameplayOnboarding = async () => {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.GAMEPLAY_ONBOARDING, 'complete');
+  } catch (_error) {
+    // Onboarding remains skippable even if local persistence is unavailable.
+  }
 };
 
 export const BADGE_OPTIONS = [
