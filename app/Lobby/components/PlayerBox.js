@@ -1,4 +1,4 @@
-import {StyleSheet, Text, TouchableOpacity, View} from "react-native";
+import {Alert, StyleSheet, Text, TouchableOpacity, View} from "react-native";
 import { BADGE_OPTIONS } from '../../shared/storage/userSettings';
 
 export default function PlayerBox ({
@@ -13,6 +13,20 @@ export default function PlayerBox ({
     canManage,
 }) {
     const badgeInfo = BADGE_OPTIONS.find((option) => option.id === badge) || BADGE_OPTIONS[0];
+    const handleMovePlayer = () => {
+        Alert.alert(
+            `Move ${name}`,
+            'Choose a destination team.',
+            [
+                ...moveTargets.map((teamKey) => ({
+                    text: `Team ${teamKey.replace('team', '')}`,
+                    onPress: () => onMovePlayer(teamKey),
+                })),
+                { text: 'Cancel', style: 'cancel' },
+            ]
+        );
+    };
+
     return (
         <View style={ style.playerBoxContainer }>
             <Text style={style.badgeEmoji}>{badgeInfo.emoji}</Text>
@@ -35,17 +49,16 @@ export default function PlayerBox ({
                             <Text style={style.actionText}>LEAD</Text>
                         </TouchableOpacity>
                     )}
-                    {moveTargets.map((teamKey) => (
+                    {moveTargets.length > 0 && (
                         <TouchableOpacity
-                            accessibilityLabel={`Move ${name} to ${teamKey}`}
+                            accessibilityLabel={`Move ${name} to another team`}
                             accessibilityRole="button"
-                            key={teamKey}
-                            onPress={() => onMovePlayer(teamKey)}
+                            onPress={handleMovePlayer}
                             style={style.actionButton}
                         >
-                            <Text style={style.actionText}>{teamKey.replace('team', 'T')}</Text>
+                            <Text style={style.actionText}>MOVE</Text>
                         </TouchableOpacity>
-                    ))}
+                    )}
                     {!isLeader && (
                 <TouchableOpacity
                     accessibilityLabel={`Remove ${name}`}

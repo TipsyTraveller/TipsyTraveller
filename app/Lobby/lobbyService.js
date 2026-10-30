@@ -1,4 +1,4 @@
-import { push, ref, runTransaction } from 'firebase/database';
+import { get, push, ref, runTransaction, update } from 'firebase/database';
 import { db } from '../../firebaseConfig';
 import {
   chooseTeamForJoin,
@@ -25,15 +25,10 @@ export const reserveRoomCode = async ({ createGame, createPlayers, maxAttempts =
     if (!reservation.committed) continue;
 
     try {
-      const finalized = await runTransaction(ref(db), (root) => {
-        if (root?.games?.[gameID]?.reservationToken !== reservationToken) return undefined;
-        return {
-          ...root,
-          games: { ...(root.games || {}), [gameID]: createGame() },
-          players: { ...(root.players || {}), [gameID]: createPlayers() },
-        };
+      await update(ref(db), {
+        [`games/${gameID}`]: createGame(),
+        [`players/${gameID}`]: createPlayers(),
       });
-      if (!finalized.committed) throw new Error('Room reservation was lost before setup completed.');
       return gameID;
     } catch (error) {
       await runTransaction(gameRef, (currentGame) => (
@@ -49,26 +44,25 @@ export const reserveRoomCode = async ({ createGame, createPlayers, maxAttempts =
 export const joinRoomTransaction = async ({ gameID, deviceID, name, badge = null, profileId = null }) => {
   const playerId = push(ref(db, `players/${gameID}/team1`)).key;
   let outcome = transactionError('unavailable', 'This room is unavailable.');
+  const gameSnapshot = await get(ref(db, `games/${gameID}`));
+  if (!gameSnapshot.exists()) {
+    return transactionError('not_found', 'Enter a valid game ID.');
+  }
 
-  const transaction = await runTransaction(ref(db), (root) => {
-    const game = root?.games?.[gameID];
-    if (!game) {
-      outcome = transactionError('not_found', 'Enter a valid game ID.');
-      return undefined;
-    }
-    const players = root?.players?.[gameID] || {};
+  const game = gameSnapshot.val();
+  if (game.status !== 'lobby') {
+    return transactionError('started', 'This game has already started.');
+  }
+  if (game.disconnectedAt && Date.now() - game.disconnectedAt > 10 * 60 * 1000) {
+    return transactionError('expired', 'This game expired after the host disconnected.');
+  }
+
+  const transaction = await runTransaction(ref(db, `players/${gameID}`), (currentPlayers) => {
+    const players = currentPlayers || {};
     const existingPlayer = findPlayerByDevice(players, deviceID);
     if (existingPlayer) {
       outcome = { ok: true, existing: true, teamKey: existingPlayer.teamKey };
-      return root;
-    }
-    if (game.status !== 'lobby') {
-      outcome = transactionError('started', 'This game has already started.');
-      return undefined;
-    }
-    if (game.disconnectedAt && Date.now() - game.disconnectedAt > 10 * 60 * 1000) {
-      outcome = transactionError('expired', 'This game expired after the host disconnected.');
-      return undefined;
+      return players;
     }
     const capacity = PLAYER_CAPACITY[game.nrOfPlayers];
     if (!capacity || countPlayers(players) >= capacity) {
@@ -99,10 +93,7 @@ export const joinRoomTransaction = async ({ gameID, deviceID, name, badge = null
     });
     outcome = { ok: true, existing: false, teamKey, playerId };
 
-    return {
-      ...root,
-      players: { ...(root.players || {}), [gameID]: nextPlayers },
-    };
+    return nextPlayers;
   });
 
   return transaction.committed && outcome.ok
@@ -112,18 +103,17 @@ export const joinRoomTransaction = async ({ gameID, deviceID, name, badge = null
 
 export const mutateLobbyRoster = async ({ gameID, hostDeviceID, mutate }) => {
   let outcome = transactionError('unavailable', 'The lobby changed before the action completed.');
-  const transaction = await runTransaction(ref(db), (root) => {
-    const game = root?.games?.[gameID];
-    if (!game || game.status !== 'lobby') {
-      outcome = transactionError('closed', 'The room is no longer accepting lobby changes.');
-      return undefined;
-    }
-    if (!hostDeviceID || game.hostDeviceID !== hostDeviceID) {
-      outcome = transactionError('forbidden', 'Only the host can manage the roster.');
-      return undefined;
-    }
+  const gameSnapshot = await get(ref(db, `games/${gameID}`));
+  const game = gameSnapshot.val();
+  if (!game || game.status !== 'lobby') {
+    return { ...transactionError('closed', 'The room is no longer accepting lobby changes.'), ok: false };
+  }
+  if (!hostDeviceID || game.hostDeviceID !== hostDeviceID) {
+    return { ...transactionError('forbidden', 'Only the host can manage the roster.'), ok: false };
+  }
 
-    const players = root?.players?.[gameID] || {};
+  const transaction = await runTransaction(ref(db, `players/${gameID}`), (currentPlayers) => {
+    const players = currentPlayers || {};
     const result = mutate({ game, players });
     if (!result?.players) {
       outcome = result?.error || outcome;
@@ -131,13 +121,7 @@ export const mutateLobbyRoster = async ({ gameID, hostDeviceID, mutate }) => {
     }
 
     outcome = { ok: true };
-    return {
-      ...root,
-      players: {
-        ...(root.players || {}),
-        [gameID]: withPlayerCounter(result.players),
-      },
-    };
+    return withPlayerCounter(result.players);
   });
 
   return transaction.committed && outcome.ok ? outcome : { ...outcome, ok: false };
@@ -145,9 +129,10 @@ export const mutateLobbyRoster = async ({ gameID, hostDeviceID, mutate }) => {
 
 export const startCharacterSelection = async ({ gameID, hostDeviceID }) => {
   let outcome = transactionError('unavailable', 'The lobby changed before the game could start.');
-  const transaction = await runTransaction(ref(db), (root) => {
-    const game = root?.games?.[gameID];
-    const players = root?.players?.[gameID] || {};
+  const playersSnapshot = await get(ref(db, `players/${gameID}`));
+  const players = playersSnapshot.val() || {};
+
+  const transaction = await runTransaction(ref(db, `games/${gameID}`), (game) => {
     if (!game || game.status !== 'lobby') {
       outcome = transactionError('closed', 'The room has already moved on from the lobby.');
       return undefined;
@@ -164,13 +149,7 @@ export const startCharacterSelection = async ({ gameID, hostDeviceID }) => {
     }
 
     outcome = { ok: true };
-    return {
-      ...root,
-      games: {
-        ...(root.games || {}),
-        [gameID]: { ...game, status: 'characterSelection', teamModels: null },
-      },
-    };
+    return { ...game, status: 'characterSelection', teamModels: null };
   });
 
   return transaction.committed && outcome.ok ? outcome : { ...outcome, ok: false };
