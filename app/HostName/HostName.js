@@ -1,10 +1,10 @@
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {ref, onDisconnect, push, serverTimestamp} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getProfile, getSettings } from "../shared/storage/userSettings";
+import { getProfile, getSettings, saveActiveGameId } from "../shared/storage/userSettings";
 import { roomRulesFromSettings } from "../GameScreen/constants/roomRules";
 //COMPONENTS
 import Button from "../shared/components/Button/Button"
@@ -19,14 +19,16 @@ export default function HostName ({ navigation, route }) {
     const [isCreating, setIsCreating] = useState(false);
     const gameSettings = route.params;
     const isHost = true;
+    const routeStopsPromiseRef = useRef(null);
 
     useEffect(() => {
+        routeStopsPromiseRef.current = getRouteSnapshotForDuration(gameSettings.duration);
         getProfile().then((profile) => {
             if (profile?.name) {
                 setUserName(profile.name);
             }
         });
-    }, []);
+    }, [gameSettings.duration]);
     const handleCreate = async () => {
         const trimmedUserName = userName.trim();
         if (!trimmedUserName || isCreating){
@@ -37,18 +39,22 @@ export default function HostName ({ navigation, route }) {
         Keyboard.dismiss();
         setIsCreating(true);
         try {
-            let deviceID = await AsyncStorage.getItem("deviceID");
+            const deviceIDPromise = AsyncStorage.getItem("deviceID");
+            const [storedDeviceID, localSettings, profile, routeStops] = await Promise.all([
+                deviceIDPromise,
+                getSettings(),
+                getProfile(),
+                routeStopsPromiseRef.current || getRouteSnapshotForDuration(gameSettings.duration),
+            ]);
+            let deviceID = storedDeviceID;
             if(!deviceID){
                 deviceID = Math.random().toString(36).substring(2) + Date.now().toString(36);
                 await AsyncStorage.setItem("deviceID", deviceID);
             }
-            const localSettings = await getSettings();
             const synchronizedSettings = {
                 ...gameSettings,
                 roomRules: roomRulesFromSettings(localSettings),
             };
-            const profile = await getProfile();
-            const routeStops = await getRouteSnapshotForDuration(gameSettings.duration);
             const hostPlayerId = push(ref(db, 'playerKeys')).key;
             const newGameID = await reserveRoomCode({
                 createGame: () => ({
@@ -77,6 +83,7 @@ export default function HostName ({ navigation, route }) {
 
             await onDisconnect(ref(db, `games/${newGameID}/disconnectedAt`))
                 .set(serverTimestamp());
+            await saveActiveGameId(newGameID);
             navigation.reset({
                 index: 1,
                 routes: [

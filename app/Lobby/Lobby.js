@@ -16,6 +16,7 @@ import {
   getTeamEntries, PLAYER_CAPACITY,
 } from './lobbyState';
 import { mutateLobbyRoster, startCharacterSelection } from './lobbyService';
+import { saveActiveGameId } from '../shared/storage/userSettings';
 
 const asTeamObject = (players, teamKey) => Object.fromEntries(getTeamEntries(players, teamKey));
 
@@ -39,7 +40,8 @@ export default function Lobby({ navigation, route }) {
 
   useEffect(() => {
     AsyncStorage.getItem('deviceID').then(setLocalDeviceID);
-  }, []);
+    saveActiveGameId(gameID);
+  }, [gameID]);
 
   useEffect(() => {
     const playersRef = ref(db, `players/${gameID}`);

@@ -10,17 +10,18 @@ import {
 } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {ref, set, get, onDisconnect, child, serverTimestamp} from "firebase/database";
+import {ref, get, child} from "firebase/database";
 import { db } from "../../firebaseConfig";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getProfile } from "../shared/storage/userSettings";
+import { getProfile, saveActiveGameId } from "../shared/storage/userSettings";
 //COMPONENTS
 import Button from "../shared/components/Button/Button"
 import Header from "../shared/components/Header/Header";
 import MainAnimation from "../shared/components/MainAnimation/MainAnimation";
 import InputField from "../shared/components/InputField/InputField";
 import NumberInput from "../shared/components/NumberInput/NumberInput";
-import { joinRoomTransaction } from "../Lobby/lobbyService";
+import { joinRoomTransaction, restoreHostConnection } from "../Lobby/lobbyService";
+import { getRoomRoute } from "../shared/roomNavigation";
 
 export default function JoinGame ({ navigation }) {
     const [gamePin, setGamePin] = useState('');
@@ -37,8 +38,8 @@ export default function JoinGame ({ navigation }) {
     }, []);
 
     const handleJoin = async () => {
-        if (!userName.trim() || gamePin.length !== 4 || isJoining){
-            if (!isJoining) Alert.alert("Missing details", "Enter a four-digit game PIN and a username.");
+        if (gamePin.length !== 4 || isJoining){
+            if (!isJoining) Alert.alert("Missing details", "Enter a four-digit game PIN.");
             return;
         }
 
@@ -65,13 +66,8 @@ export default function JoinGame ({ navigation }) {
                     await AsyncStorage.setItem('deviceID', deviceID);
                 }
 
-                let currentUserIsHost = false;
                 if (gameSettings.hostDeviceID === deviceID) {
-                    currentUserIsHost = true;
-                    // Clear the disconnected flag when host rejoins
-                    await set(ref(db, `games/${gamePin}/disconnectedAt`), null);
-                    await onDisconnect(ref(db, `games/${gamePin}/disconnectedAt`))
-                        .set(serverTimestamp());
+                    await restoreHostConnection({ gameID: gamePin, gameData: gameSettings, deviceID });
                 }
                 
                 const profile = await getProfile();
@@ -83,7 +79,14 @@ export default function JoinGame ({ navigation }) {
                     profileId: profile.isPersistent ? profile.profileId : null,
                 });
                 if (joinResult.ok) {
-                    navigation.navigate( "LobbyScreen" , {gameID: gamePin, isHost: currentUserIsHost, gameSettings});
+                    await saveActiveGameId(gamePin);
+                    const playersSnapshot = await get(ref(db, `players/${gamePin}`));
+                    const roomRoute = getRoomRoute({
+                        gameID: gamePin,
+                        gameData: gameSettings,
+                        teamMembers: playersSnapshot.val(),
+                    });
+                    navigation.navigate(roomRoute.name, roomRoute.params);
                 } else {
                     Alert.alert("Could not join", joinResult.message);
                 }
@@ -140,7 +143,7 @@ export default function JoinGame ({ navigation }) {
 
                         <Button
                             buttonCopy={isJoining ? 'Joining...' : 'Join'}
-                            disabled={isJoining || gamePin.length !== 4 || !userName.trim()}
+                            disabled={isJoining || gamePin.length !== 4}
                             handlePress={ handleJoin }
                         />
                     </View>

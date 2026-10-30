@@ -1,14 +1,14 @@
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { onValue, ref, runTransaction, set } from 'firebase/database';
+import { get, onValue, ref, runTransaction, update } from 'firebase/database';
 import { Canvas, useFrame } from '@react-three/fiber/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../firebaseConfig';
 import Header from '../shared/components/Header/Header';
 import VehicleModel from '../GameScreen/components/VehicleModel';
 import { preloadBoardAssets } from '../GameScreen/constants/boardAssets';
-import { GAME_PIECES } from '../GameScreen/constants/gamePieces';
+import { GAME_PIECES, getTeamLabel as getGameTeamLabel } from '../GameScreen/constants/gamePieces';
 import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
 import { createInitialGameplay } from '../GameScreen/gameplayState';
 import { getProfile } from '../shared/storage/userSettings';
@@ -18,10 +18,6 @@ const getRequiredTeamKeys = (gameData) => (
   gameData?.nrOfPlayers === '9-12'
     ? ['team1', 'team2', 'team3']
     : ['team1', 'team2']
-);
-
-const getTeamLabel = (teamKey) => (
-  GAME_PIECES.find((team) => team.id === teamKey)?.label || teamKey
 );
 
 const getTeamColor = (teamKey) => (
@@ -35,6 +31,7 @@ export default function CharacterSelection({ navigation, route }) {
   const [isHost, setIsHost] = useState(false);
   const [playerTeam, setPlayerTeam] = useState(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
+  const [teamName, setTeamName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [gameDataToStart, setGameDataToStart] = useState(null);
   const { height } = useWindowDimensions();
@@ -57,13 +54,22 @@ export default function CharacterSelection({ navigation, route }) {
     [liveGameData?.nrOfPlayers]
   );
   const allTeamsReady = requiredTeamKeys.every(
-    (teamKey) => Boolean(liveGameData?.teamModels?.[teamKey])
+    (teamKey) => Boolean(
+      liveGameData?.teamModels?.[teamKey]
+      && liveGameData?.teamNames?.[teamKey]?.trim()
+    )
   );
   const readyTeamCount = requiredTeamKeys.filter(
-    (teamKey) => Boolean(liveGameData?.teamModels?.[teamKey])
+    (teamKey) => Boolean(
+      liveGameData?.teamModels?.[teamKey]
+      && liveGameData?.teamNames?.[teamKey]?.trim()
+    )
   ).length;
   const confirmedModelId = playerTeam
     ? liveGameData?.teamModels?.[playerTeam]
+    : null;
+  const confirmedTeamName = playerTeam
+    ? liveGameData?.teamNames?.[playerTeam]
     : null;
 
   useEffect(() => {
@@ -139,38 +145,41 @@ export default function CharacterSelection({ navigation, route }) {
   }, [confirmedModelId, playerTeam]);
 
   useEffect(() => {
+    if (!playerTeam) return;
+    setTeamName(confirmedTeamName || getGameTeamLabel(liveGameData, playerTeam));
+  }, [confirmedTeamName, playerTeam]);
+
+  useEffect(() => {
     if (!isHost || !allTeamsReady || liveGameData?.status !== 'characterSelection') {
       return;
     }
 
     const startedAt = Date.now();
-    runTransaction(ref(db), (root) => {
-      const currentGame = root?.games?.[gameID];
-      if (!currentGame || currentGame.status !== 'characterSelection') return undefined;
-      const currentPlayers = root?.players?.[gameID] || {};
-      const readiness = getLobbyReadiness(
-        currentGame,
-        currentPlayers,
-        { requireVehicles: true }
-      );
-      if (!readiness.isReady) return undefined;
+    const startGame = async () => {
+      const playersSnapshot = await get(ref(db, `players/${gameID}`));
+      await runTransaction(ref(db, `games/${gameID}`), (currentGame) => {
+        if (!currentGame || currentGame.status !== 'characterSelection') return undefined;
+        const currentPlayers = playersSnapshot.val() || {};
+        const readiness = getLobbyReadiness(
+          currentGame,
+          currentPlayers,
+          { requireVehicles: true }
+        );
+        if (!readiness.isReady) return undefined;
 
-      if (!initialGameplayRef.current) {
-        initialGameplayRef.current = createInitialGameplay(currentGame, startedAt, currentPlayers);
-      }
+        if (!initialGameplayRef.current) {
+          initialGameplayRef.current = createInitialGameplay(currentGame, startedAt, currentPlayers);
+        }
 
-      return {
-        ...root,
-        games: {
-          ...(root.games || {}),
-          [gameID]: {
-            ...currentGame,
-            gameplay: initialGameplayRef.current,
-            status: 'game',
-          },
-        },
-      };
-    }).catch((error) => {
+        return {
+          ...currentGame,
+          gameplay: initialGameplayRef.current,
+          status: 'game',
+        };
+      });
+    };
+
+    startGame().catch((error) => {
       console.log('Unable to start game after vehicle selection', error);
     });
   }, [allTeamsReady, gameID, isHost, liveGameData?.status]);
@@ -190,12 +199,18 @@ export default function CharacterSelection({ navigation, route }) {
   const handleConfirm = async () => {
     if (!playerTeam || isSaving) return;
 
+    const trimmedTeamName = teamName.trim().replace(/\s+/g, ' ');
+    if (!trimmedTeamName) {
+      Alert.alert('Name your team', 'Enter a team name before selecting your ride.');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      await set(
-        ref(db, `games/${gameID}/teamModels/${playerTeam}`),
-        selectedModel.id
-      );
+      await update(ref(db, `games/${gameID}`), {
+        [`teamModels/${playerTeam}`]: selectedModel.id,
+        [`teamNames/${playerTeam}`]: trimmedTeamName,
+      });
     } catch (error) {
       console.log('Unable to save vehicle selection', error);
       Alert.alert('Could not save vehicle', 'Check your connection and try again.');
@@ -204,7 +219,10 @@ export default function CharacterSelection({ navigation, route }) {
     }
   };
 
-  const choiceIsSaved = confirmedModelId === selectedModel.id;
+  const normalizedTeamName = teamName.trim().replace(/\s+/g, ' ');
+  const choiceIsSaved = confirmedModelId === selectedModel.id
+    && confirmedTeamName === normalizedTeamName;
+  const confirmDisabled = !normalizedTeamName || choiceIsSaved || isSaving;
 
   if (gameDataToStart) {
     return (
@@ -231,7 +249,7 @@ export default function CharacterSelection({ navigation, route }) {
           <Text style={styles.title}>SELECT VEHICLE</Text>
           <Text style={styles.subtitle}>
             {isTeamLeader && playerTeam
-              ? `${getTeamLabel(playerTeam).toUpperCase()} GARAGE`
+              ? `${getGameTeamLabel(liveGameData, playerTeam).toUpperCase()} GARAGE`
               : 'YOUR TEAM LEADER IS PICKING'}
           </Text>
         </View>
@@ -243,21 +261,25 @@ export default function CharacterSelection({ navigation, route }) {
           <View style={styles.readinessTeams}>
             {requiredTeamKeys.map((teamKey) => {
               const modelId = liveGameData?.teamModels?.[teamKey];
+              const savedTeamName = liveGameData?.teamNames?.[teamKey]?.trim();
               const model = MODEL_OPTIONS.find((option) => option.id === modelId);
+              const teamIsReady = Boolean(model && savedTeamName);
               return (
                 <View
                   key={teamKey}
                   style={[
                     styles.readinessPill,
-                    model && styles.readinessPillReady,
+                    teamIsReady && styles.readinessPillReady,
                   ]}
                 >
                   <View
                     style={[styles.teamDot, { backgroundColor: getTeamColor(teamKey) }]}
                   />
-                  <Text style={styles.readinessTeam}>{getTeamLabel(teamKey)}</Text>
-                  <Text style={model ? styles.readyText : styles.choosingText}>
-                    {model ? 'READY' : 'PICKING'}
+                  <Text style={styles.readinessTeam}>
+                    {getGameTeamLabel(liveGameData, teamKey)}
+                  </Text>
+                  <Text style={teamIsReady ? styles.readyText : styles.choosingText}>
+                    {teamIsReady ? 'READY' : 'PICKING'}
                   </Text>
                 </View>
               );
@@ -268,6 +290,21 @@ export default function CharacterSelection({ navigation, route }) {
         <View style={styles.lowerContainer}>
           {isTeamLeader ? (
             <View style={styles.selectionCard}>
+              <View style={styles.teamNameContainer}>
+                <Text style={styles.teamNameLabel}>TEAM NAME</Text>
+                <TextInput
+                  accessibilityLabel="Team name"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  maxLength={24}
+                  onChangeText={setTeamName}
+                  placeholder="NAME YOUR CREW"
+                  placeholderTextColor="#9A9488"
+                  returnKeyType="done"
+                  style={styles.teamNameInput}
+                  value={teamName}
+                />
+              </View>
               <View style={[styles.modelPreview, { height: Math.max(150, Math.min(230, height * 0.3)) }]}>
                 <Canvas camera={{ position: [0, 0.45, 3.1], fov: 38 }}>
                   <ambientLight intensity={1.8} />
@@ -309,11 +346,11 @@ export default function CharacterSelection({ navigation, route }) {
 
               <TouchableOpacity
                 accessibilityRole="button"
-                disabled={choiceIsSaved || isSaving}
+                disabled={confirmDisabled}
                 onPress={handleConfirm}
                 style={[
                   styles.confirmButton,
-                  (choiceIsSaved || isSaving) && styles.confirmButtonDisabled,
+                  confirmDisabled && styles.confirmButtonDisabled,
                 ]}
               >
                 <Text style={styles.confirmText}>
@@ -469,6 +506,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 8,
+  },
+  teamNameContainer: {
+    marginBottom: 12,
+  },
+  teamNameLabel: {
+    color: '#7A7468',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 8,
+    marginBottom: 6,
+  },
+  teamNameInput: {
+    minHeight: 50,
+    borderColor: '#2C3E50',
+    borderRadius: 12,
+    borderWidth: 2,
+    color: '#2C3E50',
+    fontFamily: 'dogicapixelbold',
+    fontSize: 12,
+    paddingHorizontal: 14,
+    textAlign: 'center',
   },
   modelPreview: {
     width: '100%',

@@ -1,4 +1,6 @@
-import { get, push, ref, runTransaction, update } from 'firebase/database';
+import {
+  get, onDisconnect, push, ref, runTransaction, serverTimestamp, set, update,
+} from 'firebase/database';
 import { db } from '../../firebaseConfig';
 import {
   chooseTeamForJoin,
@@ -11,6 +13,14 @@ import {
 } from './lobbyState';
 
 const transactionError = (code, message) => ({ code, message });
+
+export const restoreHostConnection = async ({ gameID, gameData, deviceID }) => {
+  if (!gameID || !deviceID || gameData?.hostDeviceID !== deviceID) return false;
+  const disconnectedAtRef = ref(db, `games/${gameID}/disconnectedAt`);
+  await onDisconnect(disconnectedAtRef).set(serverTimestamp());
+  await set(disconnectedAtRef, null);
+  return true;
+};
 
 export const reserveRoomCode = async ({ createGame, createPlayers, maxAttempts = 50 }) => {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -50,19 +60,32 @@ export const joinRoomTransaction = async ({ gameID, deviceID, name, badge = null
   }
 
   const game = gameSnapshot.val();
-  if (game.status !== 'lobby') {
-    return transactionError('started', 'This game has already started.');
-  }
   if (game.disconnectedAt && Date.now() - game.disconnectedAt > 10 * 60 * 1000) {
     return transactionError('expired', 'This game expired after the host disconnected.');
   }
-
+  if (game.status !== 'lobby') {
+    const playersSnapshot = await get(ref(db, `players/${gameID}`));
+    const existingPlayer = findPlayerByDevice(playersSnapshot.val() || {}, deviceID);
+    if (existingPlayer && ['characterSelection', 'game'].includes(game.status)) {
+      return {
+        ok: true,
+        existing: true,
+        teamKey: existingPlayer.teamKey,
+        playerId: existingPlayer.playerId,
+      };
+    }
+    return transactionError('started', 'This game has already started.');
+  }
   const transaction = await runTransaction(ref(db, `players/${gameID}`), (currentPlayers) => {
     const players = currentPlayers || {};
     const existingPlayer = findPlayerByDevice(players, deviceID);
     if (existingPlayer) {
       outcome = { ok: true, existing: true, teamKey: existingPlayer.teamKey };
       return players;
+    }
+    if (!name?.trim()) {
+      outcome = transactionError('name_required', 'Enter a username to join this room.');
+      return undefined;
     }
     const capacity = PLAYER_CAPACITY[game.nrOfPlayers];
     if (!capacity || countPlayers(players) >= capacity) {

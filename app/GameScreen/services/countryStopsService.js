@@ -14,6 +14,7 @@ import {
   applyCurrentDefaultPositions,
   COUNTRY_POSITION_VERSION,
   DEFAULT_COUNTRY_STOPS,
+  getRouteCandidatesForDuration,
   getStopsForDuration,
   isLegacyCountryCatalogue,
   normalizeCountryStops,
@@ -486,7 +487,7 @@ export const getCountryStops = async () => {
     const docs = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
 
     if (docs.length >= 2 && !isLegacyCountryCatalogue(docs)) {
-      await migrateCountryWordChallengesIfNeeded(docs);
+      migrateCountryWordChallengesIfNeeded(docs).catch(() => {});
       return updateCachedStops(mergeRemoteStopsWithCache(docs));
     }
 
@@ -707,25 +708,44 @@ export const reorderCountryStop = async (stopId, direction) => {
   await runTransaction(ref(db, LEGACY_RTDB_CONTENT_PATH), () => serializeRtdbStops(updatedCatalogue, updatedAt)).catch(() => {});
 };
 
-export const getRouteSnapshotForDuration = async (duration) => getStopsForDuration(await getCountryStops(), duration);
-
 const getRouteSignature = (routeStops) => (
   (Array.isArray(routeStops) ? routeStops : []).map((stop) => stop?.id).join('|')
 );
 
+const recentRouteSignatures = new Map();
+
+const selectRouteSnapshot = (countryStops, duration = 'long', excludedSignatures = []) => {
+  const candidates = getRouteCandidatesForDuration(countryStops, duration);
+  const recent = recentRouteSignatures.get(duration) || [];
+  const excluded = new Set([...recent, ...excludedSignatures].filter(Boolean));
+  const freshCandidates = candidates.filter((route) => !excluded.has(getRouteSignature(route)));
+  const available = freshCandidates.length
+    ? freshCandidates
+    : candidates.filter((route) => !excludedSignatures.includes(getRouteSignature(route)));
+  const pool = available.length ? available : candidates;
+  const selected = pool[Math.floor(Math.random() * pool.length)]
+    || getStopsForDuration(countryStops, duration);
+  const signature = getRouteSignature(selected);
+  const historyLimit = Math.min(5, Math.max(0, candidates.length - 1));
+
+  recentRouteSignatures.set(
+    duration,
+    historyLimit
+      ? [...recent.filter((item) => item !== signature), signature].slice(-historyLimit)
+      : []
+  );
+  return selected;
+};
+
+export const getRouteSnapshotForDuration = async (duration) => (
+  selectRouteSnapshot(await getCountryStops(), duration)
+);
+
 export const getFreshRouteSnapshotForDuration = async (duration, currentRouteStops) => {
-  const currentSignature = getRouteSignature(currentRouteStops);
   const countryStops = await getCountryStops();
-  let nextRoute = getStopsForDuration(countryStops, duration);
-
-  for (let attempt = 0; attempt < 5 && getRouteSignature(nextRoute) === currentSignature; attempt += 1) {
-    nextRoute = getStopsForDuration(countryStops, duration);
-  }
-
-  for (let variant = 0; variant < 20 && getRouteSignature(nextRoute) === currentSignature; variant += 1) {
-    const seededValue = (variant + 0.5) / 20;
-    nextRoute = getStopsForDuration(countryStops, duration, () => seededValue);
-  }
-
-  return nextRoute;
+  return selectRouteSnapshot(
+    countryStops,
+    duration,
+    [getRouteSignature(currentRouteStops)]
+  );
 };

@@ -21,9 +21,18 @@ export const GAME_PIECES = [
   },
 ];
 
+export const getTeamLabel = (gameData, teamId) => {
+  const customName = gameData?.teamNames?.[teamId];
+  if (typeof customName === 'string' && customName.trim()) return customName.trim();
+  return GAME_PIECES.find((piece) => piece.id === teamId)?.label || teamId;
+};
+
 export const getGamePiecesForGame = (gameData) => {
   const teamCount = gameData?.nrOfPlayers === '9-12' ? 3 : 2;
-  return GAME_PIECES.slice(0, teamCount);
+  return GAME_PIECES.slice(0, teamCount).map((piece) => ({
+    ...piece,
+    label: getTeamLabel(gameData, piece.id),
+  }));
 };
 
 export const createInitialTeamProgress = (gamePieces, teamMembers = {}) => (

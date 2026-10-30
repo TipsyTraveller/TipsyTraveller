@@ -2,8 +2,6 @@ import { useCallback, useEffect } from 'react';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
-const DICE_SOUND = require('../../../assets/audio/dice.wav');
-const CHALLENGE_SOUND = require('../../../assets/audio/challenge.wav');
 const AMBIENT_SOUND = require('../../../assets/audio/ambient.wav');
 
 const safely = (operation) => {
@@ -16,8 +14,6 @@ const safely = (operation) => {
 };
 
 export default function useGameFeedback(settings) {
-  const dicePlayer = useAudioPlayer(DICE_SOUND);
-  const challengePlayer = useAudioPlayer(CHALLENGE_SOUND);
   const ambientPlayer = useAudioPlayer(AMBIENT_SOUND);
 
   useEffect(() => {
@@ -31,42 +27,31 @@ export default function useGameFeedback(settings) {
     return () => safely(() => ambientPlayer.pause());
   }, [ambientPlayer, settings.ambientMusic]);
 
-  const play = useCallback((player, haptic) => {
+  const play = useCallback((haptic) => {
     if (settings.ambientMusic) safely(() => ambientPlayer.play());
-    if (settings.soundEffects) {
-      safely(async () => {
-        await player.seekTo(0);
-        player.play();
-      });
-    }
     if (settings.hapticFeedback && haptic) safely(haptic);
-  }, [ambientPlayer, settings.ambientMusic, settings.hapticFeedback, settings.soundEffects]);
+  }, [ambientPlayer, settings.ambientMusic, settings.hapticFeedback]);
 
   return {
     dice: useCallback(() => play(
-      dicePlayer,
       () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    ), [dicePlayer, play]),
+    ), [play]),
     challenge: useCallback(() => play(
-      challengePlayer,
       () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-    ), [challengePlayer, play]),
+    ), [play]),
     movement: useCallback(() => play(
-      dicePlayer,
       () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    ), [dicePlayer, play]),
+    ), [play]),
     roadblock: useCallback(() => play(
-      challengePlayer,
       () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-    ), [challengePlayer, play]),
+    ), [play]),
     result: useCallback(() => {
       if (settings.hapticFeedback) {
         safely(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
       }
     }, [settings.hapticFeedback]),
     victory: useCallback(() => play(
-      challengePlayer,
       () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    ), [challengePlayer, play]),
+    ), [play]),
   };
 }

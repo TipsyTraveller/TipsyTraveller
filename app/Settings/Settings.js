@@ -105,21 +105,6 @@ export default function Settings({ navigation }) {
 
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Text style={styles.settingName}>Sound Effects (SFX)</Text>
-              <Text style={styles.settingSubtext}>Dice rolls, horn honks, and challenge chimes</Text>
-            </View>
-            <Switch
-              value={settings.soundEffects}
-              onValueChange={(val) => handleUpdateToggle('soundEffects', val)}
-              trackColor={{ false: '#CCC', true: '#1BA39C' }}
-              thumbColor={settings.soundEffects ? '#FFF1CD' : '#FFF'}
-            />
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
               <Text style={styles.settingName}>Ambient Music</Text>
               <Text style={styles.settingSubtext}>Road trip background melodies</Text>
             </View>

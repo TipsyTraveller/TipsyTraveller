@@ -29,8 +29,9 @@ Development may start on `GameScreen` when `START_ON_DEV_GAME_SCREEN` in
 - `LobbyScreen`: listens to room and roster, supports host removal and local players,
   starts character selection, and exposes the concise Rules summary.
 - `CharacterSelection`: identifies the local team role, preselects the leader's saved
-  preferred vehicle, lets leaders choose one vehicle per team, observes readiness,
-  and enters the game when host initialization completes. Non-leaders spectate readiness.
+  preferred vehicle, lets leaders name their team and choose one vehicle per team,
+  observes readiness, and enters the game when host initialization completes.
+  Non-leaders spectate readiness.
 - `GameScreen`: locks landscape, restores canonical gameplay, coordinates board and
   overlays, limits actions by role, shows canonical final standings, lets every player
   leave, lets only the host start a rematch, and unlocks orientation on unmount.
@@ -77,7 +78,7 @@ LobbyScreen → CreateGameScreen edit mode:
 CharacterSelection → GameScreen:
 
 ```js
-{ gameID, gameData: { ...gameData, teamModels }, teamMembers }
+{ gameID, gameData: { ...gameData, teamModels, teamNames }, teamMembers }
 ```
 
 `gameID` selects the canonical record, `teamMembers` maps the local device to its

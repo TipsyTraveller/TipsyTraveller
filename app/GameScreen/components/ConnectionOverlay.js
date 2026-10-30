@@ -17,6 +17,7 @@ const ConnectionOverlay = ({
   onReplaceLeader,
   onTransferHost,
   presenceLoaded = true,
+  roomCode,
   roomMeta,
 }) => {
   const insets = useSafeAreaInsets();
@@ -93,6 +94,12 @@ const ConnectionOverlay = ({
 
       {isOpen && (
         <View style={styles.panel}>
+          {roomCode && (
+            <View style={styles.pinRow}>
+              <Text style={styles.pinLabel}>GAME PIN</Text>
+              <Text selectable style={styles.pinValue}>{roomCode}</Text>
+            </View>
+          )}
           <Text style={styles.panelTitle}>CONNECTIONS</Text>
           {leaders.map((leader) => (
             <View key={`${leader.teamId}-${leader.deviceID}`} style={styles.leaderRow}>
@@ -192,6 +199,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF1CD', borderColor: '#2C3E50', borderRadius: 12, borderWidth: 1,
     marginTop: 7, padding: 12, width: 310,
   },
+  pinRow: {
+    alignItems: 'center', borderBottomColor: 'rgba(44,62,80,0.18)',
+    borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row',
+    justifyContent: 'space-between', marginBottom: 10, paddingBottom: 10,
+  },
+  pinLabel: { color: '#596676', fontFamily: 'dogicapixelbold', fontSize: 7 },
+  pinValue: { color: '#111111', fontFamily: 'dogicapixelbold', fontSize: 15, letterSpacing: 2 },
   panelTitle: { color: '#111111', fontFamily: 'dogicapixelbold', fontSize: 9, marginBottom: 8 },
   leaderRow: {
     alignItems: 'center', borderTopColor: 'rgba(44,62,80,0.18)', borderTopWidth: StyleSheet.hairlineWidth,

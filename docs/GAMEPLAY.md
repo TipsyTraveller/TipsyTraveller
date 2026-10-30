@@ -6,8 +6,8 @@
    and joins Team 1 as leader.
 2. Joining devices are assigned to the least populated valid team. The first member
    of an empty team becomes its leader.
-3. Leaders select vehicles. Once all required teams are ready, the host creates the
-   gameplay record and starts the game.
+3. Leaders name their teams and select vehicles. Once all required teams are ready,
+   the host creates the gameplay record and starts the game.
 4. Teams roll 1–3, move that many route legs (capped at Greece), and perform a
    challenge after a non-final landing.
 5. Finished teams are skipped. The game ends after every team finishes.
@@ -26,7 +26,9 @@ geographic order, unique countries, at least 0.75 board units between stops, tur
 no sharper than 110 degrees, and non-crossing legs. The route families and the
 51-country fallback catalogue are in `constants/countryStops.js`; a session snapshot
 does not change when authored content later changes. A rematch replaces it with a
-new route generated for the same duration.
+new route generated for the same duration. The bundled catalogue provides at least
+six valid route variants for every duration, and route generation avoids the five
+most recently selected variants for that duration while alternatives remain.
 
 ## Scoring and movement
 

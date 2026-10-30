@@ -23,6 +23,8 @@ export const ROUTE_FAMILIES = [
   ['portugal', 'spain', 'andorra', 'switzerland', 'monaco', 'san-marino', 'slovakia', 'poland', 'sweden', 'estonia', 'belarus', 'greece'],
   ['norway', 'denmark', 'germany', 'estonia', 'lithuania', 'poland', 'czechia', 'monaco', 'croatia', 'serbia', 'kosovo', 'greece'],
   ['finland', 'norway', 'denmark', 'netherlands', 'france', 'switzerland', 'czechia', 'slovakia', 'san-marino', 'bosnia-herzegovina', 'kosovo', 'greece'],
+  ['ireland', 'united-kingdom', 'netherlands', 'luxembourg', 'germany', 'czechia', 'slovakia', 'latvia', 'ukraine', 'romania', 'albania', 'greece'],
+  ['portugal', 'spain', 'france', 'switzerland', 'monaco', 'san-marino', 'hungary', 'poland', 'sweden', 'estonia', 'romania', 'greece'],
 ];
 // Kept as an export for development tools that used the old constant name.
 export const ROUTE_CORRIDORS = ROUTE_FAMILIES;
@@ -540,7 +542,7 @@ const routeBalanceScore = (route) => {
   return variance + Math.max(...lengths) * 0.08;
 };
 
-export const getStopsForDuration = (stops, duration = 'long', random = Math.random) => {
+export const getRouteCandidatesForDuration = (stops, duration = 'long') => {
   const normalized = normalizeCountryStops(stops);
   const stopCount = DURATION_STOP_COUNTS[duration] || DURATION_STOP_COUNTS.long;
   const authoredById = new Map(normalized.map((countryStop) => [countryStop.id, countryStop]));
@@ -548,32 +550,49 @@ export const getStopsForDuration = (stops, duration = 'long', random = Math.rand
     family.every((id) => authoredById.has(id))
   ));
   const families = availableFamilies.length ? availableFamilies : ROUTE_FAMILIES;
-  const familyIndex = Math.min(families.length - 1, Math.floor(random() * families.length));
-  const familyStops = families[familyIndex].map((id) => (
-    authoredById.get(id) || DEFAULT_COUNTRY_STOP_BY_ID.get(id)
-  ));
-  const intermediateSelections = enumerateOrderedSelections(
-    familyStops.slice(1, -1),
-    stopCount - 2
-  );
-  const validRoutes = intermediateSelections
-    .map((selection) => [familyStops[0], ...selection, familyStops[familyStops.length - 1]])
-    .filter(validateGeneratedRoute)
-    .sort((left, right) => routeBalanceScore(left) - routeBalanceScore(right));
-  const candidatePool = validRoutes.slice(0, Math.min(validRoutes.length, 4));
-  const defaultFamilyStops = families[familyIndex].map((id) => DEFAULT_COUNTRY_STOP_BY_ID.get(id));
-  const defaultCandidates = enumerateOrderedSelections(
-    defaultFamilyStops.slice(1, -1),
-    stopCount - 2
-  )
-    .map((selection) => [defaultFamilyStops[0], ...selection, defaultFamilyStops[defaultFamilyStops.length - 1]])
-    .filter(validateGeneratedRoute)
-    .sort((left, right) => routeBalanceScore(left) - routeBalanceScore(right));
-  const selected = candidatePool.length
-    ? candidatePool[Math.min(candidatePool.length - 1, Math.floor(random() * candidatePool.length))]
-    : defaultCandidates[0].map((stop) => authoredById.get(stop.id) || stop);
+  const candidates = families.flatMap((family) => {
+    const familyStops = family.map((id) => (
+      authoredById.get(id) || DEFAULT_COUNTRY_STOP_BY_ID.get(id)
+    ));
+    const validRoutes = enumerateOrderedSelections(
+      familyStops.slice(1, -1),
+      stopCount - 2
+    )
+      .map((selection) => [familyStops[0], ...selection, familyStops[familyStops.length - 1]])
+      .filter(validateGeneratedRoute)
+      .sort((left, right) => routeBalanceScore(left) - routeBalanceScore(right));
 
-  return selected.map((stop, index) => ({ ...stop, order: index }));
+    if (validRoutes.length) return validRoutes.slice(0, 4);
+
+    const defaultFamilyStops = family.map((id) => DEFAULT_COUNTRY_STOP_BY_ID.get(id));
+    return enumerateOrderedSelections(defaultFamilyStops.slice(1, -1), stopCount - 2)
+      .map((selection) => [defaultFamilyStops[0], ...selection, defaultFamilyStops[defaultFamilyStops.length - 1]])
+      .filter(validateGeneratedRoute)
+      .sort((left, right) => routeBalanceScore(left) - routeBalanceScore(right))
+      .slice(0, 4)
+      .map((route) => route.map((stop) => authoredById.get(stop.id) || stop));
+  });
+  const uniqueCandidates = new Map();
+
+  candidates.forEach((route) => {
+    const signature = route.map(({ id }) => id).join('|');
+    if (!uniqueCandidates.has(signature)) uniqueCandidates.set(signature, route);
+  });
+
+  return [...uniqueCandidates.values()].map((route) => (
+    route.map((stop, index) => ({ ...stop, order: index }))
+  ));
+};
+
+export const getStopsForDuration = (stops, duration = 'long', random = Math.random) => {
+  const candidates = getRouteCandidatesForDuration(stops, duration);
+  const selectedIndex = Math.min(
+    candidates.length - 1,
+    Math.floor(random() * candidates.length)
+  );
+  const selected = candidates[selectedIndex];
+
+  return selected || normalizeCountryStops(stops);
 };
 
 export const mergeRouteStopsWithCatalogue = (routeStops, catalogueStops) => {

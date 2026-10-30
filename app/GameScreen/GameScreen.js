@@ -78,6 +78,7 @@ import {
   DEFAULT_SETTINGS,
   getSettings,
   hasCompletedGameplayOnboarding,
+  saveActiveGameId,
 } from '../shared/storage/userSettings';
 import useGameFeedback from './hooks/useGameFeedback';
 
@@ -113,6 +114,11 @@ const GameScreen = ({ navigation, route }) => {
   const gameID = route?.params?.gameID;
   const teamMembers = route?.params?.teamMembers;
   const multiplayerEnabled = Boolean(gameID && !String(gameID).startsWith('DEV-'));
+
+  useEffect(() => {
+    if (multiplayerEnabled) saveActiveGameId(gameID);
+  }, [gameID, multiplayerEnabled]);
+
   const [state, setState] = useState('waiting');
   const [activeTeamIndex, setActiveTeamIndex] = useState(0);
   const [lastRoll, setLastRoll] = useState(null);
@@ -151,7 +157,10 @@ const GameScreen = ({ navigation, route }) => {
     [devRouteStops, gameData?.duration, gameData?.routeStops, multiplayerRouteStops]
   );
   const routeModel = useMemo(() => createRouteModel(routeStops), [routeStops]);
-  const baseGamePieces = useMemo(() => getGamePiecesForGame(gameData), [gameData?.nrOfPlayers]);
+  const baseGamePieces = useMemo(
+    () => getGamePiecesForGame(gameData),
+    [gameData?.nrOfPlayers, gameData?.teamNames]
+  );
   const gamePieces = useMemo(() => (
     baseGamePieces.map((piece, index) => ({
       ...piece,
@@ -1800,6 +1809,7 @@ const GameScreen = ({ navigation, route }) => {
         onReplaceLeader={handleReplaceLeader}
         onTransferHost={handleTransferHost}
         presenceLoaded={!multiplayerEnabled || multiplayer.presenceLoaded}
+        roomCode={multiplayerEnabled ? gameID : null}
         roomMeta={multiplayerEnabled ? multiplayer.roomMeta : {}}
       />
       <RaceProgressTracker
@@ -1813,6 +1823,7 @@ const GameScreen = ({ navigation, route }) => {
         visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading)}
       />
       <TurnHandoff
+        activeTeamColor={activePiece?.color}
         activeTeamId={activePiece?.id}
         activeTeamLabel={activePiece?.label || 'Team'}
         isConnected={!multiplayerEnabled || multiplayer.isConnected}

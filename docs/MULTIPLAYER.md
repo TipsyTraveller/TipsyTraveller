@@ -21,6 +21,7 @@ games/{gameID}
   roomRules/{challengeTimerPace, fastDiceAnimations, autoAdvance}
   HostName, createdAt, hostDeviceID, status, disconnectedAt?
   teamModels/{team1|team2|team3}: modelId
+  teamNames/{team1|team2|team3}: displayName
   routeStops[]: ordered snapshot, immutable during one session and replaced on rematch
   gameplay
     schemaVersion: 10
@@ -86,7 +87,9 @@ is a known development-only security risk.
   model choices and sets `status: characterSelection`.
 - Each leader writes its team model. When all required teams are ready, the host
   transaction creates initial gameplay and sets `status: game`.
-- Rejoining an active room restores the canonical gameplay state.
+- The last active room code is stored locally and offered as a Resume action on Home.
+  Rejoining from Resume or the normal Join screen restores the canonical state when
+  the same local device is already present in the roster.
 
 ## Identity and disconnects
 

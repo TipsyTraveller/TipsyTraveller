@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PAGES = [
@@ -31,63 +31,74 @@ const PAGES = [
 
 export default function GameOnboarding({ onDismiss, visible }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [pageIndex, setPageIndex] = useState(0);
 
-  if (!visible) return null;
+  useEffect(() => {
+    if (visible) setPageIndex(0);
+  }, [visible]);
+
   const page = PAGES[pageIndex];
   const isLast = pageIndex === PAGES.length - 1;
+  const cardWidth = Math.min(590, Math.max(280, width - insets.left - insets.right - 48));
 
   return (
-    <View
-      accessibilityViewIsModal
-      style={[
-        styles.overlay,
-        {
-          paddingTop: Math.max(12, insets.top + 8),
-          paddingBottom: Math.max(12, insets.bottom + 8),
-          paddingLeft: Math.max(18, insets.left + 12),
-          paddingRight: Math.max(18, insets.right + 12),
-        },
-      ]}
+    <Modal
+      animationType="fade"
+      navigationBarTranslucent
+      onRequestClose={onDismiss}
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      visible={visible}
     >
-      <View style={styles.card}>
-        <Pressable accessibilityLabel="Skip game introduction" onPress={onDismiss} style={styles.skipButton}>
-          <Text style={styles.skipText}>SKIP</Text>
-        </Pressable>
-        <Text style={styles.icon}>{page.icon}</Text>
-        <Text style={styles.eyebrow}>{page.eyebrow}</Text>
-        <Text style={styles.title}>{page.title}</Text>
-        <Text style={styles.body}>{page.body}</Text>
-        <View style={styles.footer}>
-          <View style={styles.dots}>
-            {PAGES.map((item, index) => (
-              <View key={item.eyebrow} style={[styles.dot, index === pageIndex && styles.dotActive]} />
-            ))}
-          </View>
-          <Pressable
-            accessibilityLabel={isLast ? 'Start playing' : 'Next introduction page'}
-            onPress={() => (isLast ? onDismiss() : setPageIndex((index) => index + 1))}
-            style={({ pressed }) => [styles.nextButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.nextText}>{isLast ? 'LET’S PLAY' : 'NEXT'}</Text>
+      <View
+        accessibilityViewIsModal
+        style={[
+          styles.overlay,
+          {
+            paddingTop: Math.max(16, insets.top + 12),
+            paddingBottom: Math.max(16, insets.bottom + 12),
+            paddingLeft: Math.max(24, insets.left + 16),
+            paddingRight: Math.max(24, insets.right + 16),
+          },
+        ]}
+      >
+        <View style={[styles.card, { width: cardWidth }]}>
+          <Pressable accessibilityLabel="Skip game introduction" onPress={onDismiss} style={styles.skipButton}>
+            <Text style={styles.skipText}>SKIP</Text>
           </Pressable>
+          <Text style={styles.icon}>{page.icon}</Text>
+          <Text style={styles.eyebrow}>{page.eyebrow}</Text>
+          <Text style={styles.title}>{page.title}</Text>
+          <Text style={styles.body}>{page.body}</Text>
+          <View style={styles.footer}>
+            <View style={styles.dots}>
+              {PAGES.map((item, index) => (
+                <View key={item.eyebrow} style={[styles.dot, index === pageIndex && styles.dotActive]} />
+              ))}
+            </View>
+            <Pressable
+              accessibilityLabel={isLast ? 'Start playing' : 'Next introduction page'}
+              onPress={() => (isLast ? onDismiss() : setPageIndex((index) => index + 1))}
+              style={({ pressed }) => [styles.nextButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.nextText}>{isLast ? 'LET’S PLAY' : 'NEXT'}</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 60,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(21, 34, 46, 0.88)',
+    backgroundColor: '#24747A',
   },
   card: {
-    width: '100%',
-    maxWidth: 590,
     minHeight: 250,
     justifyContent: 'center',
     alignItems: 'center',

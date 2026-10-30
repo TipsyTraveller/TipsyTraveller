@@ -9,7 +9,35 @@ export const STORAGE_KEYS = {
   CAREER_SYNC: '@tipsy_career_sync',
   SETTINGS: '@tipsy_settings',
   GAMEPLAY_ONBOARDING: '@tipsy_gameplay_onboarding_v1',
+  ACTIVE_GAME_ID: '@tipsy_active_game_id',
   DEVICE_ID: 'deviceID',
+};
+
+export const getActiveGameId = async () => {
+  try {
+    return await AsyncStorage.getItem(STORAGE_KEYS.ACTIVE_GAME_ID);
+  } catch (_error) {
+    return null;
+  }
+};
+
+export const saveActiveGameId = async (gameID) => {
+  if (!gameID) return false;
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.ACTIVE_GAME_ID, String(gameID));
+    return true;
+  } catch (_error) {
+    return false;
+  }
+};
+
+export const clearActiveGameId = async () => {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEYS.ACTIVE_GAME_ID);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 };
 
 export const hasCompletedGameplayOnboarding = async () => {
@@ -53,7 +81,6 @@ export const DEFAULT_STATS = {
 };
 
 export const DEFAULT_SETTINGS = {
-  soundEffects: true,
   ambientMusic: false,
   hapticFeedback: true,
   challengeTimer: 'relaxed', // 'relaxed' | 'speed'
