@@ -285,6 +285,8 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         monumentPoolId: challenge.monumentPoolId,
         monumentPoolVersion: challenge.monumentPoolVersion,
         countryMonumentIds: challenge.countryMonumentIds,
+        sizePoolVersion: challenge.sizePoolVersion,
+        accuracyThresholdPercent: challenge.accuracyThresholdPercent,
         targeting: challenge.targeting,
         drinkRules: challenge.drinkRules,
         order: index,
@@ -309,6 +311,10 @@ const getGeoGuessrChallenge = (stop) => (
   toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'geoGuessr')
 );
 
+const getSizeItUpChallenge = (stop) => (
+  toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'sizeItUp')
+);
+
 const hasCurrentCountryWordContent = (challenge, expected) => (
   challenge?.id === expected?.id
   && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
@@ -325,6 +331,15 @@ const hasCurrentGeoGuessrContent = (challenge, expected) => (
   && Number(challenge?.monumentPoolVersion) === Number(expected?.monumentPoolVersion)
   && Array.isArray(challenge?.countryMonumentIds)
   && JSON.stringify(challenge.countryMonumentIds) === JSON.stringify(expected.countryMonumentIds)
+);
+
+const hasCurrentSizeItUpContent = (challenge, expected) => (
+  challenge?.id === expected?.id
+  && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
+  && Number(challenge?.durationSeconds) === Number(expected?.durationSeconds)
+  && Number(challenge?.sizePoolVersion) === Number(expected?.sizePoolVersion)
+  && Number(challenge?.accuracyThresholdPercent) === Number(expected?.accuracyThresholdPercent)
+  && JSON.stringify(challenge?.drinkRules || null) === JSON.stringify(expected?.drinkRules || null)
 );
 
 const hasCurrentChallengeCatalogue = (value, expectedChallenges) => {
@@ -352,6 +367,7 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
       const embeddedContentIsCurrent = normalizedStops.every((stop) => {
         const expectedWord = getCountryWordChallenge(stop);
         const expectedGeo = getGeoGuessrChallenge(stop);
+        const expectedSize = getSizeItUpChallenge(stop);
         const rawStop = rawStopsById.get(stop.id);
         const wordCurrent = !expectedWord || hasCurrentCountryWordContent(
           getCountryWordChallenge(rawStop),
@@ -361,8 +377,13 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
           getGeoGuessrChallenge(rawStop),
           expectedGeo
         );
+        const sizeCurrent = !expectedSize || hasCurrentSizeItUpContent(
+          getSizeItUpChallenge(rawStop),
+          expectedSize
+        );
         return wordCurrent
           && geoCurrent
+          && sizeCurrent
           && hasCurrentChallengeCatalogue(rawStop?.challenges, stop.challenges);
       });
       if (countryWordMigrationVerified && embeddedContentIsCurrent) return 0;
@@ -376,6 +397,7 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
         const rawStop = rawStopsById.get(stop.id);
         const expectedWord = getCountryWordChallenge(stop);
         const expectedGeo = getGeoGuessrChallenge(stop);
+        const expectedSize = getSizeItUpChallenge(stop);
 
         const wordMismatch = expectedWord && (
           !hasCurrentCountryWordContent(getCountryWordChallenge(rawStop), expectedWord)
@@ -385,13 +407,20 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
           !hasCurrentGeoGuessrContent(getGeoGuessrChallenge(rawStop), expectedGeo)
           || !hasCurrentGeoGuessrContent(challengeDocsById.get(`${stop.id}__${expectedGeo.id}`), expectedGeo)
         );
+        const sizeMismatch = expectedSize && (
+          !hasCurrentSizeItUpContent(getSizeItUpChallenge(rawStop), expectedSize)
+          || !hasCurrentSizeItUpContent(
+            challengeDocsById.get(`${stop.id}__${expectedSize.id}`),
+            expectedSize
+          )
+        );
         const catalogueMismatch = !hasCurrentChallengeCatalogue(rawStop?.challenges, stop.challenges)
           || !stop.challenges.every((expected) => hasCurrentChallengeCatalogue(
             [challengeDocsById.get(`${stop.id}__${expected.id}`)].filter(Boolean),
             [expected]
           ));
 
-        return Boolean(wordMismatch || geoMismatch || catalogueMismatch);
+        return Boolean(wordMismatch || geoMismatch || sizeMismatch || catalogueMismatch);
       });
 
       if (!targets.length) {

@@ -9,6 +9,13 @@ import {
   MONUMENT_POOL_DOC_ID,
   MONUMENT_POOL_VERSION,
 } from './monumentPool.js';
+import {
+  SIZE_IT_UP_ACCURACY_THRESHOLD_PERCENT,
+  SIZE_IT_UP_CHALLENGE_ID,
+  SIZE_IT_UP_CHALLENGE_TYPE,
+  SIZE_IT_UP_DURATION_SECONDS,
+  SIZE_IT_UP_POOL_VERSION,
+} from './sizeItUp';
 
 export const DURATION_STOP_COUNTS = { short: 6, medium: 9, long: 12 };
 export const DURATION_TARGET_MINUTES = { short: 20, medium: 30, long: 40 };
@@ -230,18 +237,38 @@ const getGeoGuessrChallenge = (countryId) => ({
   drinkRules: { success: 'none', failure: 'opponents' },
 });
 
-const ensureCountryWordChallenge = (countryId, challenges) => {
+const getSizeItUpChallenge = () => ({
+  id: SIZE_IT_UP_CHALLENGE_ID,
+  type: SIZE_IT_UP_CHALLENGE_TYPE,
+  title: 'Size It Up',
+  prompt: 'Resize the mystery silhouette until it matches its real-world scale beside the reference.',
+  penalty: 'Get within 15%. Otherwise every teammate takes the sip penalty.',
+  penaltyTag: 'WITHIN 15%',
+  penaltySips: 1,
+  durationSeconds: SIZE_IT_UP_DURATION_SECONDS,
+  expectedDurationSeconds: SIZE_IT_UP_DURATION_SECONDS,
+  accuracyThresholdPercent: SIZE_IT_UP_ACCURACY_THRESHOLD_PERCENT,
+  sizePoolVersion: SIZE_IT_UP_POOL_VERSION,
+  minPlayers: 1,
+  drinkRules: { success: 'none', failure: 'wholeTeam' },
+});
+
+const ensureTypedChallenges = (countryId, challenges) => {
   const countryWordChallenge = getCountryWordChallenge(countryId);
   const geoGuessrChallenge = getGeoGuessrChallenge(countryId);
+  const sizeItUpChallenge = getSizeItUpChallenge();
   const filtered = challenges.filter((item) => (
     (!countryWordChallenge || (item?.id !== countryWordChallenge.id && item?.type !== countryWordChallenge.type))
     && item?.id !== geoGuessrChallenge.id
     && item?.type !== geoGuessrChallenge.type
+    && item?.id !== sizeItUpChallenge.id
+    && item?.type !== sizeItUpChallenge.type
   ));
   return [
     ...filtered,
     ...(countryWordChallenge ? [countryWordChallenge] : []),
     geoGuessrChallenge,
+    sizeItUpChallenge,
   ];
 };
 
@@ -316,7 +343,7 @@ const EUROPE_COUNTRIES = [
 
 export const DEFAULT_COUNTRY_STOPS = EUROPE_COUNTRIES.map(stop).map((countryStop) => ({
   ...countryStop,
-  challenges: ensureCountryWordChallenge(countryStop.id, countryStop.challenges),
+  challenges: ensureTypedChallenges(countryStop.id, countryStop.challenges),
 }));
 const DEFAULT_COUNTRY_STOP_BY_ID = new Map(DEFAULT_COUNTRY_STOPS.map((countryStop) => [
   countryStop.id,
@@ -368,7 +395,7 @@ export const normalizeCountryStops = (value) => {
       order: Number.isFinite(Number(stop.order)) ? Number(stop.order) : index,
       position: { x: Number(stop.position?.x) || 0, y: Number(stop.position?.y) || 0 },
       accent: stop.accent || '#1ba39c',
-      challenges: ensureCountryWordChallenge(
+      challenges: ensureTypedChallenges(
         stopId,
         [...authoredChallenges, ...bundledFallbacks].map((challenge, challengeIndex) => ({
           id: String(challenge.id || `challenge-${challengeIndex}`),
@@ -423,6 +450,12 @@ export const normalizeCountryStops = (value) => {
             : {}),
           ...(Array.isArray(challenge.countryMonumentIds)
             ? { countryMonumentIds: challenge.countryMonumentIds.map(String).filter(Boolean) }
+            : {}),
+          ...(Number.isFinite(Number(challenge.sizePoolVersion))
+            ? { sizePoolVersion: Number(challenge.sizePoolVersion) }
+            : {}),
+          ...(Number.isFinite(Number(challenge.accuracyThresholdPercent))
+            ? { accuracyThresholdPercent: Number(challenge.accuracyThresholdPercent) }
             : {}),
           ...((challenge.targeting || BUILT_IN_TARGETING[challenge.id])
             ? {

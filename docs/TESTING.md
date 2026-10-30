@@ -71,13 +71,21 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
    entry with Team 1 active and the immutable edge-country-to-Greece itinerary.
 3. Verify only the active leader can roll/complete, results are 1–3, route points and
    challenges match, finished teams are skipped, and re-entry restores current state.
-4. Exercise word challenge secrecy/timer/result and GeoGuessr pin/result/score.
-5. Exercise both roadblock choices, reconnect during the choice and between detour
+4. Exercise word challenge secrecy/timer/result, GeoGuessr pin/result/score, and
+   Size It Up resize/timeout/reveal. For Size It Up, verify 14.99% and 15% errors pass,
+   an error just above 15% fails, failure assigns the scaled sip penalty to every
+   active-team player exactly once, and no result changes challenge points.
+5. During Size It Up, confirm only the active leader can adjust or lock the estimate,
+   other devices show the in-progress state, and every client converges on the same
+   pair, estimate, result, and drinks. Disconnect the leader before expiry and verify
+   another connected client finalizes the last synchronized estimate after the
+   recovery grace period.
+6. Exercise both roadblock choices, reconnect during the choice and between detour
    turns, and verify turn ownership, intermediate challenges, per-team detour
    progress, and final canonical progress on both clients.
-6. Finish the tour and verify every client shows the same winner, finish positions,
+7. Finish the tour and verify every client shows the same winner, finish positions,
    scores, and per-player drinks under the correct team.
-7. Start a rematch as host and verify the room, roster, teams, vehicles, difficulty,
+8. Start a rematch as host and verify the room, roster, teams, vehicles, difficulty,
    and room rules remain while the route, session ID, scores, drinks, progress,
    challenges, roadblocks, and used content reset on every client. Verify a non-host
    cannot start it and every player can leave to Home.

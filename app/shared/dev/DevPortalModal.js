@@ -626,6 +626,17 @@ export default function DevPortalModal({ visible, onClose }) {
                   <Text style={styles.actionButtonText}>🌍 Launch GeoGuessr Duel</Text>
                 </TouchableOpacity>
 
+                <Text style={styles.sectionHeading}>Size It Up</Text>
+                <Text style={styles.sectionDescription}>
+                  Test the active team&apos;s single-round visual size estimation challenge.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.accentButton]}
+                  onPress={() => handleTestChallenge(1, 'sizeItUp')}
+                >
+                  <Text style={styles.actionButtonText}>📏 Launch Size It Up</Text>
+                </TouchableOpacity>
+
                 <Text style={styles.sectionHeading}>Drive To Country & Challenge</Text>
                 <Text style={styles.sectionDescription}>
                   Drive active team to destination and open its country challenge.

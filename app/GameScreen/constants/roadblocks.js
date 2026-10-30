@@ -4,6 +4,7 @@ import { DEFAULT_COUNTRY_STOPS } from './countryStops';
 import { createDetourRouteModel, createRouteModel, getPathRevealDuration } from './route';
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './movement';
 import { resolveTimerSeconds } from './roomRules';
+import { SIZE_IT_UP_CHALLENGE_TYPE } from './sizeItUp';
 
 export const ROADBLOCK_PALETTE = {
   cream: '#FFF1CD',
@@ -158,7 +159,11 @@ const stripStopForGameplay = (stop) => ({
 
 const withDetourChallenge = (stop, actionId, index) => {
   const challenges = (Array.isArray(stop?.challenges) ? stop.challenges : [])
-    .filter((challenge) => !['countryWordGuess', 'geoGuessr'].includes(challenge?.type));
+    .filter((challenge) => ![
+      'countryWordGuess',
+      'geoGuessr',
+      SIZE_IT_UP_CHALLENGE_TYPE,
+    ].includes(challenge?.type));
   const selected = challenges.length
     ? challenges[hashSeed(`${actionId}:detour-challenge:${index}`) % challenges.length]
     : null;

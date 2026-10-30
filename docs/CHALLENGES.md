@@ -77,6 +77,30 @@ time, results, awarded points, the resolved penalty, and the drink award ID. Sta
 score, and drink transitions are transactional and idempotent. Local development
 games follow the same sequence without Firebase.
 
+## Size It Up
+
+Every bundled country includes `size-it-up` (`type: sizeItUp`) as a normal
+single-team landing challenge. It is never selected for a Roadside Duel or detour.
+The active team sees one deterministic cross-category comparison from a versioned
+32-round travel pool pairing different item types across animals, vehicles, objects,
+and landmarks. Previously used comparisons are excluded until the pool is exhausted.
+
+Each silhouette shows a dimension bracket (`↕ HEIGHT` or `↔ LENGTH`) indicating the
+measured axis. The reference is shown at its known measurement while the target
+begins at 1× scale with a live measurement and multiplier readout. The active leader
+has 30 seconds to resize the target from 0.1× to 5× and lock the estimate. Time
+expiry submits the latest synchronized estimate. The reveal compares the guessed and
+real scales side by side and reports the guessed measurement, true measurement, and
+percentage error. An estimate with absolute error at or below 15% passes. A failure
+assigns the difficulty-scaled one-sip base penalty to every active-team player;
+success assigns no drinks and the challenge never awards points.
+
+`challengeRound` snapshots the selected pair, true ratio, latest estimate, threshold,
+timer, resolved penalty, and result. The active leader may update or submit the
+estimate. After the deadline, another connected client may finalize the last
+synchronized estimate so a disconnected leader cannot stall the room. Result and
+drink transitions remain transactional and idempotent.
+
 ## Content and UI extension points
 
 - Put reusable selection and fallback logic in `constants/challenges.js` and

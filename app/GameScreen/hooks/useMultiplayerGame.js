@@ -37,11 +37,14 @@ import {
   getCountryWordRound,
   getGeoGuessrRound,
   getResolvedPenaltySips,
+  getSizeItUpRound,
   getTeamPlayers,
   getTargetCursorKey,
   getTargetedChallengeRound,
   isBotOnlyTeam,
+  SIZE_IT_UP_CHALLENGE_TYPE,
 } from '../constants/challenges';
+import { clampSizeEstimate, evaluateSizeEstimate } from '../constants/sizeItUp';
 import {
   calculateBoardDistanceKm,
   evaluateGeoGuessrGuesses,
@@ -230,6 +233,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (
         isStructurallyEqual(normalized, current.teamProgress)
         && isStructurallyEqual(careerCounters, current.careerCounters || {})
+        && Array.isArray(current.usedSizeRoundIds)
         && Number(current.schemaVersion) >= GAMEPLAY_SCHEMA_VERSION
       ) return undefined;
 
@@ -239,6 +243,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         revision: (current.revision || 0) + 1,
         teamProgress: normalized,
         careerCounters,
+        usedSizeRoundIds: Array.isArray(current.usedSizeRoundIds) ? current.usedSizeRoundIds : [],
         updatedAt: now(),
       };
     }).catch((error) => {
@@ -920,6 +925,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         const challenge = getChallengeForStop(action.targetLeg, routeModel.countryStops, challengeId);
         let challengeRound = null;
         let usedMonumentIds = Array.isArray(current.usedMonumentIds) ? current.usedMonumentIds : [];
+        let usedSizeRoundIds = Array.isArray(current.usedSizeRoundIds) ? current.usedSizeRoundIds : [];
         const challengeKey = getChallengeKey(stop, challengeId);
         const usedChallengeKeys = challengeKey
           ? [...new Set([...(current.usedChallengeKeys || []), challengeKey])]
@@ -942,6 +948,19 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           if (geoData) {
             challengeRound = geoData.round;
             usedMonumentIds = geoData.nextUsedMonumentIds;
+          }
+        } else if (challenge.type === SIZE_IT_UP_CHALLENGE_TYPE) {
+          const sizeData = getSizeItUpRound({
+            challenge,
+            difficulty: gameDataRef.current?.difficulty,
+            seed: action.id,
+            startedAt: completedAt,
+            timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
+            usedRoundIds: usedSizeRoundIds,
+          });
+          if (sizeData) {
+            challengeRound = sizeData.round;
+            usedSizeRoundIds = sizeData.nextUsedRoundIds;
           }
         } else if (challenge.type === COUNTRY_WORD_CHALLENGE_TYPE) {
           const cursorKey = getTargetCursorKey(action.teamId, 'describer');
@@ -976,6 +995,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           challengeId,
           challengeRound,
           usedMonumentIds,
+          usedSizeRoundIds,
           usedChallengeKeys,
           targetCursors,
           roadblock: null,
@@ -1010,7 +1030,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
     const actionType = typeof action === 'object' && action !== null ? action.type : action;
     const isGeoPinSubmit = actionType === 'submitPin';
-    const isAutomaticDeadlineAction = ['startPinning', 'timeoutPinning', 'timeout'].includes(actionType);
+    const isAutomaticDeadlineAction = [
+      'startPinning',
+      'timeoutPinning',
+      'timeout',
+      'timeoutSizeEstimate',
+    ].includes(actionType);
 
     // Any team leader can submit their own team's GeoGuessr pin; other stage transitions
     // require the active team's leader.
@@ -1237,6 +1262,76 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         }
 
         return undefined;
+      }
+
+      if (challenge.type === SIZE_IT_UP_CHALLENGE_TYPE) {
+        if (round.stage !== 'playing') return undefined;
+
+        const isTimeout = actionType === 'timeoutSizeEstimate';
+        const isEstimateUpdate = actionType === 'updateSizeEstimate';
+        const isSubmit = actionType === 'submitSizeEstimate';
+        if (!isTimeout && !isEstimateUpdate && !isSubmit) return undefined;
+
+        const deadline = Number(round.startedAt)
+          + (Number(round.durationSeconds) || 30) * 1000;
+        if (isTimeout && (!deadline || updatedAt < deadline)) return undefined;
+        if (!isTimeout && current.activeTeamId !== identity.localTeamId) return undefined;
+
+        const actionEstimate = Number(action?.estimatedRatio);
+        const estimatedRatio = clampSizeEstimate(
+          Number.isFinite(actionEstimate) ? actionEstimate : round.estimatedRatio
+        );
+        if (isEstimateUpdate) {
+          if (deadline && updatedAt >= deadline) return undefined;
+          return {
+            ...current,
+            revision: (current.revision || 0) + 1,
+            challengeRound: {
+              ...round,
+              estimatedRatio,
+              estimateUpdatedAt: updatedAt,
+            },
+            updatedAt,
+          };
+        }
+
+        const evaluation = evaluateSizeEstimate({
+          accuracyThresholdPercent: round.accuracyThresholdPercent,
+          estimatedRatio,
+          trueRatio: round.trueRatio,
+        });
+        const resultActionId = `${current.sessionId}:${current.turnNumber}:size-it-up`;
+        const drinkRule = evaluation.passed
+          ? (challenge.drinkRules?.success || 'none')
+          : (challenge.drinkRules?.failure || 'wholeTeam');
+        const nextTeamProgress = addDrinksByRule({
+          amount: getResolvedPenaltySips(
+            round.resolvedPenaltySips === undefined ? challenge : round,
+            gameDataRef.current?.difficulty
+          ),
+          rule: drinkRule,
+          teamId: current.activeTeamId,
+          teamMembers: teamMembersRef.current,
+          teamProgress: current.teamProgress,
+        });
+
+        return {
+          ...current,
+          revision: (current.revision || 0) + 1,
+          teamProgress: nextTeamProgress,
+          challengeRound: {
+            ...round,
+            stage: 'result',
+            result: evaluation.passed ? 'passed' : 'failed',
+            estimatedRatio: evaluation.estimatedRatio,
+            errorPercent: evaluation.errorPercent,
+            timedOut: isTimeout,
+            resultActionId,
+            drinkAwardId: drinkRule !== 'none' ? resultActionId : null,
+            resultAt: updatedAt,
+          },
+          updatedAt,
+        };
       }
 
       if (current.activeTeamId !== identity.localTeamId && actionType !== 'timeout') {
