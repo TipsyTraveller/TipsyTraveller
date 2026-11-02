@@ -128,7 +128,10 @@ const writeLocalMonumentPool = (monuments) => {
 let removedStopIds = readRemovedStopIds();
 let cachedStops = readLocalCache();
 let cachedMonumentPool = readLocalMonumentPool() || DEFAULT_MONUMENT_POOL;
+let countryStopsFetched = false;
+let countryStopsFetchPromise = null;
 let seedingPromise = null;
+let seedingAttempted = false;
 let countryWordMigrationPromise = null;
 let countryWordMigrationVerified = false;
 let monumentPoolSyncPromise = null;
@@ -175,6 +178,7 @@ export const ensureMonumentPoolSeeded = async () => {
       monumentPoolSyncVerified = true;
       return cachedMonumentPool;
     } catch (error) {
+      monumentPoolSyncVerified = true;
       console.warn('Unable to sync Firestore GeoGuessr challenges; using bundled fallback:', error);
       return cachedMonumentPool || DEFAULT_MONUMENT_POOL;
     } finally {
@@ -287,8 +291,6 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         countryMonumentIds: challenge.countryMonumentIds,
         sizePoolVersion: challenge.sizePoolVersion,
         accuracyThresholdPercent: challenge.accuracyThresholdPercent,
-        targeting: challenge.targeting,
-        drinkRules: challenge.drinkRules,
         order: index,
         updatedAt,
       }),
@@ -315,22 +317,39 @@ const getSizeItUpChallenge = (stop) => (
   toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'sizeItUp')
 );
 
+const isSameTargeting = (left, right) => {
+  if (!left?.role && !right?.role) return true;
+  return String(left?.role || '') === String(right?.role || '')
+    && String(left?.selection || 'rotate') === String(right?.selection || 'rotate');
+};
+
+const isSameDrinkRules = (left, right) => {
+  if (!left && !right) return true;
+  return String(left?.success || 'none') === String(right?.success || 'none')
+    && String(left?.failure || 'wholeTeam') === String(right?.failure || 'wholeTeam');
+};
+
+const isSameStringList = (left, right) => (
+  Array.isArray(left)
+  && Array.isArray(right)
+  && left.length === right.length
+  && left.every((item, index) => item === right[index])
+);
+
 const hasCurrentCountryWordContent = (challenge, expected) => (
   challenge?.id === expected?.id
   && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
   && Number(challenge?.wordListVersion) === Number(expected?.wordListVersion)
-  && JSON.stringify(challenge?.targeting || null) === JSON.stringify(expected?.targeting || null)
-  && JSON.stringify(challenge?.drinkRules || null) === JSON.stringify(expected?.drinkRules || null)
-  && Array.isArray(challenge?.words)
-  && JSON.stringify(challenge.words) === JSON.stringify(expected.words)
+  && isSameTargeting(challenge?.targeting, expected?.targeting)
+  && isSameDrinkRules(challenge?.drinkRules, expected?.drinkRules)
+  && isSameStringList(challenge?.words, expected?.words)
 );
 
 const hasCurrentGeoGuessrContent = (challenge, expected) => (
   challenge?.id === expected?.id
   && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
   && Number(challenge?.monumentPoolVersion) === Number(expected?.monumentPoolVersion)
-  && Array.isArray(challenge?.countryMonumentIds)
-  && JSON.stringify(challenge.countryMonumentIds) === JSON.stringify(expected.countryMonumentIds)
+  && isSameStringList(challenge?.countryMonumentIds, expected?.countryMonumentIds)
 );
 
 const hasCurrentSizeItUpContent = (challenge, expected) => (
@@ -339,7 +358,7 @@ const hasCurrentSizeItUpContent = (challenge, expected) => (
   && Number(challenge?.durationSeconds) === Number(expected?.durationSeconds)
   && Number(challenge?.sizePoolVersion) === Number(expected?.sizePoolVersion)
   && Number(challenge?.accuracyThresholdPercent) === Number(expected?.accuracyThresholdPercent)
-  && JSON.stringify(challenge?.drinkRules || null) === JSON.stringify(expected?.drinkRules || null)
+  && isSameDrinkRules(challenge?.drinkRules, expected?.drinkRules)
 );
 
 const hasCurrentChallengeCatalogue = (value, expectedChallenges) => {
@@ -351,12 +370,13 @@ const hasCurrentChallengeCatalogue = (value, expectedChallenges) => {
       && Number(challenge.minPlayers || 1) === Number(expected.minPlayers || 1)
       && Number(challenge.expectedDurationSeconds || challenge.durationSeconds)
         === Number(expected.expectedDurationSeconds || expected.durationSeconds)
-      && JSON.stringify(challenge.targeting || null) === JSON.stringify(expected.targeting || null)
-      && JSON.stringify(challenge.drinkRules || null) === JSON.stringify(expected.drinkRules || null);
+      && isSameTargeting(challenge.targeting, expected.targeting)
+      && isSameDrinkRules(challenge.drinkRules, expected.drinkRules);
   });
 };
 
 const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
+  if (countryWordMigrationVerified) return 0;
   if (countryWordMigrationPromise) return countryWordMigrationPromise;
 
   countryWordMigrationPromise = (async () => {
@@ -386,7 +406,10 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
           && sizeCurrent
           && hasCurrentChallengeCatalogue(rawStop?.challenges, stop.challenges);
       });
-      if (countryWordMigrationVerified && embeddedContentIsCurrent) return 0;
+      if (embeddedContentIsCurrent) {
+        countryWordMigrationVerified = true;
+        return 0;
+      }
 
       const challengeSnapshot = await getDocs(collection(firestore, CHALLENGES_COLLECTION));
       const challengeDocsById = new Map(challengeSnapshot.docs.map((docSnap) => [
@@ -423,8 +446,8 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
         return Boolean(wordMismatch || geoMismatch || sizeMismatch || catalogueMismatch);
       });
 
+      countryWordMigrationVerified = true;
       if (!targets.length) {
-        countryWordMigrationVerified = true;
         return 0;
       }
 
@@ -439,10 +462,10 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
         syncChallengesForStopInBatch(batch, stop, updatedAt);
       });
       await batch.commit();
-      countryWordMigrationVerified = true;
       console.info(`Synchronized built-in challenges for ${targets.length} Firestore countries.`);
       return targets.length;
     } catch (migrationError) {
+      countryWordMigrationVerified = true;
       console.warn('Unable to synchronize built-in challenges to Firestore:', migrationError);
       return 0;
     } finally {
@@ -454,8 +477,12 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
 };
 
 const seedFirestoreCatalogueIfNeeded = async () => {
+  if (seedingAttempted) {
+    return cachedStops || normalizeCountryStops(DEFAULT_COUNTRY_STOPS);
+  }
   if (seedingPromise) return seedingPromise;
   seedingPromise = (async () => {
+    seedingAttempted = true;
     try {
       await ensureMonumentPoolSeeded();
       let initialStops = cachedStops;
@@ -509,26 +536,43 @@ const loadLegacyRtdbStops = async () => {
 };
 
 export const getCountryStops = async () => {
-  try {
-    ensureMonumentPoolSeeded().catch(() => {});
-    const countriesQuery = query(collection(firestore, COUNTRIES_COLLECTION), orderBy('order', 'asc'));
-    const snapshot = await getDocs(countriesQuery);
-    const docs = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
-
-    if (docs.length >= 2 && !isLegacyCountryCatalogue(docs)) {
-      migrateCountryWordChallengesIfNeeded(docs).catch(() => {});
-      return updateCachedStops(mergeRemoteStopsWithCache(docs));
-    }
-
-    return await seedFirestoreCatalogueIfNeeded();
-  } catch (error) {
-    console.warn('Unable to load Firestore country stops; falling back to RTDB/cache.', error);
-    const rtdbStops = await loadLegacyRtdbStops();
-    if (rtdbStops) {
-      return updateCachedStops(rtdbStops);
-    }
-    return cachedStops || normalizeCountryStops(DEFAULT_COUNTRY_STOPS);
+  if (countryStopsFetched && cachedStops?.length >= 2) {
+    return cachedStops;
   }
+  if (countryStopsFetchPromise) {
+    return countryStopsFetchPromise;
+  }
+
+  countryStopsFetchPromise = (async () => {
+    try {
+      ensureMonumentPoolSeeded().catch(() => {});
+      const countriesQuery = query(collection(firestore, COUNTRIES_COLLECTION), orderBy('order', 'asc'));
+      const snapshot = await getDocs(countriesQuery);
+      const docs = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
+
+      if (docs.length >= 2 && !isLegacyCountryCatalogue(docs)) {
+        countryStopsFetched = true;
+        migrateCountryWordChallengesIfNeeded(docs).catch(() => {});
+        return updateCachedStops(mergeRemoteStopsWithCache(docs));
+      }
+
+      const seeded = await seedFirestoreCatalogueIfNeeded();
+      countryStopsFetched = true;
+      return seeded;
+    } catch (error) {
+      countryStopsFetched = true;
+      console.warn('Unable to load Firestore country stops; falling back to RTDB/cache.', error);
+      const rtdbStops = await loadLegacyRtdbStops();
+      if (rtdbStops) {
+        return updateCachedStops(rtdbStops);
+      }
+      return updateCachedStops(cachedStops || normalizeCountryStops(DEFAULT_COUNTRY_STOPS));
+    } finally {
+      countryStopsFetchPromise = null;
+    }
+  })();
+
+  return countryStopsFetchPromise;
 };
 
 export const subscribeCountryStops = (callback, onError) => {
@@ -543,14 +587,17 @@ export const subscribeCountryStops = (callback, onError) => {
     async (snapshot) => {
       const docs = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
       if (docs.length >= 2 && !isLegacyCountryCatalogue(docs)) {
+        countryStopsFetched = true;
         await migrateCountryWordChallengesIfNeeded(docs);
         updateCachedStops(mergeRemoteStopsWithCache(docs));
         return;
       }
       const seeded = await seedFirestoreCatalogueIfNeeded();
+      countryStopsFetched = true;
       updateCachedStops(seeded);
     },
     async (error) => {
+      countryStopsFetched = true;
       const rtdbStops = await loadLegacyRtdbStops();
       if (rtdbStops) {
         updateCachedStops(rtdbStops);
