@@ -24,7 +24,7 @@ games/{gameID}
   teamNames/{team1|team2|team3}: displayName
   routeStops[]: ordered snapshot, immutable during one session and replaced on rematch
   gameplay
-    schemaVersion: 10
+    schemaVersion: 11
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
     teamProgress/{teamId}: currentLeg, isDone, score,
       challengePoints, finishPosition?, detour?
@@ -34,7 +34,8 @@ games/{gameID}
       inputMethod, startedAt, movementStartsAt, movementEndsAt,
       movementPath?, detourStartStep?, detourStep?, detourSegmentType?
     challengeStop, challengeStopData, challengeId, challengeRound
-    roadblock, roadblockHistory[], usedMonumentIds[], usedChallengeKeys[]
+    roadblock, roadblockHistory[], usedMonumentIds[], usedSizeRoundIds[],
+      usedChallengeKeys[]
     targetCursors/{teamId:role}: next roster index
 players/{gameID}
   playerCounter
@@ -46,6 +47,14 @@ gameContent/monumentPool: mirrored GeoGuessr fallback
 Null Firebase fields may be omitted. Empty team placeholders begin as empty strings
 and become objects when players are pushed. Preserve these compatibility quirks
 unless every reader and writer is migrated together.
+
+Schema 11 adds `usedSizeRoundIds` and the single-team Size It Up round snapshot.
+Estimate adjustments are written only when an interaction commits, not on every
+rendered slider frame. The active leader locks the estimate; any connected client may
+finalize the last synchronized estimate after its deadline. The transaction computes
+the authoritative percentage error and applies the whole-team failure penalty once.
+Older rooms lazily receive an empty used-round list and otherwise retain their
+existing challenge snapshot.
 
 Schema 9 adds monotonic per-session career counters keyed by the stable roster player
 ID. A saved local profile synchronizes only its matching roster entry into lifetime
@@ -66,7 +75,7 @@ waypoint indexes are normalized when their movement or challenge completes.
   version, accent, embedded challenges, update time.
 - `challenges/{challengeDocId}`: normalized challenge fields, country relation,
   content, authoritative base `penaltySips`, type, timing/scoring/word metadata,
-  order, update time.
+  Size It Up pool/accuracy metadata, order, update time.
 - `geoGuessrChallenges/{locationId}`: normalized location, map position, photo URL,
   attribution, clue, and version metadata.
 - `gameContent/monumentPool`: collection/version/count manifest.

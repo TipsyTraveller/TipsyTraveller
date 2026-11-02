@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
 import GeoGuessrDuelView from './GeoGuessrDuelView';
+import SizeItUpView from './SizeItUpView';
 import { setOverviewCameraPose } from '../constants/camera';
 import {
   COUNTRY_WORD_EXPLANATION_SECONDS,
@@ -23,6 +24,7 @@ import {
   getCountryFlag,
   getPenaltyTag,
   getResolvedPenaltySips,
+  SIZE_IT_UP_CHALLENGE_TYPE,
 } from '../constants/challenges';
 import { AUTO_ADVANCE_COUNTDOWN_SECONDS } from '../constants/roomRules';
 
@@ -172,7 +174,9 @@ const ChallengePopup = ({
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
-  const challengeKey = challenge ? `${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || ''}` : '';
+  const challengeKey = challenge
+    ? `${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || challenge.sizeRoundId || ''}`
+    : '';
 
   useEffect(() => {
     if (!visible) {
@@ -231,6 +235,7 @@ const ChallengePopup = ({
 
   const isCountryWordChallenge = challenge?.type === 'countryWordGuess';
   const isGeoGuessrChallenge = challenge?.type === GEO_GUESSR_CHALLENGE_TYPE;
+  const isSizeItUpChallenge = challenge?.type === SIZE_IT_UP_CHALLENGE_TYPE;
   const challengeStage = challenge?.stage || (isGeoGuessrChallenge ? 'photo' : isCountryWordChallenge ? 'intro' : 'playing');
   const challengeDuration = Number(challenge?.durationSeconds) || 30;
   const photoDuration = Number(challenge?.photoDurationSeconds) || GEO_GUESSR_PHOTO_SECONDS;
@@ -240,6 +245,7 @@ const ChallengePopup = ({
     timeoutReportedRef.current = false;
 
     if (!visible) {
+      setRemainingSeconds(challengeDuration);
       return undefined;
     }
 
@@ -263,6 +269,17 @@ const ChallengePopup = ({
 
       updateGeoTimer();
       const interval = setInterval(updateGeoTimer, 250);
+      return () => clearInterval(interval);
+    }
+
+    if (isSizeItUpChallenge && challengeStage === 'playing') {
+      const startedAt = Number(challenge?.startedAt) || getNow();
+      const updateSizeTimer = () => {
+        const elapsedSeconds = Math.max(0, getNow() - startedAt) / 1000;
+        setRemainingSeconds(Math.max(0, Math.ceil(challengeDuration - elapsedSeconds)));
+      };
+      updateSizeTimer();
+      const interval = setInterval(updateSizeTimer, 250);
       return () => clearInterval(interval);
     }
 
@@ -300,6 +317,7 @@ const ChallengePopup = ({
     getNow,
     isCountryWordChallenge,
     isGeoGuessrChallenge,
+    isSizeItUpChallenge,
     photoDuration,
     pinDuration,
     visible,
@@ -307,7 +325,7 @@ const ChallengePopup = ({
 
   useEffect(() => {
     const resultAt = Number(challenge?.resultAt) || 0;
-    const isTypedResult = (isCountryWordChallenge || isGeoGuessrChallenge)
+    const isTypedResult = (isCountryWordChallenge || isGeoGuessrChallenge || isSizeItUpChallenge)
       && challengeStage === 'result';
     const shouldCountDown = visible
       && autoAdvance
@@ -343,6 +361,7 @@ const ChallengePopup = ({
     getNow,
     isCountryWordChallenge,
     isGeoGuessrChallenge,
+    isSizeItUpChallenge,
     visible,
   ]);
 
@@ -478,8 +497,9 @@ const ChallengePopup = ({
   };
   const timer = (isCountryWordChallenge && challengeStage === 'playing')
     || (isGeoGuessrChallenge && (challengeStage === 'photo' || challengeStage === 'pinning'))
+    || (isSizeItUpChallenge && challengeStage === 'playing')
     ? `${String(remainingSeconds).padStart(2, '0')} SEC`
-    : isGeoGuessrChallenge && challengeStage === 'result'
+    : (isGeoGuessrChallenge || isSizeItUpChallenge) && challengeStage === 'result'
       ? 'REVEALED'
       : getChallengeTimer(challenge);
   const resolvedPenaltySips = getResolvedPenaltySips(challenge, difficulty);
@@ -498,11 +518,13 @@ const ChallengePopup = ({
     return 'No drinks are assigned.';
   };
   const canFinishChallenge = canComplete
-    && ((!isCountryWordChallenge && !isGeoGuessrChallenge) || challengeStage === 'result');
+    && ((!isCountryWordChallenge && !isGeoGuessrChallenge && !isSizeItUpChallenge)
+      || challengeStage === 'result');
   const missionCode = challenge.code
     ? `MISSION ${challenge.code}-${String(challenge.stopIndex).padStart(2, '0')}`
     : 'MISSION';
-  const expandedGeoMap = isGeoGuessrChallenge && challengeStage === 'pinning';
+  const expandedInteractive = (isGeoGuessrChallenge && challengeStage === 'pinning')
+    || (isSizeItUpChallenge && challengeStage === 'playing');
   // Card size: on a phone it takes 75% of the screen width and 85% of its height.
   // Larger screens keep that same landscape rectangle (the phone's aspect ratio)
   // instead of stretching, scaled to fit inside the same 75% x 90% box.
@@ -516,7 +538,7 @@ const ChallengePopup = ({
     cardHeight = Math.min(height * PHONE_CARD_HEIGHT, (width * PHONE_CARD_WIDTH) / PHONE_CARD_RATIO, 520);
     cardWidth = cardHeight * PHONE_CARD_RATIO;
   }
-  if (expandedGeoMap) {
+  if (expandedInteractive) {
     cardWidth = Math.max(320, width - insets.left - insets.right - 12);
     cardHeight = Math.max(220, height - insets.top - insets.bottom - 8);
   }
@@ -632,10 +654,10 @@ const ChallengePopup = ({
       style={[
         styles.overlay,
         {
-          paddingTop: expandedGeoMap ? Math.max(4, insets.top + 4) : Math.max(12, insets.top + 8),
-          paddingBottom: expandedGeoMap ? Math.max(4, insets.bottom + 4) : Math.max(12, insets.bottom + 8),
-          paddingLeft: expandedGeoMap ? Math.max(6, insets.left + 4) : Math.max(14, insets.left + 8),
-          paddingRight: expandedGeoMap ? Math.max(6, insets.right + 4) : Math.max(14, insets.right + 8),
+          paddingTop: expandedInteractive ? Math.max(4, insets.top + 4) : Math.max(12, insets.top + 8),
+          paddingBottom: expandedInteractive ? Math.max(4, insets.bottom + 4) : Math.max(12, insets.bottom + 8),
+          paddingLeft: expandedInteractive ? Math.max(6, insets.left + 4) : Math.max(14, insets.left + 8),
+          paddingRight: expandedInteractive ? Math.max(6, insets.right + 4) : Math.max(14, insets.right + 8),
         },
       ]}
       pointerEvents="auto"
@@ -653,13 +675,13 @@ const ChallengePopup = ({
           pointerEvents={ready ? 'auto' : 'none'}
           style={[styles.frontFace, frontFaceAnimatedStyle]}
         >
-          <View style={[styles.scrollContent, expandedGeoMap && styles.scrollContentExpanded]}>
+          <View style={[styles.scrollContent, expandedInteractive && styles.scrollContentExpanded]}>
             <Animated.View
               renderToHardwareTextureAndroid={tearing}
               style={[
                 styles.stubWrap,
                 compact && styles.stubWrapCompact,
-                expandedGeoMap && styles.stubWrapHidden,
+                expandedInteractive && styles.stubWrapHidden,
                 tearStubStyle,
               ]}
             >
@@ -672,6 +694,8 @@ const ChallengePopup = ({
                   ? 'Roadside Duel'
                   : isGeoGuessrChallenge
                     ? 'Place Duel'
+                    : isSizeItUpChallenge
+                      ? 'Size Challenge'
                     : 'Country Challenge'}
               </Text>
               {challenge.landmark ? (
@@ -741,8 +765,8 @@ const ChallengePopup = ({
               renderToHardwareTextureAndroid={tearing}
               style={[styles.bodyWrap, tearBodyStyle]}
             >
-              <View pointerEvents="none" style={[styles.bodyShadow, expandedGeoMap && styles.bodyShadowExpanded]} />
-              <View style={[styles.body, compact && styles.bodyCompact, expandedGeoMap && styles.bodyExpanded]}>
+              <View pointerEvents="none" style={[styles.bodyShadow, expandedInteractive && styles.bodyShadowExpanded]} />
+              <View style={[styles.body, compact && styles.bodyCompact, expandedInteractive && styles.bodyExpanded]}>
               <View style={styles.bodyHeader}>
                 <Text style={styles.missionCode}>{missionCode}</Text>
                 {resolvedPenaltySips > 0 ? (
@@ -769,6 +793,16 @@ const ChallengePopup = ({
                   multiplayerEnabled={multiplayerEnabled}
                   onChallengeAction={onChallengeAction}
                   penaltySips={resolvedPenaltySips}
+                  remainingSeconds={remainingSeconds}
+                />
+              ) : isSizeItUpChallenge ? (
+                <SizeItUpView
+                  canComplete={canComplete}
+                  canFinalizeTimeout={canFinalizeTimeout}
+                  challenge={challenge}
+                  compact={compact}
+                  getNow={getNow}
+                  onChallengeAction={onChallengeAction}
                   remainingSeconds={remainingSeconds}
                 />
               ) : isCountryWordChallenge ? renderCountryWordContent() : challengeStage === 'result' ? (

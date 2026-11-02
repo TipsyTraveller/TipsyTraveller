@@ -20,10 +20,13 @@ import {
   getCountryWordRound,
   getGeoGuessrRound,
   getResolvedPenaltySips,
+  getSizeItUpRound,
   getTeamPlayers,
   getTargetCursorKey,
   getTargetedChallengeRound,
+  SIZE_IT_UP_CHALLENGE_TYPE,
 } from './constants/challenges';
+import { clampSizeEstimate, evaluateSizeEstimate } from './constants/sizeItUp';
 import {
   calculateBoardDistanceKm,
   evaluateGeoGuessrGuesses,
@@ -146,6 +149,7 @@ const GameScreen = ({ navigation, route }) => {
   const visualActionIdRef = useRef(null);
   const multiplayerSessionIdRef = useRef(null);
   const usedMonumentIdsRef = useRef([]);
+  const usedSizeRoundIdsRef = useRef([]);
   const usedChallengeKeysRef = useRef([]);
   const targetCursorsRef = useRef({});
   const devForceChallengeTypeRef = useRef(null);
@@ -250,6 +254,7 @@ const GameScreen = ({ navigation, route }) => {
 
     activeCarProgressRef.current = 0;
     usedMonumentIdsRef.current = [];
+    usedSizeRoundIdsRef.current = [];
     usedChallengeKeysRef.current = [];
     targetCursorsRef.current = {};
     setState('waiting');
@@ -479,6 +484,24 @@ const GameScreen = ({ navigation, route }) => {
       }
     }
 
+    if (challenge.type === SIZE_IT_UP_CHALLENGE_TYPE) {
+      const sizeData = getSizeItUpRound({
+        challenge,
+        difficulty: gameData?.difficulty,
+        seed,
+        startedAt: Date.now(),
+        timerPace: roomRules.challengeTimerPace,
+        usedRoundIds: usedSizeRoundIdsRef.current,
+      });
+      if (sizeData) {
+        usedSizeRoundIdsRef.current = sizeData.nextUsedRoundIds;
+        return {
+          ...challenge,
+          ...sizeData.round,
+        };
+      }
+    }
+
     const role = challenge.targeting?.role;
     const cursorKey = role ? getTargetCursorKey(pieceId, role) : null;
     const challengeRound = challenge.type === COUNTRY_WORD_CHALLENGE_TYPE
@@ -520,6 +543,7 @@ const GameScreen = ({ navigation, route }) => {
   const resetLocalGame = () => {
     activeCarProgressRef.current = 0;
     usedMonumentIdsRef.current = [];
+    usedSizeRoundIdsRef.current = [];
     usedChallengeKeysRef.current = [];
     targetCursorsRef.current = {};
     setState('waiting');
@@ -842,6 +866,55 @@ const GameScreen = ({ navigation, route }) => {
           resultAt: Date.now(),
         });
       }
+      return;
+    }
+
+    if (currentChallenge.type === SIZE_IT_UP_CHALLENGE_TYPE) {
+      if (currentChallenge.stage !== 'playing') return;
+      if (actionType === 'updateSizeEstimate') {
+        setCurrentChallenge({
+          ...currentChallenge,
+          estimatedRatio: clampSizeEstimate(action?.estimatedRatio),
+          estimateUpdatedAt: Date.now(),
+        });
+        return;
+      }
+      if (!['submitSizeEstimate', 'timeoutSizeEstimate'].includes(actionType)) return;
+      if (actionType === 'timeoutSizeEstimate') {
+        const deadline = Number(currentChallenge.startedAt)
+          + (Number(currentChallenge.durationSeconds) || 30) * 1000;
+        if (Date.now() < deadline) return;
+      }
+
+      const evaluation = evaluateSizeEstimate({
+        accuracyThresholdPercent: currentChallenge.accuracyThresholdPercent,
+        estimatedRatio: Number.isFinite(Number(action?.estimatedRatio))
+          ? Number(action.estimatedRatio)
+          : currentChallenge.estimatedRatio,
+        trueRatio: currentChallenge.trueRatio,
+      });
+      const resultActionId = `local:${localTurnNumber}:size-it-up`;
+      const drinkRule = evaluation.passed
+        ? (currentChallenge.drinkRules?.success || 'none')
+        : (currentChallenge.drinkRules?.failure || 'wholeTeam');
+      setTeamProgress((progress) => addDrinksByRule({
+        amount: getResolvedPenaltySips(currentChallenge, gameData?.difficulty),
+        rule: drinkRule,
+        teamId: activePiece.id,
+        teamMembers: currentTeamMembers,
+        teamProgress: progress,
+      }));
+      setCurrentChallenge({
+        ...currentChallenge,
+        stage: 'result',
+        result: evaluation.passed ? 'passed' : 'failed',
+        estimatedRatio: evaluation.estimatedRatio,
+        errorPercent: evaluation.errorPercent,
+        timedOut: actionType === 'timeoutSizeEstimate',
+        resultActionId,
+        drinkAwardId: drinkRule !== 'none' ? resultActionId : null,
+        resultAt: Date.now(),
+      });
       return;
     }
 

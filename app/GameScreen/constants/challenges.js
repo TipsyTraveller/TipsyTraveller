@@ -225,6 +225,14 @@ import {
 } from './monumentPool.js';
 import { getTeamPlayers } from '../drinkLedger';
 import { resolveTimerSeconds } from './roomRules';
+import {
+  selectSizeItUpRound,
+  SIZE_IT_UP_ACCURACY_THRESHOLD_PERCENT,
+  SIZE_IT_UP_CHALLENGE_ID,
+  SIZE_IT_UP_CHALLENGE_TYPE,
+  SIZE_IT_UP_DURATION_SECONDS,
+  SIZE_IT_UP_POOL_VERSION,
+} from './sizeItUp';
 
 export {
   GEO_GUESSR_CHALLENGE_ID,
@@ -232,6 +240,11 @@ export {
   GEO_GUESSR_PHOTO_SECONDS,
   GEO_GUESSR_PIN_SECONDS,
   GEO_GUESSR_SUCCESS_POINTS,
+  SIZE_IT_UP_ACCURACY_THRESHOLD_PERCENT,
+  SIZE_IT_UP_CHALLENGE_ID,
+  SIZE_IT_UP_CHALLENGE_TYPE,
+  SIZE_IT_UP_DURATION_SECONDS,
+  SIZE_IT_UP_POOL_VERSION,
 };
 
 export const COUNTRY_WORD_CHALLENGE_TYPE = 'countryWordGuess';
@@ -412,6 +425,43 @@ export const getGeoGuessrRound = ({
       winnerTeamIds: [],
       bestDistanceKm: null,
       pointsAwarded: 0,
+      resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
+    },
+  };
+};
+
+export const getSizeItUpRound = ({
+  challenge,
+  difficulty = 'easy',
+  seed = '',
+  startedAt = Date.now(),
+  timerPace = 'relaxed',
+  usedRoundIds = [],
+}) => {
+  if (challenge?.type !== SIZE_IT_UP_CHALLENGE_TYPE) return null;
+
+  const { round, nextUsedRoundIds } = selectSizeItUpRound({ seed, usedRoundIds });
+  const trueRatio = Number(round.target.metres) / Number(round.reference.metres);
+  return {
+    nextUsedRoundIds,
+    round: {
+      stage: 'playing',
+      sizePoolVersion: SIZE_IT_UP_POOL_VERSION,
+      sizeRoundId: round.id,
+      referenceItem: round.reference,
+      targetItem: round.target,
+      trueRatio,
+      estimatedRatio: 1,
+      accuracyThresholdPercent: Number(challenge.accuracyThresholdPercent)
+        || SIZE_IT_UP_ACCURACY_THRESHOLD_PERCENT,
+      startedAt: startedAt + 1650,
+      durationSeconds: resolveTimerSeconds(
+        Number(challenge.durationSeconds) || SIZE_IT_UP_DURATION_SECONDS,
+        timerPace
+      ),
+      result: null,
+      errorPercent: null,
+      timedOut: false,
       resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
     },
   };
