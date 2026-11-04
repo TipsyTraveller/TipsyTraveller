@@ -23,5 +23,5 @@ export const preloadBoardAssets = () => {
     perfLog('board preload started (map GLB)');
   }
 
-  useGLTF.preload(MAP_MODEL_SOURCE);
+  useGLTF.preload(MAP_MODEL_SOURCE, false, false);
 };

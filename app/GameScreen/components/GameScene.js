@@ -1,4 +1,4 @@
-import { memo, Suspense, useMemo } from 'react';
+import { memo, Suspense, useCallback, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber/native';
 import { DONE_POS } from '../constants/camera';
 import CameraController from './CameraController';
@@ -81,6 +81,8 @@ const GameScene = memo(({
   routeModel,
   vehicleInMotion,
 }) => {
+  const [hasMapFrame, setHasMapFrame] = useState(false);
+  const handleMapFrame = useCallback(() => setHasMapFrame(true), []);
   const occupiedMarkerIndexes = useMemo(() => new Set(
     gamePieces
       .filter((piece) => !(vehicleInMotion && piece.id === movingPieceId))
@@ -98,8 +100,8 @@ const GameScene = memo(({
   return (
     <Canvas
     style={canvasStyle}
-    // Pause the GL loop while a challenge or route overview covers the board.
-    frameloop={lowPower ? 'never' : 'always'}
+    // Let the loaded map render before pausing for an overlay.
+    frameloop={lowPower && hasMapFrame ? 'never' : 'always'}
     camera={{ position: DONE_POS.toArray(), fov: 50 }}
     dpr={[1, 1.5]}
     gl={{
@@ -115,7 +117,7 @@ const GameScene = memo(({
     <directionalLight position={[-6, 5, 4]} intensity={0.32} color="#8fd8ff" />
 
     <Suspense fallback={<MapFallback />}>
-      <MapPlane placementActive={placementActive} onMapPointSelected={onMapPointSelected} />
+      <MapPlane onMapFrame={handleMapFrame} placementActive={placementActive} onMapPointSelected={onMapPointSelected} />
     </Suspense>
     <DottedRouteLine
       activeCarProgressRef={activeCarProgressRef}

@@ -3,10 +3,8 @@
 //   npm run build:map                       (writes the shipped GLB)
 //   MAP_OUTPUT=/tmp/map.glb npm run build:map   (writes elsewhere, e.g. to compare sizes)
 //
-// After building, shrink the file with mesh quantization (no runtime decoder needed, unlike
-// Draco/Meshopt which need WASM or a CDN download):
-//
-//   npx @gltf-transform/cli@4.5.1 quantize <built>.glb assets/models/world-map-vector.glb --quantize-normal 8
+// Keep the shipped GLB unquantized. Expo GL's iOS renderer does not reliably
+// draw the normalized integer vertex attributes emitted by mesh quantization.
 //
 import fs from 'node:fs/promises';
 import path from 'node:path';

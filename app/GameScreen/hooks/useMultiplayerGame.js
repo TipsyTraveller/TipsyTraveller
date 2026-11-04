@@ -221,6 +221,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     if (
       !enabled
       || !gameID
+      || !isConnected
       || !gameplay?.teamProgress
       || !Object.keys(liveTeamMembers).length
       || normalizationInFlightRef.current
@@ -228,16 +229,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       return;
     }
 
-    normalizationInFlightRef.current = true;
-    runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
-      if (!current?.teamProgress) return undefined;
-      const normalized = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
+    const normalize = (current) => {
+      if (!current?.teamProgress || current.sessionId !== gameplay.sessionId) return undefined;
+      const teamProgress = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
       const careerCounters = normalizeCareerCounters(current.careerCounters, liveTeamMembers);
+      // RTDB omits empty arrays. Challenge history readers already default missing lists to [].
       if (
-        isStructurallyEqual(normalized, current.teamProgress)
+        isStructurallyEqual(teamProgress, current.teamProgress)
         && isStructurallyEqual(careerCounters, current.careerCounters || {})
-        && Array.isArray(current.usedSizeRoundIds)
-        && Array.isArray(current.usedPersonalQuestionIds)
         && Number(current.schemaVersion) >= GAMEPLAY_SCHEMA_VERSION
       ) return undefined;
 
@@ -245,20 +244,21 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         ...current,
         schemaVersion: Math.max(Number(current.schemaVersion) || 0, GAMEPLAY_SCHEMA_VERSION),
         revision: (current.revision || 0) + 1,
-        teamProgress: normalized,
+        teamProgress,
         careerCounters,
-        usedSizeRoundIds: Array.isArray(current.usedSizeRoundIds) ? current.usedSizeRoundIds : [],
-        usedPersonalQuestionIds: Array.isArray(current.usedPersonalQuestionIds)
-          ? current.usedPersonalQuestionIds
-          : [],
         updatedAt: now(),
       };
-    }).catch((error) => {
-      console.log('Unable to initialize player drink ledgers', error);
-    }).finally(() => {
-      normalizationInFlightRef.current = false;
-    });
-  }, [enabled, gameID, gameplay?.teamProgress, liveTeamMembers, now]);
+    };
+    if (!normalize(gameplay)) return;
+
+    normalizationInFlightRef.current = true;
+    runTransaction(ref(db, `games/${gameID}/gameplay`), normalize, { applyLocally: false })
+      .catch((error) => {
+        console.log('Unable to initialize player drink ledgers', error);
+      }).finally(() => {
+        normalizationInFlightRef.current = false;
+      });
+  }, [enabled, gameID, gameplay, isConnected, liveTeamMembers, now]);
 
   const identity = useMemo(
     () => findLocalPlayer(liveTeamMembers, deviceID),

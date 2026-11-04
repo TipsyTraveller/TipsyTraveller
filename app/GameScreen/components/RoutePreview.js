@@ -75,7 +75,10 @@ const OverviewMap = ({ routeModel, stacked }) => {
       aria-hidden
       importantForAccessibility="no-hide-descendants"
       onLayout={({ nativeEvent: { layout: { width, height } } }) => {
-        if (width > 0 && height > 0) setSize({ width, height });
+        if (width <= 0 || height <= 0) return;
+        setSize((current) => current?.width === width && current?.height === height
+          ? current
+          : { width, height });
       }}
       style={[styles.map, stacked && styles.mapStacked]}
     >

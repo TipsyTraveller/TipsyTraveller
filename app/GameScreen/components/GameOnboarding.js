@@ -50,6 +50,7 @@ export default function GameOnboarding({ onDismiss, onHidden, visible }) {
       onRequestClose={onDismiss}
       presentationStyle="fullScreen"
       statusBarTranslucent
+      supportedOrientations={['landscape', 'portrait']}
       visible={visible}
     >
       <View

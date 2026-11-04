@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
@@ -32,26 +32,33 @@ export default function useGameFeedback(settings) {
     if (settings.hapticFeedback && haptic) safely(haptic);
   }, [ambientPlayer, settings.ambientMusic, settings.hapticFeedback]);
 
-  return {
-    dice: useCallback(() => play(
-      () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    ), [play]),
-    challenge: useCallback(() => play(
-      () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-    ), [play]),
-    movement: useCallback(() => play(
-      () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    ), [play]),
-    roadblock: useCallback(() => play(
-      () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-    ), [play]),
-    result: useCallback(() => {
-      if (settings.hapticFeedback) {
-        safely(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
-      }
-    }, [settings.hapticFeedback]),
-    victory: useCallback(() => play(
-      () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    ), [play]),
-  };
+  const dice = useCallback(() => play(
+    () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+  ), [play]);
+  const challenge = useCallback(() => play(
+    () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+  ), [play]);
+  const movement = useCallback(() => play(
+    () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+  ), [play]);
+  const roadblock = useCallback(() => play(
+    () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+  ), [play]);
+  const result = useCallback(() => {
+    if (settings.hapticFeedback) {
+      safely(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+    }
+  }, [settings.hapticFeedback]);
+  const victory = useCallback(() => play(
+    () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+  ), [play]);
+
+  return useMemo(() => ({
+    challenge,
+    dice,
+    movement,
+    result,
+    roadblock,
+    victory,
+  }), [challenge, dice, movement, result, roadblock, victory]);
 }

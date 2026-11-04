@@ -74,15 +74,15 @@ export const normalizeTeamProgressDrinks = (teamProgress, teamMembers) => (
     }
 
     const { drinks: legacyTeamDrinks, ...progressWithoutLegacyTotal } = progress;
-    next[teamId] = {
-      ...progressWithoutLegacyTotal,
-      playerDrinks: createPlayerDrinkLedger(
-        teamMembers,
-        teamId,
-        progress.playerDrinks,
-        legacyTeamDrinks
-      ),
-    };
+    const playerDrinks = createPlayerDrinkLedger(
+      teamMembers,
+      teamId,
+      progress.playerDrinks,
+      legacyTeamDrinks
+    );
+    next[teamId] = Object.keys(playerDrinks).length
+      ? { ...progressWithoutLegacyTotal, playerDrinks }
+      : progress;
     return next;
   }, {})
 );

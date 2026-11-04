@@ -1,4 +1,4 @@
-import { memo, Suspense, useLayoutEffect, useRef } from 'react';
+import { memo, useLayoutEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import BadgeText from './BadgeText';
@@ -41,15 +41,13 @@ const Nameplate = ({ editing, finish, label, plateRef }) => {
     <group ref={plateRef} position={[0, 0.13, 0.23]}>
       <mesh dispose={null} geometry={plate} material={editing ? navy : cream} scale={[width, 0.156, 1]} />
       <mesh dispose={null} geometry={plate} material={editing ? cyan : navy} position={[0, 0, 0.002]} scale={[width - 0.022, 0.134, 1]} />
-      <Suspense fallback={null}>
-        <BadgeText
-          fontSize={fontSize}
-          material={editing ? navy : cream}
-          position={[finish ? -0.077 : 0, 0, 0.005]}
-        >
-          {label}
-        </BadgeText>
-      </Suspense>
+      <BadgeText
+        fontSize={fontSize}
+        material={editing ? navy : cream}
+        position={[finish ? -0.077 : 0, 0, 0.005]}
+      >
+        {label}
+      </BadgeText>
       {finish && <FinishCheck x={width / 2 - 0.086} />}
     </group>
   );
@@ -132,11 +130,9 @@ const CountryMarker = ({
           />
         )}
         <group ref={number}>
-          <Suspense fallback={null}>
-            <BadgeText fontSize={radius * 0.79} material={navy} position={numberPosition}>
-              {stopNumber}
-            </BadgeText>
-          </Suspense>
+          <BadgeText fontSize={radius * 0.79} material={navy} position={numberPosition}>
+            {stopNumber}
+          </BadgeText>
         </group>
       </group>
       {label && <Nameplate editing={editing} finish={finish} label={label} plateRef={plateRef} />}

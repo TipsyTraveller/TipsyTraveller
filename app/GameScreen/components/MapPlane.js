@@ -1,4 +1,5 @@
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber/native';
 import { useGLTF } from '@react-three/drei/native';
 import {
   MAP_CY,
@@ -73,13 +74,16 @@ const prepareVectorMap = (scene) => {
 let firstRenderAt = null;
 let hasLoggedReady = false;
 
-const MapPlane = memo(({ onMapPointSelected, placementActive = false }) => {
+const MapPlane = memo(({ onMapFrame, onMapPointSelected, placementActive = false }) => {
   if (firstRenderAt === null) {
     firstRenderAt = perfNow();
     perfLog('map: first render attempt (GLB requested)');
   }
 
-  const { scene } = useGLTF(MAP_MODEL_SOURCE);
+  // The bundled board is neither Draco nor Meshopt compressed. Avoid installing
+  // those decoder paths on native, where they add asynchronous loader work and
+  // can leave a local model suspended when the platform decoder is unavailable.
+  const { scene } = useGLTF(MAP_MODEL_SOURCE, false, false);
 
   if (!hasLoggedReady) {
     hasLoggedReady = true;
@@ -97,16 +101,13 @@ const MapPlane = memo(({ onMapPointSelected, placementActive = false }) => {
     return prepared;
   }, [scene]);
 
-  // Time from mount to the first painted frame, plus the total since the first render attempt.
-  useEffect(() => {
-    const mountedAt = perfNow();
-    const frame = requestAnimationFrame(() => {
-      const now = perfNow();
-      perfLog(`map: first frame ${(now - mountedAt).toFixed(0)} ms after mount, ${(now - firstRenderAt).toFixed(0)} ms total`);
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, []);
+  const hasRendered = useRef(false);
+  useFrame(() => {
+    if (hasRendered.current) return;
+    hasRendered.current = true;
+    perfLog(`map: first GL frame ${(perfNow() - firstRenderAt).toFixed(0)} ms after first render attempt`);
+    onMapFrame?.();
+  });
 
   // The clone owns its materials (geometry is shared with the cached GLTF scene).
   useEffect(() => () => {
