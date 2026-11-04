@@ -7,11 +7,11 @@
 accessibility in React Native; use WebGL for spatial content.
 
 `GameScene` contains the map, route lines, optional roadblock/detour, vehicles,
-country markers, camera, and die. Map, marker, and vehicle GLBs use separate Suspense
+country markers, camera, and die. Map and vehicle GLBs use separate Suspense
 boundaries so one slow asset does not hide the whole scene. Major components are
 memoized, handlers use stable latest-callback wrappers, DPR is capped at 1.5, and
-antialiasing is enabled. Character selection preloads map and marker assets, but
-vehicle models load on demand.
+antialiasing is enabled. Character selection preloads the map, and vehicle models load
+on demand.
 
 ## Board coordinates and map
 
@@ -40,14 +40,22 @@ editing `assets/map.svg`, and verify generated geometry on iOS and Android.
 and monotonic stop distances. Use those distances for rendering and synchronized
 timing; nearest-point lookup is unsafe when a route crosses itself.
 
-`DottedRouteLine` prebuilds a thin persistent itinerary line and a wider current-move
-ribbon. The current ribbon changes `drawRange` rather than reallocating geometry: it
-reveals before driving and its tail follows the active vehicle.
+`TouringRoad` builds a single colored ribbon mesh per road with navy edges,
+a teal roadway, and cream dashes spaced by arc length. `DottedRouteLine` reveals
+a gold overlay before driving and clears it behind the active vehicle by adjusting
+`drawRange`. The frame loop reuses the geometry.
 
-Roadblock detours use a separate gold ribbon and temporary normal marker pins. A
-bounded cubic path rounds the detour through its exact country waypoints without
-Catmull-Rom loops or overshoot; preview, segmented vehicle travel, and timing derive
-from that same geometry. See [GAMEPLAY.md](GAMEPLAY.md) for roadblock rules.
+Detours use a gold roadway and temporary numbered badges. The choice shows all
+temporary stop names. After selection, the current detour highlights only its next
+waypoint, and inactive detours display the road and badges. A bounded cubic path
+rounds the detour through its exact country waypoints. Preview, segmented vehicle
+travel, and timing derive from that same geometry. See [GAMEPLAY.md](GAMEPLAY.md)
+for roadblock rules.
+
+The React Native route overview samples the board curve, anchors it to the cities
+on the Europe overview map, and lists every stop. It opens after onboarding and
+pauses the canvas. Dismissal is stored on the device per multiplayer session or
+local route session, so a rematch opens a new overview.
 
 The barricade scans the middle 30–70% of its blocked leg for a low-curvature,
 clear position. It remains perpendicular to the tangent, derives its arrow from the
@@ -55,11 +63,15 @@ first detour branch, and includes a red closure strip below the compact prop.
 
 ## Markers and occupancy
 
-Country markers clone `assets/models/location.glb`, replace materials per instance,
-and animate the active destination. Markers at occupied stops are hidden. A marker
-fades in after the last car leaves and fades out as a car reaches the destination;
-it stays hidden when another parked car remains. The actively edited Dev Portal
-marker is always visible.
+Country markers share procedural badge geometry and materials. Web uses Drei
+`Text` with the bundled Dogica Pixel Bold font. Native renders geometry from
+the same font's outlines. Badge backgrounds render while web text loads. Only the
+next destination and Greece get nameplates on the main board. The next stop has a gold pulse and Greece has a checkered finish.
+
+Occupied stops render flat nodes. The badge expands as the last vehicle leaves
+and collapses as a vehicle approaches, using the existing distance window. A
+second parked vehicle keeps the node collapsed. Dev Portal placement highlights
+the edited stop in cyan.
 
 ## Camera
 
