@@ -637,6 +637,17 @@ export default function DevPortalModal({ visible, onClose }) {
                   <Text style={styles.actionButtonText}>📏 Launch Size It Up</Text>
                 </TouchableOpacity>
 
+                <Text style={styles.sectionHeading}>Match Your Teammate</Text>
+                <Text style={styles.sectionDescription}>
+                  Test the private answer handoff, team guess timer, reveal, points, and drinks.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.accentButton]}
+                  onPress={() => handleTestChallenge(1, 'personalMatch')}
+                >
+                  <Text style={styles.actionButtonText}>💘 Launch Personal Match</Text>
+                </TouchableOpacity>
+
                 <Text style={styles.sectionHeading}>Drive To Country & Challenge</Text>
                 <Text style={styles.sectionDescription}>
                   Drive active team to destination and open its country challenge.

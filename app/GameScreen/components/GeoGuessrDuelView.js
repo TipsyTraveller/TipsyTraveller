@@ -9,11 +9,13 @@ import { EUROPE_MAP_OVERVIEW_PATH_DATA } from '../constants/europeMapOverviewPat
 import {
   boardToSvgCoords,
   GEO_GUESSR_IMAGE_HEADERS,
-  getCachedMonumentPhotoDataUri,
-  loadMonumentPhotoDataUri,
   normalizeMonumentImageUrl,
   normalizedMapToBoard,
 } from '../constants/monumentPool';
+import {
+  getCachedMonumentPhotoUri,
+  loadMonumentPhotoUri,
+} from '../services/monumentPhotoCache';
 
 const TEAM_COLORS = {
   team1: '#E84855',
@@ -509,8 +511,8 @@ export default function GeoGuessrDuelView({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const monumentImageUrl = normalizeMonumentImageUrl(challenge?.monumentImageUrl);
-  const [dataUri, setDataUri] = useState(() => (
-    monumentImageUrl ? getCachedMonumentPhotoDataUri(monumentImageUrl) : null
+  const [photoUri, setPhotoUri] = useState(() => (
+    monumentImageUrl ? getCachedMonumentPhotoUri(monumentImageUrl) : null
   ));
   const [isFetchingPhoto, setIsFetchingPhoto] = useState(false);
 
@@ -522,31 +524,33 @@ export default function GeoGuessrDuelView({
   useEffect(() => {
     setImageFailed(false);
     setImageLoaded(false);
-    const cached = getCachedMonumentPhotoDataUri(monumentImageUrl);
-    setDataUri(cached);
+    const cached = getCachedMonumentPhotoUri(monumentImageUrl);
+    setPhotoUri(cached);
   }, [challenge?.monumentId, monumentImageUrl]);
 
   useEffect(() => {
     let isCancelled = false;
+    let controller = null;
+    let timeoutId = null;
     if (!monumentImageUrl) return undefined;
 
-    const cached = getCachedMonumentPhotoDataUri(monumentImageUrl);
+    const cached = getCachedMonumentPhotoUri(monumentImageUrl);
     if (cached) {
-      setDataUri(cached);
+      setPhotoUri(cached);
       return undefined;
     }
 
     // Android's New Architecture (Fabric) drops custom Image headers, leading to Wikimedia 403 blocks.
-    // We download via fetch() with standard headers and pass a local base64 data URI to <Image>.
+    // Download directly to Expo's native cache and pass the local file URI to <Image>.
     if (Platform.OS === 'android') {
       setIsFetchingPhoto(true);
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timeoutId = setTimeout(() => controller?.abort(), 12000);
+      controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      timeoutId = setTimeout(() => controller?.abort(), 12000);
 
-      loadMonumentPhotoDataUri(monumentImageUrl, { signal: controller?.signal })
+      loadMonumentPhotoUri(monumentImageUrl, { signal: controller?.signal })
         .then((uri) => {
           if (!isCancelled) {
-            setDataUri(uri);
+            setPhotoUri(uri);
             setIsFetchingPhoto(false);
           }
         })
@@ -558,24 +562,26 @@ export default function GeoGuessrDuelView({
           }
         })
         .finally(() => {
-          clearTimeout(timeoutId);
+          if (timeoutId) clearTimeout(timeoutId);
         });
     }
 
     return () => {
       isCancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      controller?.abort();
     };
   }, [monumentImageUrl, retryKey]);
 
-  const activeImageUri = Platform.OS === 'android' ? dataUri : (dataUri || monumentImageUrl);
+  const activeImageUri = Platform.OS === 'android' ? photoUri : (photoUri || monumentImageUrl);
 
   const handleImageError = (error) => {
     console.warn('GeoGuessrDuelView failed to load photo:', monumentImageUrl, error?.nativeEvent);
-    if (!dataUri && monumentImageUrl && Platform.OS !== 'android') {
+    if (!photoUri && monumentImageUrl && Platform.OS !== 'android') {
       setIsFetchingPhoto(true);
-      loadMonumentPhotoDataUri(monumentImageUrl)
+      loadMonumentPhotoUri(monumentImageUrl)
         .then((uri) => {
-          setDataUri(uri);
+          setPhotoUri(uri);
           setIsFetchingPhoto(false);
         })
         .catch((err) => {

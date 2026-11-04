@@ -12,9 +12,10 @@ using the action ID and stores both `challengeStop` and `challengeId` so every c
 shows the same content.
 
 Bundled countries expose six ordinary cards spanning performance, coordination,
-trivia, storytelling, and country-specific social play, plus the typed word and
-GeoGuessr challenges. Every record has a stable ID, minimum player count, expected
-duration, numeric base penalty, and result drink rules. Named cards declare a
+trivia, storytelling, and country-specific social play, plus the typed word,
+GeoGuessr, Size It Up, and Match Your Teammate challenges. Every record has a stable
+ID, minimum player count, expected duration, numeric base penalty, and result drink
+rules. Named cards declare a
 rotating `describer`, `performer`, `judge`, or `captain`; the selected player and
 per-team role cursor are snapshotted with gameplay so reconnects cannot retarget the
 card. Selection excludes session `usedChallengeKeys` and cards that need more players
@@ -101,10 +102,32 @@ estimate. After the deadline, another connected client may finalize the last
 synchronized estimate so a disconnected leader cannot stall the room. Result and
 drink transitions remain transactional and idempotent.
 
+## Match Your Teammate
+
+Every bundled country includes `personal-match` (`type: personalMatch`) as a normal
+landing challenge for teams with at least two players. It selects respondents in a
+per-team rotation and chooses without repetition from a versioned 48-question shared
+pool. The 12 adult, more sexually suggestive prompts are eligible only in Lethal
+rooms; all questions keep four fixed answer options.
+
+The active leader device runs `handoff → answering → returnPhone → guessing → result`.
+The respondent chooses and locks a secret answer, then returns the hidden screen to
+the team. Pressing Team Ready starts the synchronized 25-second guess timer. A match
+awards 10 points and assigns the difficulty-scaled three-sip base penalty to the
+respondent. A miss or timeout awards no points and assigns that penalty to every
+active-team player except the respondent.
+
+`challengeRound` snapshots the question, options, respondent, secret answer, team
+guess, timer, resolved penalty, result, and award IDs. `usedPersonalQuestionIds`
+prevents repeats during one session. Result, score, and drink changes are committed
+atomically and idempotently; any connected client may finalize an expired guess.
+The challenge is excluded from Roadside Duels, roadblocks, and detour stops.
+
 ## Content and UI extension points
 
-- Put reusable selection and fallback logic in `constants/challenges.js` and
-  `constants/monumentPool.js`, not in presentation components.
+- Put reusable selection and fallback logic in `constants/challenges.js`,
+  `constants/personalMatch.js`, and `constants/monumentPool.js`, not in presentation
+  components.
 - Add authored content through the established stop/challenge data shape. Preserve
   IDs used by existing rooms.
 - `getChallengeForStop` uses stop `code`, `city`, and optional `landmark`, with

@@ -16,6 +16,13 @@ import {
   SIZE_IT_UP_DURATION_SECONDS,
   SIZE_IT_UP_POOL_VERSION,
 } from './sizeItUp';
+import {
+  PERSONAL_MATCH_CHALLENGE_ID,
+  PERSONAL_MATCH_CHALLENGE_TYPE,
+  PERSONAL_MATCH_DURATION_SECONDS,
+  PERSONAL_MATCH_POOL_VERSION,
+  PERSONAL_MATCH_SUCCESS_POINTS,
+} from './personalMatch';
 
 export const DURATION_STOP_COUNTS = { short: 6, medium: 9, long: 12 };
 export const DURATION_TARGET_MINUTES = { short: 20, medium: 30, long: 40 };
@@ -253,22 +260,43 @@ const getSizeItUpChallenge = () => ({
   drinkRules: { success: 'none', failure: 'wholeTeam' },
 });
 
+const getPersonalMatchChallenge = () => ({
+  id: PERSONAL_MATCH_CHALLENGE_ID,
+  type: PERSONAL_MATCH_CHALLENGE_TYPE,
+  title: 'Match Your Teammate',
+  prompt: 'One teammate answers a personal question in secret. The rest of the team must predict their answer.',
+  penalty: 'Match the secret answer for 10 points. The respondent drinks if you match; everyone else drinks if you miss.',
+  penaltyTag: '10 PTS',
+  penaltySips: 3,
+  durationSeconds: PERSONAL_MATCH_DURATION_SECONDS,
+  expectedDurationSeconds: 45,
+  successPoints: PERSONAL_MATCH_SUCCESS_POINTS,
+  personalQuestionPoolVersion: PERSONAL_MATCH_POOL_VERSION,
+  minPlayers: 2,
+  targeting: { role: 'respondent', selection: 'rotate' },
+  drinkRules: { success: 'target', failure: 'teamExceptTarget' },
+});
+
 const ensureTypedChallenges = (countryId, challenges) => {
   const countryWordChallenge = getCountryWordChallenge(countryId);
   const geoGuessrChallenge = getGeoGuessrChallenge(countryId);
   const sizeItUpChallenge = getSizeItUpChallenge();
+  const personalMatchChallenge = getPersonalMatchChallenge();
   const filtered = challenges.filter((item) => (
     (!countryWordChallenge || (item?.id !== countryWordChallenge.id && item?.type !== countryWordChallenge.type))
     && item?.id !== geoGuessrChallenge.id
     && item?.type !== geoGuessrChallenge.type
     && item?.id !== sizeItUpChallenge.id
     && item?.type !== sizeItUpChallenge.type
+    && item?.id !== personalMatchChallenge.id
+    && item?.type !== personalMatchChallenge.type
   ));
   return [
     ...filtered,
     ...(countryWordChallenge ? [countryWordChallenge] : []),
     geoGuessrChallenge,
     sizeItUpChallenge,
+    personalMatchChallenge,
   ];
 };
 
@@ -408,7 +436,7 @@ export const normalizeCountryStops = (value) => {
             : challenge.type === GEO_GUESSR_CHALLENGE_TYPE ? 2 : 1,
           minPlayers: Number.isFinite(Number(challenge.minPlayers))
             ? Math.max(1, Math.round(Number(challenge.minPlayers)))
-            : challenge.type === 'countryWordGuess' ? 2 : 1,
+            : ['countryWordGuess', PERSONAL_MATCH_CHALLENGE_TYPE].includes(challenge.type) ? 2 : 1,
           expectedDurationSeconds: Number.isFinite(Number(challenge.expectedDurationSeconds))
             ? Math.max(1, Math.round(Number(challenge.expectedDurationSeconds)))
             : Number.isFinite(Number(challenge.durationSeconds))
@@ -440,6 +468,9 @@ export const normalizeCountryStops = (value) => {
             : {}),
           ...(Number.isFinite(Number(challenge.wordListVersion))
             ? { wordListVersion: Number(challenge.wordListVersion) }
+            : {}),
+          ...(Number.isFinite(Number(challenge.personalQuestionPoolVersion))
+            ? { personalQuestionPoolVersion: Number(challenge.personalQuestionPoolVersion) }
             : {}),
           ...(Array.isArray(challenge.words)
             ? { words: challenge.words.map(String).filter(Boolean) }

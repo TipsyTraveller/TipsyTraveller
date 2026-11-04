@@ -36,14 +36,17 @@ import {
   getChallengeKey,
   getCountryWordRound,
   getGeoGuessrRound,
+  getPersonalMatchRound,
   getResolvedPenaltySips,
   getSizeItUpRound,
   getTeamPlayers,
   getTargetCursorKey,
   getTargetedChallengeRound,
   isBotOnlyTeam,
+  PERSONAL_MATCH_CHALLENGE_TYPE,
   SIZE_IT_UP_CHALLENGE_TYPE,
 } from '../constants/challenges';
+import { evaluatePersonalMatchGuess } from '../constants/personalMatch';
 import { clampSizeEstimate, evaluateSizeEstimate } from '../constants/sizeItUp';
 import {
   calculateBoardDistanceKm,
@@ -234,6 +237,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         isStructurallyEqual(normalized, current.teamProgress)
         && isStructurallyEqual(careerCounters, current.careerCounters || {})
         && Array.isArray(current.usedSizeRoundIds)
+        && Array.isArray(current.usedPersonalQuestionIds)
         && Number(current.schemaVersion) >= GAMEPLAY_SCHEMA_VERSION
       ) return undefined;
 
@@ -244,6 +248,9 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         teamProgress: normalized,
         careerCounters,
         usedSizeRoundIds: Array.isArray(current.usedSizeRoundIds) ? current.usedSizeRoundIds : [],
+        usedPersonalQuestionIds: Array.isArray(current.usedPersonalQuestionIds)
+          ? current.usedPersonalQuestionIds
+          : [],
         updatedAt: now(),
       };
     }).catch((error) => {
@@ -926,6 +933,9 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         let challengeRound = null;
         let usedMonumentIds = Array.isArray(current.usedMonumentIds) ? current.usedMonumentIds : [];
         let usedSizeRoundIds = Array.isArray(current.usedSizeRoundIds) ? current.usedSizeRoundIds : [];
+        let usedPersonalQuestionIds = Array.isArray(current.usedPersonalQuestionIds)
+          ? current.usedPersonalQuestionIds
+          : [];
         const challengeKey = getChallengeKey(stop, challengeId);
         const usedChallengeKeys = challengeKey
           ? [...new Set([...(current.usedChallengeKeys || []), challengeKey])]
@@ -962,6 +972,22 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             challengeRound = sizeData.round;
             usedSizeRoundIds = sizeData.nextUsedRoundIds;
           }
+        } else if (challenge.type === PERSONAL_MATCH_CHALLENGE_TYPE) {
+          const cursorKey = getTargetCursorKey(action.teamId, 'respondent');
+          const personalData = getPersonalMatchRound({
+            challenge,
+            difficulty: gameDataRef.current?.difficulty,
+            players,
+            seed: action.id,
+            targetCursor: targetCursors[cursorKey],
+            timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
+            usedQuestionIds: usedPersonalQuestionIds,
+          });
+          if (personalData) {
+            challengeRound = personalData.round;
+            usedPersonalQuestionIds = personalData.nextUsedQuestionIds;
+            targetCursors[cursorKey] = (Number(targetCursors[cursorKey]) || 0) + 1;
+          }
         } else if (challenge.type === COUNTRY_WORD_CHALLENGE_TYPE) {
           const cursorKey = getTargetCursorKey(action.teamId, 'describer');
           challengeRound = getCountryWordRound(
@@ -996,6 +1022,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           challengeRound,
           usedMonumentIds,
           usedSizeRoundIds,
+          usedPersonalQuestionIds,
           usedChallengeKeys,
           targetCursors,
           roadblock: null,
@@ -1035,6 +1062,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       'timeoutPinning',
       'timeout',
       'timeoutSizeEstimate',
+      'timeoutPersonalGuess',
     ].includes(actionType);
 
     // Any team leader can submit their own team's GeoGuessr pin; other stage transitions
@@ -1328,6 +1356,121 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
             timedOut: isTimeout,
             resultActionId,
             drinkAwardId: drinkRule !== 'none' ? resultActionId : null,
+            resultAt: updatedAt,
+          },
+          updatedAt,
+        };
+      }
+
+      if (challenge.type === PERSONAL_MATCH_CHALLENGE_TYPE) {
+        const isTimeout = actionType === 'timeoutPersonalGuess';
+        if (!isTimeout && current.activeTeamId !== identity.localTeamId) return undefined;
+
+        if (actionType === 'startPersonalAnswering' && round.stage === 'handoff') {
+          return {
+            ...current,
+            revision: (current.revision || 0) + 1,
+            challengeRound: { ...round, stage: 'answering' },
+            updatedAt,
+          };
+        }
+
+        if (actionType === 'submitPersonalAnswer' && round.stage === 'answering') {
+          if (action?.answerIndex === null || action?.answerIndex === undefined) return undefined;
+          const selectedAnswerIndex = Number(action.answerIndex);
+          if (!Number.isInteger(selectedAnswerIndex) || selectedAnswerIndex < 0 || selectedAnswerIndex > 3) {
+            return undefined;
+          }
+          return {
+            ...current,
+            revision: (current.revision || 0) + 1,
+            challengeRound: {
+              ...round,
+              stage: 'returnPhone',
+              selectedAnswerIndex,
+            },
+            updatedAt,
+          };
+        }
+
+        if (actionType === 'startPersonalGuessing' && round.stage === 'returnPhone') {
+          return {
+            ...current,
+            revision: (current.revision || 0) + 1,
+            challengeRound: {
+              ...round,
+              stage: 'guessing',
+              guessStartedAt: updatedAt,
+            },
+            updatedAt,
+          };
+        }
+
+        if (!['submitPersonalGuess', 'timeoutPersonalGuess'].includes(actionType)
+          || round.stage !== 'guessing') {
+          return undefined;
+        }
+        if (isTimeout) {
+          const deadline = Number(round.guessStartedAt)
+            + (Number(round.durationSeconds) || 25) * 1000;
+          if (!deadline || updatedAt < deadline) return undefined;
+        }
+
+        if (!isTimeout && (action?.guessIndex === null || action?.guessIndex === undefined)) {
+          return undefined;
+        }
+        const teamGuessIndex = isTimeout ? null : Number(action.guessIndex);
+        const evaluation = evaluatePersonalMatchGuess({
+          selectedAnswerIndex: round.selectedAnswerIndex,
+          teamGuessIndex,
+        });
+        if (!evaluation.isValidAnswer || (!isTimeout && !evaluation.isValidGuess)) {
+          return undefined;
+        }
+
+        const pointsAwarded = evaluation.matched ? (Number(challenge.successPoints) || 10) : 0;
+        const activeProgress = current.teamProgress?.[current.activeTeamId] || {};
+        const challengePoints = (Number(activeProgress.challengePoints) || 0) + pointsAwarded;
+        const resultActionId = `${current.sessionId}:${current.turnNumber}:personal-match`;
+        const drinkRule = evaluation.matched
+          ? (challenge.drinkRules?.success || 'target')
+          : (challenge.drinkRules?.failure || 'teamExceptTarget');
+        const nextTeamProgress = addDrinksByRule({
+          amount: getResolvedPenaltySips(
+            round.resolvedPenaltySips === undefined ? challenge : round,
+            gameDataRef.current?.difficulty
+          ),
+          playerId: round.selectedPlayerId,
+          rule: drinkRule,
+          teamId: current.activeTeamId,
+          teamMembers: teamMembersRef.current,
+          teamProgress: current.teamProgress,
+        });
+        const nextActiveProgress = nextTeamProgress[current.activeTeamId] || activeProgress;
+
+        return {
+          ...current,
+          revision: (current.revision || 0) + 1,
+          teamProgress: {
+            ...nextTeamProgress,
+            [current.activeTeamId]: {
+              ...nextActiveProgress,
+              challengePoints,
+              score: getTeamScore({
+                challengePoints,
+                currentLeg: activeProgress.currentLeg,
+                finishPosition: activeProgress.finishPosition,
+              }),
+            },
+          },
+          challengeRound: {
+            ...round,
+            stage: 'result',
+            teamGuessIndex,
+            result: evaluation.matched ? 'matched' : (isTimeout ? 'timeout' : 'missed'),
+            pointsAwarded,
+            resultActionId,
+            drinkAwardId: resultActionId,
             resultAt: updatedAt,
           },
           updatedAt,

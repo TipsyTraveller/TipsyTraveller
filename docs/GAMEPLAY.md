@@ -34,8 +34,9 @@ most recently selected variants for that duration while alternatives remain.
 
 - Each route leg reached is worth 10 points.
 - Finishing bonuses are 30, 15, and 5 for first, second, and third.
-- Challenge points are added separately; `Guess the Country Word` awards 10 on a
-  successful guess. Finish position is the tiebreaker represented by the bonus.
+- Challenge points are added separately; `Guess the Country Word` and a successful
+  `Match Your Teammate` prediction award 10. Finish position is the tiebreaker
+  represented by the bonus.
 - Rolls never overshoot the finish. Landing at the finish marks the team done without
   opening an ordinary challenge.
 - Multiple teams may share a stop. Passing a parked vehicle triggers a visual
@@ -62,8 +63,9 @@ progress, team progress, piece refs, and animation timing. `getNextActiveTeamId`
 wraps through teams and skips those with `isDone`.
 
 Host room rules are immutable for a session. Speed timer mode scales timed word,
-GeoGuessr, and roadblock phases without changing scoring. Fast-dice mode shortens
-the shared result/reveal lead-in used to calculate each movement deadline. When
+GeoGuessr, Match Your Teammate, and roadblock phases without changing scoring.
+Fast-dice mode shortens the shared result/reveal lead-in used to calculate each
+movement deadline. When
 auto-advance is enabled, a four-second countdown starts only from a synchronized
 typed-challenge result timestamp, after score and drink changes are recorded; the
 active leader can cancel it for every client.
@@ -72,6 +74,11 @@ Rematch is host-only in multiplayer and transactionally replaces the route snaps
 and gameplay record together. It keeps the room, roster, team vehicles, difficulty,
 duration, and room rules, while assigning a new session ID and clearing scores,
 drinks, progress, finish order, challenges, roadblocks, and used content.
+
+Match Your Teammate is eligible only for teams with at least two players. Its selected
+respondent rotates independently per team. The respondent drinks on a correct team
+prediction; on a miss or 25-second timeout every other teammate drinks. The authored
+three-sip base penalty follows the normal difficulty multiplier and nine-sip cap.
 
 ## Onboarding and turn feedback
 

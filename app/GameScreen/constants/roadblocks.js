@@ -5,6 +5,7 @@ import { createDetourRouteModel, createRouteModel, getPathRevealDuration } from 
 import { DRIVE_SPEED_UNITS_PER_SECOND } from './movement';
 import { resolveTimerSeconds } from './roomRules';
 import { SIZE_IT_UP_CHALLENGE_TYPE } from './sizeItUp';
+import { PERSONAL_MATCH_CHALLENGE_TYPE } from './personalMatch';
 
 export const ROADBLOCK_PALETTE = {
   cream: '#FFF1CD',
@@ -163,6 +164,7 @@ const withDetourChallenge = (stop, actionId, index) => {
       'countryWordGuess',
       'geoGuessr',
       SIZE_IT_UP_CHALLENGE_TYPE,
+      PERSONAL_MATCH_CHALLENGE_TYPE,
     ].includes(challenge?.type));
   const selected = challenges.length
     ? challenges[hashSeed(`${actionId}:detour-challenge:${index}`) % challenges.length]

@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import CityLandmark from './CityLandmark';
 import GeoGuessrDuelView from './GeoGuessrDuelView';
 import SizeItUpView from './SizeItUpView';
+import PersonalMatchView from './PersonalMatchView';
 import { setOverviewCameraPose } from '../constants/camera';
 import {
   COUNTRY_WORD_EXPLANATION_SECONDS,
@@ -24,6 +25,7 @@ import {
   getCountryFlag,
   getPenaltyTag,
   getResolvedPenaltySips,
+  PERSONAL_MATCH_CHALLENGE_TYPE,
   SIZE_IT_UP_CHALLENGE_TYPE,
 } from '../constants/challenges';
 import { AUTO_ADVANCE_COUNTDOWN_SECONDS } from '../constants/roomRules';
@@ -175,7 +177,7 @@ const ChallengePopup = ({
   onCompleteRef.current = onComplete;
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
   const challengeKey = challenge
-    ? `${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || challenge.sizeRoundId || ''}`
+    ? `${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || challenge.sizeRoundId || challenge.personalQuestionId || ''}`
     : '';
 
   useEffect(() => {
@@ -236,7 +238,10 @@ const ChallengePopup = ({
   const isCountryWordChallenge = challenge?.type === 'countryWordGuess';
   const isGeoGuessrChallenge = challenge?.type === GEO_GUESSR_CHALLENGE_TYPE;
   const isSizeItUpChallenge = challenge?.type === SIZE_IT_UP_CHALLENGE_TYPE;
-  const challengeStage = challenge?.stage || (isGeoGuessrChallenge ? 'photo' : isCountryWordChallenge ? 'intro' : 'playing');
+  const isPersonalMatchChallenge = challenge?.type === PERSONAL_MATCH_CHALLENGE_TYPE;
+  const challengeStage = challenge?.stage || (
+    isGeoGuessrChallenge ? 'photo' : isCountryWordChallenge ? 'intro' : isPersonalMatchChallenge ? 'handoff' : 'playing'
+  );
   const challengeDuration = Number(challenge?.durationSeconds) || 30;
   const photoDuration = Number(challenge?.photoDurationSeconds) || GEO_GUESSR_PHOTO_SECONDS;
   const pinDuration = Number(challenge?.pinDurationSeconds) || GEO_GUESSR_PIN_SECONDS;
@@ -283,6 +288,22 @@ const ChallengePopup = ({
       return () => clearInterval(interval);
     }
 
+    if (isPersonalMatchChallenge && challengeStage === 'guessing') {
+      const startedAt = Number(challenge?.guessStartedAt) || getNow();
+      const updatePersonalTimer = () => {
+        const elapsedSeconds = Math.max(0, getNow() - startedAt) / 1000;
+        const nextRemaining = Math.max(0, Math.ceil(challengeDuration - elapsedSeconds));
+        setRemainingSeconds(nextRemaining);
+        if (nextRemaining === 0 && canFinalizeTimeout && !timeoutReportedRef.current) {
+          timeoutReportedRef.current = true;
+          challengeActionRef.current?.({ type: 'timeoutPersonalGuess' });
+        }
+      };
+      updatePersonalTimer();
+      const interval = setInterval(updatePersonalTimer, 250);
+      return () => clearInterval(interval);
+    }
+
     if (!isCountryWordChallenge || challengeStage !== 'playing') {
       setRemainingSeconds(challengeDuration);
       setExplanationSeconds(COUNTRY_WORD_EXPLANATION_SECONDS);
@@ -309,6 +330,7 @@ const ChallengePopup = ({
     canComplete,
     canFinalizeTimeout,
     challenge?.activePinTeamIndex,
+    challenge?.guessStartedAt,
     challenge?.photoStartedAt,
     challenge?.pinStartedAt,
     challenge?.startedAt,
@@ -317,6 +339,7 @@ const ChallengePopup = ({
     getNow,
     isCountryWordChallenge,
     isGeoGuessrChallenge,
+    isPersonalMatchChallenge,
     isSizeItUpChallenge,
     photoDuration,
     pinDuration,
@@ -325,7 +348,9 @@ const ChallengePopup = ({
 
   useEffect(() => {
     const resultAt = Number(challenge?.resultAt) || 0;
-    const isTypedResult = (isCountryWordChallenge || isGeoGuessrChallenge || isSizeItUpChallenge)
+    const isTypedResult = (
+      isCountryWordChallenge || isGeoGuessrChallenge || isSizeItUpChallenge || isPersonalMatchChallenge
+    )
       && challengeStage === 'result';
     const shouldCountDown = visible
       && autoAdvance
@@ -361,6 +386,7 @@ const ChallengePopup = ({
     getNow,
     isCountryWordChallenge,
     isGeoGuessrChallenge,
+    isPersonalMatchChallenge,
     isSizeItUpChallenge,
     visible,
   ]);
@@ -498,6 +524,7 @@ const ChallengePopup = ({
   const timer = (isCountryWordChallenge && challengeStage === 'playing')
     || (isGeoGuessrChallenge && (challengeStage === 'photo' || challengeStage === 'pinning'))
     || (isSizeItUpChallenge && challengeStage === 'playing')
+    || (isPersonalMatchChallenge && challengeStage === 'guessing')
     ? `${String(remainingSeconds).padStart(2, '0')} SEC`
     : (isGeoGuessrChallenge || isSizeItUpChallenge) && challengeStage === 'result'
       ? 'REVEALED'
@@ -518,7 +545,7 @@ const ChallengePopup = ({
     return 'No drinks are assigned.';
   };
   const canFinishChallenge = canComplete
-    && ((!isCountryWordChallenge && !isGeoGuessrChallenge && !isSizeItUpChallenge)
+    && ((!isCountryWordChallenge && !isGeoGuessrChallenge && !isSizeItUpChallenge && !isPersonalMatchChallenge)
       || challengeStage === 'result');
   const missionCode = challenge.code
     ? `MISSION ${challenge.code}-${String(challenge.stopIndex).padStart(2, '0')}`
@@ -696,6 +723,8 @@ const ChallengePopup = ({
                     ? 'Place Duel'
                     : isSizeItUpChallenge
                       ? 'Size Challenge'
+                      : isPersonalMatchChallenge
+                        ? 'Team Match'
                     : 'Country Challenge'}
               </Text>
               {challenge.landmark ? (
@@ -803,6 +832,15 @@ const ChallengePopup = ({
                   compact={compact}
                   getNow={getNow}
                   onChallengeAction={onChallengeAction}
+                  remainingSeconds={remainingSeconds}
+                />
+              ) : isPersonalMatchChallenge ? (
+                <PersonalMatchView
+                  canComplete={canComplete}
+                  challenge={challenge}
+                  compact={compact}
+                  onChallengeAction={onChallengeAction}
+                  penaltySips={resolvedPenaltySips}
                   remainingSeconds={remainingSeconds}
                 />
               ) : isCountryWordChallenge ? renderCountryWordContent() : challengeStage === 'result' ? (

@@ -24,7 +24,7 @@ games/{gameID}
   teamNames/{team1|team2|team3}: displayName
   routeStops[]: ordered snapshot, immutable during one session and replaced on rematch
   gameplay
-    schemaVersion: 11
+    schemaVersion: 12
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
     teamProgress/{teamId}: currentLeg, isDone, score,
       challengePoints, finishPosition?, detour?
@@ -35,7 +35,7 @@ games/{gameID}
       movementPath?, detourStartStep?, detourStep?, detourSegmentType?
     challengeStop, challengeStopData, challengeId, challengeRound
     roadblock, roadblockHistory[], usedMonumentIds[], usedSizeRoundIds[],
-      usedChallengeKeys[]
+      usedPersonalQuestionIds[], usedChallengeKeys[]
     targetCursors/{teamId:role}: next roster index
 players/{gameID}
   playerCounter
@@ -47,6 +47,12 @@ gameContent/monumentPool: mirrored GeoGuessr fallback
 Null Firebase fields may be omitted. Empty team placeholders begin as empty strings
 and become objects when players are pushed. Preserve these compatibility quirks
 unless every reader and writer is migrated together.
+
+Schema 12 adds `usedPersonalQuestionIds` and the Match Your Teammate round snapshot.
+The synchronized round moves through private answer handoff, timed team guess, and
+result stages. Its result transaction awards points and per-player drinks together,
+and any connected client may finalize an expired guess without duplicating awards.
+Older rooms lazily receive an empty used-question list.
 
 Schema 11 adds `usedSizeRoundIds` and the single-team Size It Up round snapshot.
 Estimate adjustments are written only when an interaction commits, not on every
@@ -75,7 +81,7 @@ waypoint indexes are normalized when their movement or challenge completes.
   version, accent, embedded challenges, update time.
 - `challenges/{challengeDocId}`: normalized challenge fields, country relation,
   content, authoritative base `penaltySips`, type, timing/scoring/word metadata,
-  Size It Up pool/accuracy metadata, order, update time.
+  Personal Match and Size It Up pool metadata, accuracy metadata, order, update time.
 - `geoGuessrChallenges/{locationId}`: normalized location, map position, photo URL,
   attribution, clue, and version metadata.
 - `gameContent/monumentPool`: collection/version/count manifest.
