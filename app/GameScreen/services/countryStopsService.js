@@ -286,6 +286,7 @@ const syncChallengesForStopInBatch = (batch, stop, updatedAt) => {
         successPoints: challenge.successPoints,
         wordListVersion: challenge.wordListVersion,
         words: challenge.words,
+        personalQuestionPoolVersion: challenge.personalQuestionPoolVersion,
         monumentPoolId: challenge.monumentPoolId,
         monumentPoolVersion: challenge.monumentPoolVersion,
         countryMonumentIds: challenge.countryMonumentIds,
@@ -315,6 +316,10 @@ const getGeoGuessrChallenge = (stop) => (
 
 const getSizeItUpChallenge = (stop) => (
   toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'sizeItUp')
+);
+
+const getPersonalMatchChallenge = (stop) => (
+  toChallengeList(stop?.challenges).find((challenge) => challenge?.type === 'personalMatch')
 );
 
 const isSameTargeting = (left, right) => {
@@ -361,6 +366,16 @@ const hasCurrentSizeItUpContent = (challenge, expected) => (
   && isSameDrinkRules(challenge?.drinkRules, expected?.drinkRules)
 );
 
+const hasCurrentPersonalMatchContent = (challenge, expected) => (
+  challenge?.id === expected?.id
+  && Number(challenge?.penaltySips) === Number(expected?.penaltySips)
+  && Number(challenge?.durationSeconds) === Number(expected?.durationSeconds)
+  && Number(challenge?.successPoints) === Number(expected?.successPoints)
+  && Number(challenge?.personalQuestionPoolVersion) === Number(expected?.personalQuestionPoolVersion)
+  && isSameTargeting(challenge?.targeting, expected?.targeting)
+  && isSameDrinkRules(challenge?.drinkRules, expected?.drinkRules)
+);
+
 const hasCurrentChallengeCatalogue = (value, expectedChallenges) => {
   const challengesById = new Map(toChallengeList(value).map((challenge) => [challenge.id, challenge]));
   return toChallengeList(expectedChallenges).every((expected) => {
@@ -388,6 +403,7 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
         const expectedWord = getCountryWordChallenge(stop);
         const expectedGeo = getGeoGuessrChallenge(stop);
         const expectedSize = getSizeItUpChallenge(stop);
+        const expectedPersonalMatch = getPersonalMatchChallenge(stop);
         const rawStop = rawStopsById.get(stop.id);
         const wordCurrent = !expectedWord || hasCurrentCountryWordContent(
           getCountryWordChallenge(rawStop),
@@ -401,9 +417,14 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
           getSizeItUpChallenge(rawStop),
           expectedSize
         );
+        const personalMatchCurrent = !expectedPersonalMatch || hasCurrentPersonalMatchContent(
+          getPersonalMatchChallenge(rawStop),
+          expectedPersonalMatch
+        );
         return wordCurrent
           && geoCurrent
           && sizeCurrent
+          && personalMatchCurrent
           && hasCurrentChallengeCatalogue(rawStop?.challenges, stop.challenges);
       });
       if (embeddedContentIsCurrent) {
@@ -421,6 +442,7 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
         const expectedWord = getCountryWordChallenge(stop);
         const expectedGeo = getGeoGuessrChallenge(stop);
         const expectedSize = getSizeItUpChallenge(stop);
+        const expectedPersonalMatch = getPersonalMatchChallenge(stop);
 
         const wordMismatch = expectedWord && (
           !hasCurrentCountryWordContent(getCountryWordChallenge(rawStop), expectedWord)
@@ -437,13 +459,29 @@ const migrateCountryWordChallengesIfNeeded = async (rawCountryDocs) => {
             expectedSize
           )
         );
+        const personalMatchMismatch = expectedPersonalMatch && (
+          !hasCurrentPersonalMatchContent(
+            getPersonalMatchChallenge(rawStop),
+            expectedPersonalMatch
+          )
+          || !hasCurrentPersonalMatchContent(
+            challengeDocsById.get(`${stop.id}__${expectedPersonalMatch.id}`),
+            expectedPersonalMatch
+          )
+        );
         const catalogueMismatch = !hasCurrentChallengeCatalogue(rawStop?.challenges, stop.challenges)
           || !stop.challenges.every((expected) => hasCurrentChallengeCatalogue(
             [challengeDocsById.get(`${stop.id}__${expected.id}`)].filter(Boolean),
             [expected]
           ));
 
-        return Boolean(wordMismatch || geoMismatch || sizeMismatch || catalogueMismatch);
+        return Boolean(
+          wordMismatch
+          || geoMismatch
+          || sizeMismatch
+          || personalMatchMismatch
+          || catalogueMismatch
+        );
       });
 
       countryWordMigrationVerified = true;

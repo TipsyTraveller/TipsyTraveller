@@ -123,56 +123,6 @@ export const GEO_GUESSR_IMAGE_HEADERS = Object.freeze({
   Accept: 'image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5',
 });
 
-const photoDataUriCache = new Map();
-
-export const getCachedMonumentPhotoDataUri = (imageUrl) => {
-  const normalized = normalizeMonumentImageUrl(imageUrl);
-  return normalized ? photoDataUriCache.get(normalized) || null : null;
-};
-
-export const loadMonumentPhotoDataUri = async (imageUrl, { signal } = {}) => {
-  const normalizedUrl = normalizeMonumentImageUrl(imageUrl);
-  if (!normalizedUrl) return null;
-
-  const cached = photoDataUriCache.get(normalizedUrl);
-  if (cached) return cached;
-
-  const response = await fetch(normalizedUrl, {
-    headers: GEO_GUESSR_IMAGE_HEADERS,
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  const blob = await response.blob();
-  const dataUri = await new Promise((resolve, reject) => {
-    if (typeof FileReader !== 'undefined') {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          resolve(reader.result);
-        } else {
-          reject(new Error('Failed to read photo blob as data URI'));
-        }
-      };
-      reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
-      reader.readAsDataURL(blob);
-    } else {
-      blob.arrayBuffer()
-        .then((buffer) => {
-          const base64 = Buffer.from(buffer).toString('base64');
-          resolve(`data:${blob.type || 'image/jpeg'};base64,${base64}`);
-        })
-        .catch(reject);
-    }
-  });
-
-  photoDataUriCache.set(normalizedUrl, dataUri);
-  return dataUri;
-};
-
 export const normalizeMonumentImageUrl = (imageUrl) => String(imageUrl || '')
   .trim()
   .replace(/^http:\/\//i, 'https://')

@@ -166,8 +166,13 @@ export default function CountryStopsTab({ onClose }) {
                     {`15% accuracy · pool v${challenge.sizePoolVersion || 1}`}
                   </Text>
                 ) : null}
+                {challenge.type === 'personalMatch' ? (
+                  <Text style={styles.coordinates}>
+                    {`48 questions · pool v${challenge.personalQuestionPoolVersion || 1}`}
+                  </Text>
+                ) : null}
               </View>
-              {['countryWordGuess', 'geoGuessr', 'sizeItUp'].includes(challenge.type) ? null : (
+              {['countryWordGuess', 'geoGuessr', 'sizeItUp', 'personalMatch'].includes(challenge.type) ? null : (
                 <TouchableOpacity onPress={() => removeChallenge(stop, challenge.id)}><Text style={styles.deleteChallenge}>✕</Text></TouchableOpacity>
               )}
             </View>

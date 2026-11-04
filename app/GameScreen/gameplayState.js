@@ -9,7 +9,7 @@ import { getPathRevealDuration } from './constants/route';
 import { getDiceTimingMultiplier } from './constants/roomRules';
 import { createSessionCareerCounters } from './careerStats';
 
-export const GAMEPLAY_SCHEMA_VERSION = 11;
+export const GAMEPLAY_SCHEMA_VERSION = 12;
 export const POINTS_PER_STOP = 10;
 export const FINISH_BONUSES = [30, 15, 5];
 
@@ -52,6 +52,7 @@ export const createInitialGameplay = (gameData, now = Date.now(), teamMembers = 
     roadblockHistory: [],
     usedMonumentIds: [],
     usedSizeRoundIds: [],
+    usedPersonalQuestionIds: [],
     usedChallengeKeys: [],
     targetCursors: {},
     updatedAt: now,

@@ -233,6 +233,14 @@ import {
   SIZE_IT_UP_DURATION_SECONDS,
   SIZE_IT_UP_POOL_VERSION,
 } from './sizeItUp';
+import {
+  PERSONAL_MATCH_CHALLENGE_ID,
+  PERSONAL_MATCH_CHALLENGE_TYPE,
+  PERSONAL_MATCH_DURATION_SECONDS,
+  PERSONAL_MATCH_POOL_VERSION,
+  PERSONAL_MATCH_SUCCESS_POINTS,
+  selectPersonalMatchQuestion,
+} from './personalMatch';
 
 export {
   GEO_GUESSR_CHALLENGE_ID,
@@ -245,11 +253,16 @@ export {
   SIZE_IT_UP_CHALLENGE_TYPE,
   SIZE_IT_UP_DURATION_SECONDS,
   SIZE_IT_UP_POOL_VERSION,
+  PERSONAL_MATCH_CHALLENGE_ID,
+  PERSONAL_MATCH_CHALLENGE_TYPE,
+  PERSONAL_MATCH_DURATION_SECONDS,
+  PERSONAL_MATCH_POOL_VERSION,
+  PERSONAL_MATCH_SUCCESS_POINTS,
 };
 
 export const COUNTRY_WORD_CHALLENGE_TYPE = 'countryWordGuess';
 export const COUNTRY_WORD_EXPLANATION_SECONDS = 7;
-export const CHALLENGE_TARGET_ROLES = ['describer', 'performer', 'judge', 'captain'];
+export const CHALLENGE_TARGET_ROLES = ['describer', 'performer', 'judge', 'captain', 'respondent'];
 export const CHALLENGE_DRINK_RECIPIENTS = [
   'target',
   'teamExceptTarget',
@@ -364,6 +377,48 @@ export const getCountryWordRound = (
     resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
     targetRole: challenge.targeting?.role || 'describer',
     targetCursor: cursor,
+  };
+};
+
+export const getPersonalMatchRound = ({
+  challenge,
+  difficulty = 'easy',
+  players = [],
+  seed = '',
+  targetCursor = 0,
+  timerPace = 'relaxed',
+  usedQuestionIds = [],
+}) => {
+  if (challenge?.type !== PERSONAL_MATCH_CHALLENGE_TYPE || players.length < 2) return null;
+
+  const selection = selectPersonalMatchQuestion({ difficulty, seed, usedQuestionIds });
+  if (!selection) return null;
+
+  const cursor = Math.max(0, Math.round(Number(targetCursor) || 0));
+  const selectedPlayer = players[cursor % players.length];
+  const { question } = selection;
+  return {
+    nextUsedQuestionIds: selection.nextUsedQuestionIds,
+    round: {
+      stage: 'handoff',
+      selectedPlayerId: selectedPlayer.playerId,
+      selectedPlayerName: selectedPlayer.name,
+      targetRole: challenge.targeting?.role || 'respondent',
+      targetCursor: cursor,
+      personalQuestionId: question.id,
+      personalQuestionPrompt: question.prompt,
+      personalQuestionOptions: question.options,
+      selectedAnswerIndex: null,
+      teamGuessIndex: null,
+      guessStartedAt: null,
+      result: null,
+      pointsAwarded: 0,
+      durationSeconds: resolveTimerSeconds(
+        Number(challenge.durationSeconds) || PERSONAL_MATCH_DURATION_SECONDS,
+        timerPace
+      ),
+      resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
+    },
   };
 };
 
