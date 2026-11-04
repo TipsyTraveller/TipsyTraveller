@@ -29,7 +29,7 @@ const PAGES = [
   },
 ];
 
-export default function GameOnboarding({ onDismiss, visible }) {
+export default function GameOnboarding({ onDismiss, onHidden, visible }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [pageIndex, setPageIndex] = useState(0);
@@ -46,6 +46,7 @@ export default function GameOnboarding({ onDismiss, visible }) {
     <Modal
       animationType="fade"
       navigationBarTranslucent
+      onDismiss={onHidden}
       onRequestClose={onDismiss}
       presentationStyle="fullScreen"
       statusBarTranslucent

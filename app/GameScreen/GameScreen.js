@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { onValue, ref } from 'firebase/database';
 import { db } from '../../firebaseConfig';
@@ -8,6 +9,7 @@ import GameOnboarding from './components/GameOnboarding';
 import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
+import RoutePreview from './components/RoutePreview';
 import RoadblockOverlay from './components/RoadblockOverlay';
 import TurnHandoff from './components/TurnHandoff';
 import {
@@ -65,6 +67,7 @@ import {
 import {
   getCachedMonumentPool,
   getFreshRouteSnapshotForDuration,
+  getRouteSignature,
   subscribeCountryStops,
   updateCountryStop,
 } from './services/countryStopsService';
@@ -134,7 +137,9 @@ const GameScreen = ({ navigation, route }) => {
   const [moveTargets, setMoveTargets] = useState({});
   const [currentChallenge, setCurrentChallenge] = useState(null);
   const [devRouteStops, setDevRouteStops] = useState(null);
-  const [multiplayerRouteStops, setMultiplayerRouteStops] = useState(null);
+  const [remoteRoute, setRemoteRoute] = useState(null);
+  const [localRematch, setLocalRematch] = useState(null);
+  const [overviewStatus, setOverviewStatus] = useState(null);
   const [placementRequest, setPlacementRequest] = useState(null);
   const [placementPosition, setPlacementPosition] = useState(null);
   const [isDevDrive, setIsDevDrive] = useState(false);
@@ -144,7 +149,8 @@ const GameScreen = ({ navigation, route }) => {
   const [localMovementPath, setLocalMovementPath] = useState(null);
   const [localTurnNumber, setLocalTurnNumber] = useState(1);
   const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboarding, setOnboarding] = useState('loading');
+  const showOnboarding = onboarding === 'visible';
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const multiplayerSessionIdRef = useRef(null);
@@ -156,10 +162,12 @@ const GameScreen = ({ navigation, route }) => {
   const localRoadblockHistoryRef = useRef([]);
   const feedbackEventRef = useRef({ dice: null, challenge: null, movement: null, result: null, roadblock: null, victory: null });
   const feedback = useGameFeedback(localSettings);
-  const routeStops = useMemo(
-    () => devRouteStops || multiplayerRouteStops || resolveGameRouteStops(gameData),
-    [devRouteStops, gameData?.duration, gameData?.routeStops, multiplayerRouteStops]
+  const initialRouteStops = useMemo(
+    () => resolveGameRouteStops(gameData),
+    [gameData?.duration, gameData?.routeStops]
   );
+  const multiplayerRoute = multiplayerEnabled && remoteRoute?.gameID === gameID ? remoteRoute : null;
+  const routeStops = devRouteStops || multiplayerRoute?.stops || initialRouteStops;
   const routeModel = useMemo(() => createRouteModel(routeStops), [routeStops]);
   const baseGamePieces = useMemo(
     () => getGamePiecesForGame(gameData),
@@ -186,6 +194,36 @@ const GameScreen = ({ navigation, route }) => {
     teamMembers,
   });
   const currentTeamMembers = multiplayerEnabled ? multiplayer.teamMembers : teamMembers;
+  const remoteSessionId = multiplayer.gameplay?.sessionId ?? null;
+  const hasMatchingRemoteRoute = multiplayerRoute && multiplayer.gameplay
+    && multiplayerRoute.sessionId === remoteSessionId;
+  const localSessionId = gameData.createdAt ?? route?.key ?? gameID ?? 'game';
+  const localRouteSignature = useMemo(
+    () => getRouteSignature(initialRouteStops),
+    [initialRouteStops]
+  );
+  const overviewSession = multiplayerEnabled
+    ? (hasMatchingRemoteRoute ? `room:${gameID}:${remoteSessionId ?? gameData.createdAt ?? 'legacy'}` : null)
+    : `local:${localSessionId}:${localRematch?.number ?? 0}:${localRematch?.signature ?? localRouteSignature}`;
+  const overviewKey = overviewSession && `@tipsy_route_overview_v1:${encodeURIComponent(overviewSession)}`;
+  const overviewReady = Boolean(overviewKey && overviewStatus?.key === overviewKey);
+  const showRouteOverview = onboarding === 'complete'
+    && overviewReady && !overviewStatus.dismissed && !multiplayer.isRoomExpired;
+  const routeIntroVisible = onboarding !== 'complete' || showRouteOverview;
+
+  useEffect(() => {
+    if (!overviewKey) return undefined;
+    let active = true;
+    AsyncStorage.getItem(overviewKey).catch(() => null).then((stored) => {
+      if (active) setOverviewStatus({ key: overviewKey, dismissed: stored === 'complete' });
+    });
+    return () => { active = false; };
+  }, [overviewKey]);
+
+  const dismissRouteOverview = useCallback(() => {
+    setOverviewStatus({ key: overviewKey, dismissed: true });
+    AsyncStorage.setItem(overviewKey, 'complete').catch(() => {});
+  }, [overviewKey]);
 
   gamePieces.forEach((piece) => {
     if (!pieceRefs.current[piece.id]) pieceRefs.current[piece.id] = React.createRef();
@@ -196,13 +234,13 @@ const GameScreen = ({ navigation, route }) => {
     Promise.all([getSettings(), hasCompletedGameplayOnboarding()]).then(([settings, completed]) => {
       if (!active) return;
       setLocalSettings(settings);
-      setShowOnboarding(!completed);
+      setOnboarding(completed ? 'complete' : 'visible');
     });
     return () => { active = false; };
   }, []);
 
   const dismissOnboarding = useCallback(() => {
-    setShowOnboarding(false);
+    setOnboarding(Platform.OS === 'ios' ? 'closing' : 'complete');
     completeGameplayOnboarding();
   }, []);
 
@@ -213,13 +251,18 @@ const GameScreen = ({ navigation, route }) => {
   }, [gameData]);
 
   useEffect(() => {
-    if (!multiplayerEnabled) {
-      setMultiplayerRouteStops(null);
-      return undefined;
-    }
+    if (!multiplayerEnabled) return undefined;
 
-    return onValue(ref(db, `games/${gameID}/routeStops`), (snapshot) => {
-      if (snapshot.exists()) setMultiplayerRouteStops(snapshot.val());
+    // A rematch writes both fields together. Read them from the same snapshot
+    // so the new overview never opens with the preceding route's stops.
+    return onValue(ref(db, `games/${gameID}`), (snapshot) => {
+      if (!snapshot.child('gameplay').exists()) return;
+      const sessionId = snapshot.child('gameplay/sessionId').val();
+      setRemoteRoute((current) => (
+        current?.gameID === gameID && current.sessionId === sessionId
+          ? current
+          : { gameID, sessionId, stops: snapshot.child('routeStops').val() }
+      ));
     });
   }, [gameID, multiplayerEnabled]);
 
@@ -572,10 +615,12 @@ const GameScreen = ({ navigation, route }) => {
       multiplayer.rematch().catch((error) => console.log('Unable to start rematch', error));
       return;
     }
-    setDevRouteStops(await getFreshRouteSnapshotForDuration(
-      gameData?.duration || 'long',
-      routeStops
-    ));
+    const stops = await getFreshRouteSnapshotForDuration(gameData?.duration || 'long', routeStops);
+    setDevRouteStops(stops);
+    setLocalRematch((previous) => ({
+      number: (previous?.number ?? 0) + 1,
+      signature: getRouteSignature(stops),
+    }));
     resetLocalGame();
   };
 
@@ -1750,12 +1795,10 @@ const GameScreen = ({ navigation, route }) => {
       ? detourStep
       : Math.min(detourStep + 1, (detourPreviewModel?.finalStopIndex ?? 3));
   const detourOccupiedIndexes = useMemo(() => {
-    const set = new Set([0, detourPreviewModel?.finalStopIndex ?? 3]);
-    if (state === 'challenge' && roadblockEvent?.status === 'detourChallenge') {
-      set.add(detourStep);
-    }
-    return set;
-  }, [detourPreviewModel?.finalStopIndex, detourStep, roadblockEvent?.status, state]);
+    const occupied = new Set();
+    if (!isCarDriving && detourCurrentLeg > 0) occupied.add(detourCurrentLeg);
+    return occupied;
+  }, [detourCurrentLeg, isCarDriving]);
   const visibleRoadblocks = useMemo(
     () => liveRoadblock ? [...roadblocks.filter((item) => item.id !== liveRoadblock.id), liveRoadblock] : roadblocks,
     [liveRoadblock, roadblocks]
@@ -1788,175 +1831,191 @@ const GameScreen = ({ navigation, route }) => {
   )];
   const progress = `${currentLeg + 1} / ${routeModel.finalStopIndex + 1}`;
   const canRoll = state === 'waiting'
+    && !routeIntroVisible
     && !activeProgress.isDone
     && (!multiplayerEnabled || (multiplayer.canControlTurn && multiplayer.isConnected));
   const movingStop = placementRequest?.mode === 'move' ? placementRequest.stop : null;
   const movingStopIndex = movingStop
-    ? routeStops.findIndex((stop) => stop.id === movingStop.id)
+    ? routeModel.countryStops.findIndex((stop) => stop.id === movingStop.id)
     : -1;
 
   return (
-    <View style={styles.container}>
-      <GameScene
-        activeCarProgressRef={activeCarProgressRef}
-        activeTeamColor={activePiece?.color}
-        cameraMode={cameraMode}
-        canvasStyle={styles.canvas}
-        currentLeg={currentLeg}
-        diceEnabled={canRoll && !placementRequest}
-        fastDiceAnimations={roomRules.fastDiceAnimations}
-        diceVisible={!placementRequest && state !== 'roadblock'}
-        detourRouteModels={detourRouteModels}
-        activeDetourTeamId={activeDetour ? activePiece?.id : null}
-        driving={state === 'moving'}
-        lowPower={state === 'challenge'}
-        gamePieces={gamePieces}
-        moveFromLeg={moveStartLeg}
-        moveStartDelay={moveStartDelay}
-        moveTargetLeg={moveTargetLeg ?? currentLeg}
-        movingMarkerIndex={movingStopIndex}
-        movingMarkerStop={movingStop}
-        movingPieceId={movingPieceId}
-        moveTargets={moveTargets}
-        movementRouteModel={movementRouteModel}
-        parkAtMovementEnd={parkAtMovementEnd}
-        onDiceRollStart={stableDiceRollStart}
-        onDiceRoll={stableBoardDiceRoll}
-        onDriveStart={stableDriveStart}
-        onLegPass={stableLegPass}
-        onMoveComplete={stableMoveComplete}
-        pathRevealDuration={pathRevealDuration}
-        placementActive={Boolean(placementRequest) && !placementPosition}
-        onMapPointSelected={handleMapPointSelected}
-        pieceRefs={pieceRefs.current}
-        roadblocks={visibleRoadblocks}
-        detourPreviewModel={detourPreviewModel}
-        detourPreviewSelected={roadblockEvent?.choice === 'detour'}
-        showDetourPreview={isDetourActive}
-        isRoadblockState={state === 'roadblock'}
-        detourCurrentLeg={detourCurrentLeg}
-        detourTargetLeg={detourTargetLeg}
-        detourOccupiedIndexes={detourOccupiedIndexes}
-        rollAction={multiplayerEnabled ? multiplayer.gameplay?.currentAction : null}
-        targetRef={targetRef}
-        teamProgress={teamProgress}
-        routeModel={routeModel}
-        vehicleInMotion={isCarDriving}
-      />
-
-      <GameHud
-        activeTeamColor={activePiece?.color}
-        activeTeamId={activePiece?.id}
-        activeTeamLabel={activePiece?.label}
-        activeTeamScore={activeProgress.score || 0}
-        canRematch={!multiplayerEnabled || multiplayer.isHost}
-        fromName={fromName}
-        gamePieces={gamePieces}
-        isDetour={Boolean(activeDetour || (roadblockEvent && roadblockEvent.choice === 'detour'))}
-        lastRoll={lastRoll}
-        onAdjustDrinks={handleAdjustDrinks}
-        onLeaveGame={handleLeaveGame}
-        onRematch={handleRematch}
-        progress={progress}
-        remainingMoves={remainingMoves}
-        routeStopNames={routeModel.stopNames}
-        state={state}
-        teamMembers={currentTeamMembers}
-        teamProgress={teamProgress}
-        toName={toName}
-        totalStops={routeModel.finalStopIndex + 1}
-        turnNumber={multiplayerEnabled ? (multiplayer.gameplay?.turnNumber || 1) : localTurnNumber}
-      />
-      <ConnectionOverlay
-        activeLeader={multiplayerEnabled ? multiplayer.activeLeader : null}
-        canClaimHost={multiplayerEnabled && multiplayer.canClaimHost}
-        connectedPlayers={multiplayerEnabled ? multiplayer.connectedPlayers : []}
-        isConnected={!multiplayerEnabled || multiplayer.isConnected}
-        isHost={multiplayerEnabled && multiplayer.isHost}
-        isLoading={multiplayerEnabled && multiplayer.isLoading}
-        isRoomExpired={multiplayerEnabled && multiplayer.isRoomExpired}
-        leaders={multiplayerEnabled ? multiplayer.leaders : []}
-        localDeviceID={multiplayerEnabled ? multiplayer.deviceID : null}
-        onLeave={handleLeaveGame}
-        onReturnHome={returnHome}
-        onReplaceLeader={handleReplaceLeader}
-        onTransferHost={handleTransferHost}
-        presenceLoaded={!multiplayerEnabled || multiplayer.presenceLoaded}
-        roomCode={multiplayerEnabled ? gameID : null}
-        roomMeta={multiplayerEnabled ? multiplayer.roomMeta : {}}
-      />
-      <RaceProgressTracker
-        activeTeamId={activePiece?.id}
-        canRoll={canRoll}
-        gamePieces={gamePieces}
-        isConnected={!multiplayerEnabled || multiplayer.isConnected}
-        onRoll={() => requestRoll()}
-        routeModel={routeModel}
-        teamProgress={teamProgress}
-        visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading)}
-      />
-      <TurnHandoff
-        activeTeamColor={activePiece?.color}
-        activeTeamId={activePiece?.id}
-        activeTeamLabel={activePiece?.label || 'Team'}
-        isConnected={!multiplayerEnabled || multiplayer.isConnected}
-        localTeamId={multiplayer.localTeamId}
-        multiplayerEnabled={multiplayerEnabled}
-        visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading) && !showOnboarding}
-      />
-      <RoadblockOverlay
-        canChoose={!multiplayerEnabled || multiplayer.canControlTurn}
-        canFinalizeTimeout={!multiplayerEnabled || (
-          multiplayer.isConnected && !multiplayer.isRoomExpired
-        )}
-        event={roadblockEvent}
-        getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
-        onAction={handleRoadblockAction}
-        teamLabel={activePiece?.label}
-        visible={state === 'roadblock'}
-      />
-      <ChallengePopup
-        autoAdvance={roomRules.autoAdvance}
-        canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
-        canFinalizeTimeout={!multiplayerEnabled || (
-          multiplayer.isConnected && !multiplayer.isRoomExpired
-        )}
-        challenge={currentChallenge}
-        difficulty={gameData?.difficulty}
-        gamePieces={gamePieces}
-        getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
-        isTeamLeader={!multiplayerEnabled || multiplayer.isTeamLeader}
-        localTeamId={multiplayerEnabled ? multiplayer.localTeamId : activePiece?.id}
-        multiplayerEnabled={multiplayerEnabled}
-        teamLabel={activePiece?.label}
-        visible={state === 'challenge'}
-        onChallengeAction={handleCountryWordAction}
-        onCancelAutoAdvance={handleCancelAutoAdvance}
-        onComplete={handleChallengeComplete}
-        pieceRefs={pieceRefs.current}
-        routeModel={routeModel}
-      />
-      <GameOnboarding onDismiss={dismissOnboarding} visible={showOnboarding} />
-      {placementRequest && (
-        <CountryStopPlacementForm
-          mode={placementRequest.mode}
-          position={placementPosition}
-          stop={placementRequest.stop}
-          onCancel={() => {
-            setPlacementRequest(null);
-            setPlacementPosition(null);
-          }}
-          onSaved={(newStop) => {
-            if (newStop) setDevRouteStops((current) => [
-              ...(current?.length >= 2 ? current : routeStops),
-              newStop,
-            ]);
-            setPlacementRequest(null);
-            setPlacementPosition(null);
-          }}
+    <>
+      <View
+        aria-hidden={routeIntroVisible}
+        importantForAccessibility={routeIntroVisible ? 'no-hide-descendants' : 'auto'}
+        style={styles.container}
+      >
+        <GameScene
+          activeCarProgressRef={activeCarProgressRef}
+          cameraMode={cameraMode}
+          canvasStyle={styles.canvas}
+          currentLeg={currentLeg}
+          diceEnabled={canRoll && !placementRequest}
+          fastDiceAnimations={roomRules.fastDiceAnimations}
+          diceVisible={!placementRequest && state !== 'roadblock'}
+          detourRouteModels={detourRouteModels}
+          activeDetourTeamId={activeDetour ? activePiece?.id : null}
+          driving={state === 'moving'}
+          lowPower={state === 'challenge' || showRouteOverview}
+          gamePieces={gamePieces}
+          moveFromLeg={moveStartLeg}
+          moveStartDelay={moveStartDelay}
+          moveTargetLeg={moveTargetLeg ?? currentLeg}
+          movingMarkerIndex={movingStopIndex}
+          movingPieceId={movingPieceId}
+          moveTargets={moveTargets}
+          movementRouteModel={movementRouteModel}
+          parkAtMovementEnd={parkAtMovementEnd}
+          onDiceRollStart={stableDiceRollStart}
+          onDiceRoll={stableBoardDiceRoll}
+          onDriveStart={stableDriveStart}
+          onLegPass={stableLegPass}
+          onMoveComplete={stableMoveComplete}
+          pathRevealDuration={pathRevealDuration}
+          placementActive={Boolean(placementRequest) && !placementPosition}
+          onMapPointSelected={handleMapPointSelected}
+          pieceRefs={pieceRefs.current}
+          roadblocks={visibleRoadblocks}
+          detourPreviewModel={detourPreviewModel}
+          detourPreviewSelected={roadblockEvent?.choice === 'detour'}
+          showDetourPreview={isDetourActive}
+          isRoadblockState={state === 'roadblock'}
+          detourCurrentLeg={detourCurrentLeg}
+          detourTargetLeg={detourTargetLeg}
+          detourOccupiedIndexes={detourOccupiedIndexes}
+          rollAction={multiplayerEnabled ? multiplayer.gameplay?.currentAction : null}
+          targetRef={targetRef}
+          teamProgress={teamProgress}
+          routeModel={routeModel}
+          vehicleInMotion={isCarDriving}
         />
-      )}
-    </View>
+
+        <GameHud
+          activeTeamColor={activePiece?.color}
+          activeTeamId={activePiece?.id}
+          activeTeamLabel={activePiece?.label}
+          activeTeamScore={activeProgress.score || 0}
+          canRematch={!multiplayerEnabled || multiplayer.isHost}
+          fromName={fromName}
+          gamePieces={gamePieces}
+          isDetour={Boolean(activeDetour || (roadblockEvent && roadblockEvent.choice === 'detour'))}
+          lastRoll={lastRoll}
+          onAdjustDrinks={handleAdjustDrinks}
+          onLeaveGame={handleLeaveGame}
+          onRematch={handleRematch}
+          progress={progress}
+          remainingMoves={remainingMoves}
+          routeStopNames={routeModel.stopNames}
+          state={state}
+          teamMembers={currentTeamMembers}
+          teamProgress={teamProgress}
+          toName={toName}
+          totalStops={routeModel.finalStopIndex + 1}
+          turnNumber={multiplayerEnabled ? (multiplayer.gameplay?.turnNumber || 1) : localTurnNumber}
+        />
+        <ConnectionOverlay
+          activeLeader={multiplayerEnabled ? multiplayer.activeLeader : null}
+          canClaimHost={multiplayerEnabled && multiplayer.canClaimHost}
+          connectedPlayers={multiplayerEnabled ? multiplayer.connectedPlayers : []}
+          isConnected={!multiplayerEnabled || multiplayer.isConnected}
+          isHost={multiplayerEnabled && multiplayer.isHost}
+          isLoading={multiplayerEnabled && multiplayer.isLoading}
+          isRoomExpired={multiplayerEnabled && multiplayer.isRoomExpired}
+          leaders={multiplayerEnabled ? multiplayer.leaders : []}
+          localDeviceID={multiplayerEnabled ? multiplayer.deviceID : null}
+          onLeave={handleLeaveGame}
+          onReturnHome={returnHome}
+          onReplaceLeader={handleReplaceLeader}
+          onTransferHost={handleTransferHost}
+          presenceLoaded={!multiplayerEnabled || multiplayer.presenceLoaded}
+          roomCode={multiplayerEnabled ? gameID : null}
+          roomMeta={multiplayerEnabled ? multiplayer.roomMeta : {}}
+        />
+        <RaceProgressTracker
+          activeTeamId={activePiece?.id}
+          canRoll={canRoll}
+          gamePieces={gamePieces}
+          isConnected={!multiplayerEnabled || multiplayer.isConnected}
+          onRoll={() => requestRoll()}
+          routeModel={routeModel}
+          teamProgress={teamProgress}
+          visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading)}
+        />
+        <TurnHandoff
+          activeTeamColor={activePiece?.color}
+          activeTeamId={activePiece?.id}
+          activeTeamLabel={activePiece?.label || 'Team'}
+          isConnected={!multiplayerEnabled || multiplayer.isConnected}
+          localTeamId={multiplayer.localTeamId}
+          multiplayerEnabled={multiplayerEnabled}
+          visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading) && !routeIntroVisible}
+        />
+        <RoadblockOverlay
+          canChoose={!multiplayerEnabled || multiplayer.canControlTurn}
+          canFinalizeTimeout={!multiplayerEnabled || (
+            multiplayer.isConnected && !multiplayer.isRoomExpired
+          )}
+          event={roadblockEvent}
+          getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
+          onAction={handleRoadblockAction}
+          teamLabel={activePiece?.label}
+          visible={state === 'roadblock'}
+        />
+        <ChallengePopup
+          autoAdvance={roomRules.autoAdvance}
+          canComplete={!multiplayerEnabled || multiplayer.canControlTurn}
+          canFinalizeTimeout={!multiplayerEnabled || (
+            multiplayer.isConnected && !multiplayer.isRoomExpired
+          )}
+          challenge={currentChallenge}
+          difficulty={gameData?.difficulty}
+          gamePieces={gamePieces}
+          getNow={multiplayerEnabled ? multiplayer.serverNow : Date.now}
+          isTeamLeader={!multiplayerEnabled || multiplayer.isTeamLeader}
+          localTeamId={multiplayerEnabled ? multiplayer.localTeamId : activePiece?.id}
+          multiplayerEnabled={multiplayerEnabled}
+          teamLabel={activePiece?.label}
+          visible={state === 'challenge'}
+          onChallengeAction={handleCountryWordAction}
+          onCancelAutoAdvance={handleCancelAutoAdvance}
+          onComplete={handleChallengeComplete}
+          pieceRefs={pieceRefs.current}
+          routeModel={routeModel}
+        />
+        {placementRequest && (
+          <CountryStopPlacementForm
+            mode={placementRequest.mode}
+            position={placementPosition}
+            stop={placementRequest.stop}
+            onCancel={() => {
+              setPlacementRequest(null);
+              setPlacementPosition(null);
+            }}
+            onSaved={(newStop) => {
+              if (newStop) setDevRouteStops((current) => [
+                ...(current?.length >= 2 ? current : routeStops),
+                newStop,
+              ]);
+              setPlacementRequest(null);
+              setPlacementPosition(null);
+            }}
+          />
+        )}
+      </View>
+      <GameOnboarding
+        onDismiss={dismissOnboarding}
+        onHidden={() => setOnboarding('complete')}
+        visible={showOnboarding}
+      />
+      <RoutePreview
+        duration={gameData?.duration}
+        onClose={dismissRouteOverview}
+        routeModel={routeModel}
+        stops={routeModel.countryStops}
+        visible={showRouteOverview}
+      />
+    </>
   );
 };
 

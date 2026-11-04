@@ -37,48 +37,9 @@ const GamePiecesFallback = ({ gamePieces, routeModel, teamProgress }) => (
   </>
 );
 
-const CountryMarkersFallback = ({
-  currentLeg,
-  movingMarkerIndex = -1,
-  occupiedMarkerIndexes,
-  routeModel,
-  targetLeg,
-}) => {
-  const isMovePlacement = movingMarkerIndex >= 0;
-  const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
-    ? targetLeg
-    : currentLeg + 1;
-  const activeMarker = isMovePlacement
-    ? -1
-    : Math.min(destinationLeg, routeModel.markers.length - 1);
-
-  return (
-    <>
-      {routeModel.markers.map((position, index) => {
-        const isMoving = isMovePlacement && index === movingMarkerIndex;
-        if (occupiedMarkerIndexes.has(index) && !isMoving) return null;
-
-        return (
-          <group key={`${position.x}-${position.y}-${index}`} position={[position.x, position.y, MAP_Z + 0.09]}>
-            <mesh>
-              <circleGeometry args={[isMoving ? 0.22 : (index === activeMarker ? 0.145 : 0.11), 16]} />
-              <meshBasicMaterial color={isMoving ? '#00E5FF' : (index === activeMarker ? '#FFD700' : '#E53935')} />
-            </mesh>
-            <mesh position={[0, 0, -0.003]}>
-              <ringGeometry args={[isMoving ? 0.24 : (index === activeMarker ? 0.16 : 0.12), isMoving ? 0.34 : (index === activeMarker ? 0.22 : 0.17), 16]} />
-              <meshBasicMaterial color={isMoving ? '#00E5FF' : '#1BA39C'} />
-            </mesh>
-          </group>
-        );
-      })}
-    </>
-  );
-};
-
 const GameScene = memo(({
   activeCarProgressRef,
   activeDetourTeamId = null,
-  activeTeamColor,
   cameraMode,
   canvasStyle,
   currentLeg,
@@ -93,7 +54,6 @@ const GameScene = memo(({
   moveStartDelay,
   moveTargetLeg,
   movingMarkerIndex = -1,
-  movingMarkerStop = null,
   movingPieceId,
   moveTargets,
   movementRouteModel = null,
@@ -124,15 +84,21 @@ const GameScene = memo(({
   const occupiedMarkerIndexes = useMemo(() => new Set(
     gamePieces
       .filter((piece) => !(vehicleInMotion && piece.id === movingPieceId))
-      .filter((piece) => !teamProgress[piece.id]?.detour)
+      .filter((piece) => !(Number(teamProgress[piece.id]?.detour?.step) > 0))
       .map((piece) => teamProgress[piece.id]?.currentLeg ?? 0)
   ), [gamePieces, movingPieceId, teamProgress, vehicleInMotion]);
+
+  const onDetour = activeDetourTeamId !== null && detourPreviewModel;
+  const detourHasNextWaypoint = onDetour && detourTargetLeg < detourPreviewModel.finalStopIndex;
+  const drivingDetour = vehicleInMotion && onDetour && movementRouteModel;
+  const mainTargetLeg = onDetour
+    ? routeModel.countryStops.findIndex((stop) => stop.id === detourPreviewModel.countryStops.at(-1)?.id)
+    : moveTargetLeg;
 
   return (
     <Canvas
     style={canvasStyle}
-    // Paused while a challenge card is on screen: the board is covered by the dim
-    // backdrop, and a running GL loop competes with the card animation on phones.
+    // Pause the GL loop while a challenge or route overview covers the board.
     frameloop={lowPower ? 'never' : 'always'}
     camera={{ position: DONE_POS.toArray(), fov: 50 }}
     dpr={[1, 1.5]}
@@ -153,7 +119,6 @@ const GameScene = memo(({
     </Suspense>
     <DottedRouteLine
       activeCarProgressRef={activeCarProgressRef}
-      activeColor={activeTeamColor}
       driving={driving}
       fromLeg={moveFromLeg}
       pathRevealDuration={pathRevealDuration}
@@ -161,11 +126,7 @@ const GameScene = memo(({
       routeModel={routeModel}
       movementRouteModel={movementRouteModel}
     />
-    <DetourRouteLine
-      routeModel={detourPreviewModel}
-      selected={detourPreviewSelected}
-      visible={showDetourPreview}
-    />
+    {showDetourPreview && detourPreviewModel && <DetourRouteLine routeModel={detourPreviewModel} />}
     {roadblocks && roadblocks.length > 0 && (
       <group name="roadblocks">
         {roadblocks.map((roadblock) => (
@@ -198,63 +159,52 @@ const GameScene = memo(({
       />
     </Suspense>
     {showDetourPreview && detourPreviewModel && (
-      <Suspense fallback={null}>
-        <CountryMarkers
-          currentLeg={detourCurrentLeg ?? 0}
-          occupiedMarkerIndexes={detourOccupiedIndexes || new Set([0, detourPreviewModel.finalStopIndex])}
-          routeModel={detourPreviewModel}
-          showLabels
-          showStopNumbers={false}
-          targetLeg={detourTargetLeg ?? 1}
-        />
-      </Suspense>
+      <CountryMarkers
+        activeCarProgressRef={activeCarProgressRef}
+        currentLeg={detourCurrentLeg}
+        labelMode={detourPreviewSelected ? 'next-and-finish' : 'all'}
+        movementRouteModel={movementRouteModel}
+        movementStartLeg={detourCurrentLeg}
+        movementTargetLeg={detourTargetLeg}
+        occupiedMarkerIndexes={detourOccupiedIndexes}
+        routeModel={detourPreviewModel}
+        targetLeg={detourTargetLeg}
+        variant="detour"
+        vehicleInMotion={Boolean(drivingDetour)}
+      />
     )}
     {Object.entries(detourRouteModels || {}).map(([teamId, detourModel]) => {
       if (!detourModel || teamId === activeDetourTeamId) return null;
-      const detourStep = Math.min(
-        Number(teamProgress[teamId]?.detour?.step) || 0,
-        detourModel.finalStopIndex
-      );
-      const occupiedIndexes = new Set([0, detourModel.finalStopIndex]);
-      if (detourStep > 0 && detourStep < detourModel.finalStopIndex) {
-        occupiedIndexes.add(detourStep);
-      }
+      const detourStep = Number(teamProgress[teamId]?.detour?.step) || 0;
 
       return (
-        <Suspense key={`inactive-detour-pins-${teamId}`} fallback={null}>
+        <group key={teamId}>
+          <DetourRouteLine routeModel={detourModel} />
           <CountryMarkers
             currentLeg={detourStep}
-            occupiedMarkerIndexes={occupiedIndexes}
+            labelMode="none"
+            occupiedMarkerIndexes={new Set([detourStep])}
             routeModel={detourModel}
-            showLabels
-            showStopNumbers={false}
-            targetLeg={Math.min(detourStep + 1, detourModel.finalStopIndex)}
+            variant="detour"
           />
-        </Suspense>
+        </group>
       );
     })}
-    <Suspense fallback={
-      <CountryMarkersFallback
-        currentLeg={currentLeg}
-        movingMarkerIndex={movingMarkerIndex}
-        occupiedMarkerIndexes={occupiedMarkerIndexes}
-        routeModel={routeModel}
-        targetLeg={moveTargetLeg}
-      />
-    }>
-      <CountryMarkers
-        activeCarProgressRef={movementRouteModel ? null : activeCarProgressRef}
-        currentLeg={currentLeg}
-        movementStartLeg={moveFromLeg}
-        movementTargetLeg={moveTargetLeg}
-        movingMarkerIndex={movingMarkerIndex}
-        movingMarkerStop={movingMarkerStop}
-        occupiedMarkerIndexes={occupiedMarkerIndexes}
-        routeModel={routeModel}
-        targetLeg={moveTargetLeg}
-        vehicleInMotion={vehicleInMotion}
-      />
-    </Suspense>
+    <CountryMarkers
+      activeCarProgressRef={activeCarProgressRef}
+      animateArrival={!drivingDetour || !detourHasNextWaypoint}
+      animateDeparture={!drivingDetour || detourCurrentLeg === 0}
+      currentLeg={currentLeg}
+      highlightDestination={!detourHasNextWaypoint}
+      movementRouteModel={movementRouteModel}
+      movementStartLeg={moveFromLeg}
+      movementTargetLeg={moveTargetLeg}
+      movingMarkerIndex={movingMarkerIndex}
+      occupiedMarkerIndexes={occupiedMarkerIndexes}
+      routeModel={routeModel}
+      targetLeg={mainTargetLeg}
+      vehicleInMotion={vehicleInMotion}
+    />
     <CameraController
       mode={cameraMode}
       overviewFocusOffset={isRoadblockState ? 0.62 : 0}
