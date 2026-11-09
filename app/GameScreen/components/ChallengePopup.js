@@ -459,37 +459,31 @@ const ChallengePopup = ({
 
   // A scaleX "card turn" instead of rotateY: it needs no perspective or backface
   // culling, which render unreliably on Android and some iOS GPUs.
-  // The hidden face is also moved off-screen, so no hairline of its border is left
-  // over the visible face once its scaleX reaches zero.
   const backFaceAnimatedStyle = {
+    opacity: flip.interpolate({
+      inputRange: [0, 0.49, 0.5, 1],
+      outputRange: [1, 1, 0, 0],
+    }),
     transform: [
-      {
-        translateX: flip.interpolate({
-          inputRange: [0, 0.5, 0.501, 1],
-          outputRange: [0, 0, 4000, 4000],
-        }),
-      },
       {
         scaleX: flip.interpolate({
           inputRange: [0, 0.5, 1],
-          outputRange: [1, 0.0001, 0.0001],
+          outputRange: [1, 0.01, 0.01],
         }),
       },
     ],
   };
 
   const frontFaceAnimatedStyle = {
+    opacity: flip.interpolate({
+      inputRange: [0, 0.49, 0.5, 1],
+      outputRange: [0, 0, 1, 1],
+    }),
     transform: [
-      {
-        translateX: flip.interpolate({
-          inputRange: [0, 0.499, 0.5, 1],
-          outputRange: [4000, 4000, 0, 0],
-        }),
-      },
       {
         scaleX: flip.interpolate({
           inputRange: [0, 0.5, 1],
-          outputRange: [0.0001, 0.0001, 1],
+          outputRange: [0.01, 0.01, 1],
         }),
       },
     ],
@@ -694,8 +688,8 @@ const ChallengePopup = ({
         style={[styles.backdropDim, backdropAnimatedStyle]}
       />
       <Animated.View
-        renderToHardwareTextureAndroid
-        shouldRasterizeIOS
+        renderToHardwareTextureAndroid={!ready || tearing}
+        shouldRasterizeIOS={!ready || tearing}
         style={[styles.cardShadow, { width: cardWidth, height: cardHeight }, flyWrapperStyle]}
       >
         <Animated.View
@@ -970,7 +964,7 @@ const ChallengePopup = ({
             </View>
           )}
         </Animated.View>
-        <CardBack compact={compact} style={backFaceAnimatedStyle} />
+        {!ready && <CardBack compact={compact} style={backFaceAnimatedStyle} />}
       </Animated.View>
     </View>
   );

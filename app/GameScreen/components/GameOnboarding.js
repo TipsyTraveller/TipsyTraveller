@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PAGES = [
@@ -29,7 +29,7 @@ const PAGES = [
   },
 ];
 
-export default function GameOnboarding({ onDismiss, onHidden, visible }) {
+export default function GameOnboarding({ onDismiss, visible }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [pageIndex, setPageIndex] = useState(0);
@@ -42,63 +42,61 @@ export default function GameOnboarding({ onDismiss, onHidden, visible }) {
   const isLast = pageIndex === PAGES.length - 1;
   const cardWidth = Math.min(590, Math.max(280, width - insets.left - insets.right - 48));
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      animationType="fade"
-      navigationBarTranslucent
-      onDismiss={onHidden}
-      onRequestClose={onDismiss}
-      presentationStyle="fullScreen"
-      statusBarTranslucent
-      supportedOrientations={['landscape', 'portrait']}
-      visible={visible}
+    <View
+      accessibilityViewIsModal
+      pointerEvents="auto"
+      style={[
+        styles.overlay,
+        {
+          paddingTop: Math.max(16, insets.top + 12),
+          paddingBottom: Math.max(16, insets.bottom + 12),
+          paddingLeft: Math.max(24, insets.left + 16),
+          paddingRight: Math.max(24, insets.right + 16),
+        },
+      ]}
     >
-      <View
-        accessibilityViewIsModal
-        style={[
-          styles.overlay,
-          {
-            paddingTop: Math.max(16, insets.top + 12),
-            paddingBottom: Math.max(16, insets.bottom + 12),
-            paddingLeft: Math.max(24, insets.left + 16),
-            paddingRight: Math.max(24, insets.right + 16),
-          },
-        ]}
-      >
-        <View style={[styles.card, { width: cardWidth }]}>
-          <Pressable accessibilityLabel="Skip game introduction" onPress={onDismiss} style={styles.skipButton}>
-            <Text style={styles.skipText}>SKIP</Text>
-          </Pressable>
-          <Text style={styles.icon}>{page.icon}</Text>
-          <Text style={styles.eyebrow}>{page.eyebrow}</Text>
-          <Text style={styles.title}>{page.title}</Text>
-          <Text style={styles.body}>{page.body}</Text>
-          <View style={styles.footer}>
-            <View style={styles.dots}>
-              {PAGES.map((item, index) => (
-                <View key={item.eyebrow} style={[styles.dot, index === pageIndex && styles.dotActive]} />
-              ))}
-            </View>
-            <Pressable
-              accessibilityLabel={isLast ? 'Start playing' : 'Next introduction page'}
-              onPress={() => (isLast ? onDismiss() : setPageIndex((index) => index + 1))}
-              style={({ pressed }) => [styles.nextButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.nextText}>{isLast ? 'LET’S PLAY' : 'NEXT'}</Text>
-            </Pressable>
+      <View style={[styles.card, { width: cardWidth }]}>
+        <Pressable accessibilityLabel="Skip game introduction" onPress={onDismiss} style={styles.skipButton}>
+          <Text style={styles.skipText}>SKIP</Text>
+        </Pressable>
+        <Text style={styles.icon}>{page.icon}</Text>
+        <Text style={styles.eyebrow}>{page.eyebrow}</Text>
+        <Text style={styles.title}>{page.title}</Text>
+        <Text style={styles.body}>{page.body}</Text>
+        <View style={styles.footer}>
+          <View style={styles.dots}>
+            {PAGES.map((item, index) => (
+              <View key={item.eyebrow} style={[styles.dot, index === pageIndex && styles.dotActive]} />
+            ))}
           </View>
+          <Pressable
+            accessibilityLabel={isLast ? 'Start playing' : 'Next introduction page'}
+            onPress={() => (isLast ? onDismiss() : setPageIndex((index) => index + 1))}
+            style={({ pressed }) => [styles.nextButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.nextText}>{isLast ? 'LET’S PLAY' : 'NEXT'}</Text>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#24747A',
+    zIndex: 70,
+    elevation: 70,
   },
   card: {
     minHeight: 250,

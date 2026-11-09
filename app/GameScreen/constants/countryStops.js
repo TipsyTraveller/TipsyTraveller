@@ -369,10 +369,6 @@ const EUROPE_COUNTRIES = [
   { id: 'cyprus', name: 'Cyprus', code: 'CY', city: 'Nicosia', longitude: 33.3823, latitude: 35.1856, sourcePosition: [610, 369], accent: '#f2994a', challenge: challenge('island-finale', 'Island Finale', 'Create a team postcard pose and hold it while the table counts to five.') },
 ];
 
-export const COUNTRY_GEOGRAPHIC_CENTERS = new Map(
-  EUROPE_COUNTRIES.map(({ id, longitude, latitude }) => [id, { longitude, latitude }])
-);
-
 export const DEFAULT_COUNTRY_STOPS = EUROPE_COUNTRIES.map(stop).map((countryStop) => ({
   ...countryStop,
   challenges: ensureTypedChallenges(countryStop.id, countryStop.challenges),

@@ -2,7 +2,8 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { get, onValue, ref, runTransaction, update } from 'firebase/database';
-import { Canvas, useFrame } from '@react-three/fiber/native';
+import { useFrame } from '@react-three/fiber/native';
+import GameCanvas from '../shared/components/GameCanvas';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../firebaseConfig';
 import Header from '../shared/components/Header/Header';
@@ -306,7 +307,7 @@ export default function CharacterSelection({ navigation, route }) {
                 />
               </View>
               <View style={[styles.modelPreview, { height: Math.max(150, Math.min(230, height * 0.3)) }]}>
-                <Canvas camera={{ position: [0, 0.45, 3.1], fov: 38 }}>
+                <GameCanvas camera={{ position: [0, 0.45, 3.1], fov: 38 }}>
                   <ambientLight intensity={1.8} />
                   <hemisphereLight args={['#fff7df', '#223144', 1.4]} />
                   <directionalLight position={[3, 4, 4]} intensity={2.2} />
@@ -316,7 +317,7 @@ export default function CharacterSelection({ navigation, route }) {
                       model={selectedModel}
                     />
                   </Suspense>
-                </Canvas>
+                </GameCanvas>
               </View>
 
               <View style={styles.selectorContainer}>

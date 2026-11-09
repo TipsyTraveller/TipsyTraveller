@@ -236,7 +236,7 @@ const GamePiece = memo(({
       delayElapsedRef.current = 0;
       hasStartedDrivingRef.current = false;
     }
-  }, [activeCarProgressRef, currentLeg, driving, parkingOffset, pieceRef, routeModel]);
+  }, [activeCarProgressRef, currentLeg, driving, pieceRef, routeModel]);
 
   useEffect(() => {
     targetLegRef.current = targetLeg;
@@ -273,6 +273,7 @@ const GamePiece = memo(({
 
   useFrame(({ clock }, delta) => {
     if (!pieceRef.current) return;
+    const safeDelta = Math.min(delta, 0.1);
 
     if (!drivingRef.current) {
       const parkedProgress = THREE.MathUtils.clamp(distanceRef.current / routeModel.length, 0, 1);
@@ -288,7 +289,7 @@ const GamePiece = memo(({
         passedVehicleDistances,
         passJumpTransform: passJumpTransformRef.current,
         clockTime: clock.elapsedTime,
-        delta,
+        delta: safeDelta,
         rotationRef,
         routeModel,
       });
@@ -302,7 +303,7 @@ const GamePiece = memo(({
       moveStartDelay
     );
     if (!hasStartedDrivingRef.current) {
-      delayElapsedRef.current += delta;
+      delayElapsedRef.current += safeDelta;
 
       if (delayElapsedRef.current < totalStartDelay) {
         return;
@@ -317,7 +318,7 @@ const GamePiece = memo(({
     const targetDistance = routeModel.stopDistances[target] ?? routeModel.length;
 
     distanceRef.current = Math.min(
-      distanceRef.current + delta * DRIVE_SPEED_UNITS_PER_SECOND,
+      distanceRef.current + safeDelta * DRIVE_SPEED_UNITS_PER_SECOND,
       targetDistance
     );
     const curveProgress = THREE.MathUtils.clamp(distanceRef.current / routeModel.length, 0, 1);
@@ -352,7 +353,7 @@ const GamePiece = memo(({
       passedVehicleDistances,
       passJumpTransform: passJumpTransformRef.current,
       clockTime: clock.elapsedTime,
-      delta,
+      delta: safeDelta,
       rotationRef,
       routeModel,
     });

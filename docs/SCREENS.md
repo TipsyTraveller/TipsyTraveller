@@ -27,7 +27,9 @@ Development may start on `GameScreen` when `START_ON_DEV_GAME_SCREEN` in
 - `JoinGameScreen`: validates room/name/expiry, restores same-device host identity,
   avoids duplicate insertion, assigns the least populated valid team, and joins.
 - `LobbyScreen`: listens to room and roster, supports host removal and local players,
-  starts character selection, and exposes the concise Rules summary.
+  starts character selection, and opens `RulesScreen`.
+- `RulesScreen`: displays the concise how-to-play guide in the app's card style and
+  returns automatically if the room advances from the lobby.
 - `CharacterSelection`: identifies the local team role, preselects the leader's saved
   preferred vehicle, lets leaders name their team and choose one vehicle per team,
   observes readiness, and enters the game when host initialization completes.

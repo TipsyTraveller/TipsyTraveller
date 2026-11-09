@@ -822,7 +822,7 @@ export const reorderCountryStop = async (stopId, direction) => {
   await runTransaction(ref(db, LEGACY_RTDB_CONTENT_PATH), () => serializeRtdbStops(updatedCatalogue, updatedAt)).catch(() => {});
 };
 
-export const getRouteSignature = (routeStops) => (
+const getRouteSignature = (routeStops) => (
   (Array.isArray(routeStops) ? routeStops : []).map((stop) => stop?.id).join('|')
 );
 

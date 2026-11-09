@@ -1,6 +1,13 @@
 import { useGLTF } from '@react-three/drei/native';
+import { Platform } from 'react-native';
 
-export const MAP_MODEL_SOURCE = require('../../../assets/models/world-map-vector.glb');
+const DESKTOP_MAP_MODEL_SOURCE = require('../../../assets/models/world-map-vector.glb');
+const MOBILE_MAP_MODEL_SOURCE = require('../../../assets/models/world-map-vector-mobile.glb');
+
+export const MAP_MODEL_SOURCE = Platform.OS === 'web'
+  ? DESKTOP_MAP_MODEL_SOURCE
+  : MOBILE_MAP_MODEL_SOURCE;
+export const MARKER_MODEL_SOURCE = require('../../../assets/models/location.glb');
 
 // Timing helpers for the board load. Logs are dev-only so release builds stay quiet.
 export const perfNow = () => (
@@ -15,13 +22,17 @@ export const perfLog = (message) => {
 
 export const boardLoadTimings = { preloadStartedAt: null };
 
-// Warms the useGLTF cache so the board does not stall on GLB decoding when GameScreen mounts.
-// Vehicle models are not preloaded here: the selection screen already loads the ones players browse.
+// Native asset loading is started inside the mounted GL canvas. Preloading a
+// GLB before that canvas exists can leave a rejected or suspended entry in the
+// shared loader cache. Web does not have that Expo GL lifecycle constraint.
 export const preloadBoardAssets = () => {
+  if (Platform.OS !== 'web') return;
+
   if (boardLoadTimings.preloadStartedAt === null) {
     boardLoadTimings.preloadStartedAt = perfNow();
     perfLog('board preload started (map GLB)');
   }
 
   useGLTF.preload(MAP_MODEL_SOURCE, false, false);
+  useGLTF.preload(MARKER_MODEL_SOURCE, false, false);
 };
