@@ -281,7 +281,10 @@ export const isBotOnlyTeam = (teamMembers, teamId) => {
   const players = getTeamPlayers(teamMembers, teamId);
   if (!players.length) return false;
   return players.every((player) => (
-    !player.deviceID || String(player.deviceID).startsWith('bot-') || String(player.deviceID).startsWith('local-')
+    !player.deviceID
+    || String(player.deviceID).startsWith('bot-')
+    || String(player.deviceID).startsWith('dev-bot-')
+    || String(player.deviceID).startsWith('local-')
   ));
 };
 

@@ -94,7 +94,7 @@ export const autoFillLobby = async (gameID) => {
  * Automatically sets vehicle selections for all required teams in Firebase,
  * allowing the CharacterSelection screen to transition to GameScreen.
  */
-export const readyUpTeams = async (gameID) => {
+export const readyUpTeams = async (gameID, { excludeTeamKeys = [] } = {}) => {
   if (!gameID) {
     throw new Error('Please enter or select a game PIN.');
   }
@@ -109,31 +109,46 @@ export const readyUpTeams = async (gameID) => {
     team2: 'car2',
     team3: 'car3',
   };
+  const defaultNames = {
+    team1: 'Team 1',
+    team2: 'Team 2',
+    team3: 'Team 3',
+  };
 
   const existingTeamModels = gameData?.teamModels || {};
+  const existingTeamNames = gameData?.teamNames || {};
   const updatedTeamModels = { ...existingTeamModels };
+  const updatedTeamNames = { ...existingTeamNames };
 
   requiredTeams.forEach((teamKey) => {
+    if (excludeTeamKeys.includes(teamKey)) return;
     if (!updatedTeamModels[teamKey]) {
       updatedTeamModels[teamKey] = defaultModels[teamKey] || 'car1';
+    }
+    if (!updatedTeamNames[teamKey]?.trim()) {
+      updatedTeamNames[teamKey] = defaultNames[teamKey] || 'Team';
     }
   });
 
   await set(ref(db, `games/${gameID}/teamModels`), updatedTeamModels);
+  await set(ref(db, `games/${gameID}/teamNames`), updatedTeamNames);
 
-  return { success: true, teamModels: updatedTeamModels };
+  return { success: true, teamModels: updatedTeamModels, teamNames: updatedTeamNames };
 };
 
 /**
  * Creates a fully initialized live test room in Firebase Realtime Database
- * with host on Team 1 and a bot leader on Team 2.
+ * with host on Team 1 and a bot leader on Team 2 (and Team 3 for 9-12 players).
  */
 export const createLiveTestRoom = async ({
   nrOfPlayers = '1-4',
   difficulty = 'medium',
   duration = 'short',
+  status = 'lobby',
+  preselectRivalVehicles = false,
 } = {}) => {
   const deviceID = await getOrCreateDevDeviceId();
+  const isThreeTeams = nrOfPlayers === '9-12';
 
   let newGameID = '';
   let exists = true;
@@ -146,6 +161,19 @@ export const createLiveTestRoom = async ({
     }
   }
 
+  const teamModels = preselectRivalVehicles
+    ? {
+        team2: 'car2',
+        ...(isThreeTeams ? { team3: 'car3' } : {}),
+      }
+    : {};
+  const teamNames = preselectRivalVehicles
+    ? {
+        team2: 'Team 2',
+        ...(isThreeTeams ? { team3: 'Team 3' } : {}),
+      }
+    : {};
+
   const gameData = {
     difficulty,
     duration,
@@ -153,43 +181,48 @@ export const createLiveTestRoom = async ({
     HostName: 'Dev Host',
     hostDeviceID: deviceID,
     createdAt: Date.now(),
-    status: 'lobby',
-    teamModels: {},
+    status,
+    teamModels,
+    ...(preselectRivalVehicles ? { teamNames } : {}),
     routeStops: await getRouteSnapshotForDuration(duration),
   };
 
   await set(ref(db, `games/${newGameID}`), gameData);
 
-  // Initialize players with host in team1 and dev bot in team2
-  await set(ref(db, `players/${newGameID}`), {
-    playerCounter: 2,
-    team1: '',
-    team2: '',
-    team3: '',
-  });
+  const team1Key = push(ref(db, `players/${newGameID}/team1`)).key;
+  const team2Key = push(ref(db, `players/${newGameID}/team2`)).key;
+  const team3Key = isThreeTeams ? push(ref(db, `players/${newGameID}/team3`)).key : null;
 
-  await push(ref(db, `players/${newGameID}/team1`), {
-    name: 'Dev Host',
-    isLeader: true,
-    deviceID,
-  });
+  const teamMembers = {
+    playerCounter: isThreeTeams ? 3 : 2,
+    team1: {
+      [team1Key]: {
+        name: 'Dev Host',
+        isLeader: true,
+        deviceID,
+      },
+    },
+    team2: {
+      [team2Key]: {
+        name: 'Dev Rival (T2)',
+        isLeader: true,
+        deviceID: `dev-bot-team2-${Date.now().toString(36)}`,
+      },
+    },
+    team3: isThreeTeams
+      ? {
+          [team3Key]: {
+            name: 'Dev Rival (T3)',
+            isLeader: true,
+            deviceID: `dev-bot-team3-${Date.now().toString(36)}`,
+          },
+        }
+      : '',
+  };
 
-  await push(ref(db, `players/${newGameID}/team2`), {
-    name: 'Dev Rival (T2)',
-    isLeader: true,
-    deviceID: `dev-bot-team2-${Date.now().toString(36)}`,
-  });
+  await set(ref(db, `players/${newGameID}`), teamMembers);
 
-  if (nrOfPlayers === '9-12') {
-    await push(ref(db, `players/${newGameID}/team3`), {
-      name: 'Dev Rival (T3)',
-      isLeader: true,
-      deviceID: `dev-bot-team3-${Date.now().toString(36)}`,
-    });
-    await set(ref(db, `players/${newGameID}/playerCounter`), 3);
-  }
-
-  return { gameID: newGameID, gameData };
+  return { gameID: newGameID, gameData, teamMembers };
 };
 
 /**

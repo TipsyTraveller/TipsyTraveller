@@ -7,8 +7,9 @@ not a production authorization boundary.
 
 ## Capabilities
 
-- **Screens / Quick Start:** open mock two- or three-team GameScreen, mock character
-  selection, create a live test lobby, or navigate to setup screens.
+- **Screens / Quick Start:** open mock two- or three-team GameScreen, quick-host a live
+  multiplayer room directly on CharacterSelection with rival teams already ready, open
+  mock character selection, create a live test lobby, or navigate to setup screens.
 - **Multiplayer & Bots:** target a four-digit PIN, fill a lobby, add team bots,
   assign default vehicles to unready teams, and remove test bots.
 - **Board & Game Tools:** force rolls 1–3, move to a route stop and open its challenge,

@@ -102,6 +102,13 @@ export default function CharacterSelection({ navigation, route }) {
   }, [liveGameData?.hostDeviceID, requiredTeamKeys, teamMembers]);
 
   useEffect(() => {
+    hasNavigatedRef.current = false;
+    initialGameplayRef.current = null;
+    setGameDataToStart(null);
+    setLiveGameData(initialGameData || {});
+
+    if (gameID === 'DEV-MOCK') return undefined;
+
     const gameRef = ref(db, `games/${gameID}`);
     const unsubscribe = onValue(gameRef, (snapshot) => {
       if (!snapshot.exists()) return;
@@ -116,7 +123,7 @@ export default function CharacterSelection({ navigation, route }) {
     });
 
     return unsubscribe;
-  }, [gameID, navigation, teamMembers]);
+  }, [gameID, initialGameData, navigation, teamMembers]);
 
   useEffect(() => {
     if (!gameDataToStart) return undefined;
@@ -203,6 +210,25 @@ export default function CharacterSelection({ navigation, route }) {
     const trimmedTeamName = teamName.trim().replace(/\s+/g, ' ');
     if (!trimmedTeamName) {
       Alert.alert('Name your team', 'Enter a team name before selecting your ride.');
+      return;
+    }
+
+    if (gameID === 'DEV-MOCK') {
+      const nextGameData = {
+        ...liveGameData,
+        status: 'game',
+        teamModels: {
+          ...(liveGameData?.teamModels || {}),
+          [playerTeam]: selectedModel.id,
+        },
+        teamNames: {
+          ...(liveGameData?.teamNames || {}),
+          [playerTeam]: trimmedTeamName,
+        },
+      };
+      hasNavigatedRef.current = true;
+      setLiveGameData(nextGameData);
+      setGameDataToStart(nextGameData);
       return;
     }
 

@@ -36,12 +36,12 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
             </View>
             {mode === 'move' ? (
               <Text style={styles.bannerSubtext}>
-                Connected pin is bouncing in cyan with a name badge. Click map to set new position.
+                The selected stop is outlined in cyan. Click the map to set its new position.
               </Text>
             ) : null}
             {mode === 'move' && stop?.position ? (
               <Text style={styles.coordinatesText}>
-                CURRENT PIN: X {stop.position.x.toFixed(2)}, Y {stop.position.y.toFixed(2)}
+                CURRENT STOP: X {stop.position.x.toFixed(2)}, Y {stop.position.y.toFixed(2)}
               </Text>
             ) : null}
           </View>

@@ -1926,7 +1926,6 @@ const GameScreen = ({ navigation, route }) => {
     <View style={styles.container}>
       <GameScene
         activeCarProgressRef={activeCarProgressRef}
-        activeTeamColor={activePiece?.color}
         cameraMode={cameraMode}
         canvasStyle={styles.canvas}
         currentLeg={currentLeg}

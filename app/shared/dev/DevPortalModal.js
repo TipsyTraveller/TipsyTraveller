@@ -28,6 +28,7 @@ import {
   startInstantCharacterSelection,
   startInstantGameScreen,
   startLiveTestLobby,
+  startQuickMultiplayerVehicleSelection,
 } from './devNavigation';
 import { devEventBus } from './devEventBus';
 import CountryStopsTab from './CountryStopsTab';
@@ -133,6 +134,20 @@ export default function DevPortalModal({ visible, onClose }) {
     try {
       await startInstantCharacterSelection({ teamCount });
       showStatus(`Started Character Selection (${teamCount} teams)`);
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleQuickHostMultiplayer = async (teamCount) => {
+    setLoadingAction('quickHost');
+    try {
+      const newPin = await startQuickMultiplayerVehicleSelection({ teamCount });
+      setGamePin(newPin);
+      showStatus(`Hosted room ${newPin} at Vehicle Selection (${teamCount} teams)`);
       onClose();
     } catch (error) {
       Alert.alert('Error', error.message);
@@ -409,6 +424,31 @@ export default function DevPortalModal({ visible, onClose }) {
                   </TouchableOpacity>
                 </View>
 
+                <Text style={styles.sectionHeading}>Quick Host Multiplayer (Vehicle Selection)</Text>
+                <Text style={styles.sectionDescription}>
+                  Hosts a live Firebase room at Vehicle Selection with rival team(s) already ready — press &quot;SELECT THIS RIDE&quot; to enter the map.
+                </Text>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.successButton]}
+                    onPress={() => handleQuickHostMultiplayer(2)}
+                    disabled={loadingAction === 'quickHost'}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {loadingAction === 'quickHost' ? 'Hosting...' : '🚗 Quick Host (2 Teams)'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.successButton]}
+                    onPress={() => handleQuickHostMultiplayer(3)}
+                    disabled={loadingAction === 'quickHost'}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {loadingAction === 'quickHost' ? 'Hosting...' : '🚗 Quick Host (3 Teams)'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 <Text style={styles.sectionHeading}>Vehicle Selection (Mock)</Text>
                 <View style={styles.buttonRow}>
                   <TouchableOpacity
@@ -534,6 +574,30 @@ export default function DevPortalModal({ visible, onClose }) {
                 </View>
 
                 <Text style={styles.sectionHeading}>1-Tap Multiplayer Solvers</Text>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.successButton]}
+                    onPress={() => handleQuickHostMultiplayer(2)}
+                    disabled={Boolean(loadingAction)}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {loadingAction === 'quickHost' ? 'Hosting...' : '🚗 Quick Host (2 Teams)'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.successButton]}
+                    onPress={() => handleQuickHostMultiplayer(3)}
+                    disabled={Boolean(loadingAction)}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {loadingAction === 'quickHost' ? 'Hosting...' : '🚗 Quick Host (3 Teams)'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.subtext}>
+                  Hosts a live multiplayer room at Vehicle Selection with rival team(s) already ready.
+                </Text>
+
                 <TouchableOpacity
                   style={[styles.actionButton, styles.successButton]}
                   onPress={handleAutoFillLobby}

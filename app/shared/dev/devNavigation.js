@@ -110,7 +110,14 @@ export const startInstantCharacterSelection = async ({ teamCount = 2 } = {}) => 
     HostName: 'Dev Host',
     hostDeviceID: deviceID,
     status: 'characterSelection',
-    teamModels: {},
+    teamModels: {
+      team2: 'car2',
+      ...(isThreeTeams ? { team3: 'car3' } : {}),
+    },
+    teamNames: {
+      team2: 'Team 2',
+      ...(isThreeTeams ? { team3: 'Team 3' } : {}),
+    },
   };
 
   const mockTeamMembers = {
@@ -147,6 +154,25 @@ export const startInstantCharacterSelection = async ({ teamCount = 2 } = {}) => 
     gameData: mockGameData,
     teamMembers: mockTeamMembers,
   });
+};
+
+/**
+ * Quickly hosts a live Firebase multiplayer room and opens CharacterSelection
+ * with rival team(s) already ready, so pressing "SELECT THIS RIDE" once enters the map.
+ */
+export const startQuickMultiplayerVehicleSelection = async ({ teamCount = 2 } = {}) => {
+  const nrOfPlayers = teamCount === 3 ? '9-12' : '1-4';
+  const { gameID, gameData, teamMembers } = await createLiveTestRoom({
+    nrOfPlayers,
+    status: 'characterSelection',
+    preselectRivalVehicles: true,
+  });
+  navigate('CharacterSelection', {
+    gameID,
+    gameData,
+    teamMembers,
+  });
+  return gameID;
 };
 
 /**
