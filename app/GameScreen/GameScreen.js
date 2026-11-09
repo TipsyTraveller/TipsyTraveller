@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { useIsFocused } from '@react-navigation/native';
 import { onValue, ref } from 'firebase/database';
 import { db } from '../../firebaseConfig';
 import ChallengePopup from './components/ChallengePopup';
@@ -9,6 +10,7 @@ import GameHud from './components/GameHud';
 import GameScene from './components/GameScene';
 import RaceProgressTracker from './components/RaceProgressTracker';
 import RoadblockOverlay from './components/RoadblockOverlay';
+import RoutePreview from './components/RoutePreview';
 import TurnHandoff from './components/TurnHandoff';
 import {
   COUNTRY_WORD_CHALLENGE_TYPE,
@@ -43,6 +45,7 @@ import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gam
 import { getDefaultModelOption, getModelOption } from './constants/modelOptions';
 import { devEventBus } from '../shared/dev/devEventBus';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
+import useRouteOverview, { getOverviewRouteSignature } from './hooks/useRouteOverview';
 import {
   addDrinksByRule,
   addDrinksToPlayer,
@@ -120,6 +123,7 @@ const GameScreen = ({ navigation, route }) => {
   const gameID = route?.params?.gameID;
   const teamMembers = route?.params?.teamMembers;
   const multiplayerEnabled = Boolean(gameID && !String(gameID).startsWith('DEV-'));
+  const isFocused = useIsFocused();
 
   useEffect(() => {
     if (multiplayerEnabled) saveActiveGameId(gameID);
@@ -148,6 +152,11 @@ const GameScreen = ({ navigation, route }) => {
   const [localTurnNumber, setLocalTurnNumber] = useState(1);
   const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
   const [showOnboarding, setShowOnboarding] = useState(null);
+  const [localRematch, setLocalRematch] = useState(null);
+  const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const [boardMapReady, setBoardMapReady] = useState(false);
+  const handleBoardCanvasCreated = useCallback(() => setBoardMapReady(false), []);
+  const handleBoardMapFrame = useCallback(() => setBoardMapReady(true), []);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const multiplayerSessionIdRef = useRef(null);
@@ -160,11 +169,14 @@ const GameScreen = ({ navigation, route }) => {
   const localRoadblockHistoryRef = useRef([]);
   const feedbackEventRef = useRef({ dice: null, challenge: null, movement: null, result: null, roadblock: null, victory: null });
   const feedback = useGameFeedback(localSettings);
-  const routeStops = useMemo(
-    () => devRouteStops || multiplayerRouteStops || resolveGameRouteStops(gameData),
-    [devRouteStops, gameData?.duration, gameData?.routeStops, multiplayerRouteStops]
+  const initialRouteStops = useMemo(
+    () => resolveGameRouteStops(gameData),
+    [gameData?.duration, gameData?.routeStops]
   );
+  const routeStops = devRouteStops || multiplayerRouteStops || initialRouteStops;
   const routeModel = useMemo(() => createRouteModel(routeStops), [routeStops]);
+  const initialRouteSignature = useMemo(() => getOverviewRouteSignature(initialRouteStops), [initialRouteStops]);
+  const routeSignature = useMemo(() => getOverviewRouteSignature(routeModel.countryStops), [routeModel]);
   const baseGamePieces = useMemo(
     () => getGamePiecesForGame(gameData),
     [gameData?.nrOfPlayers, gameData?.teamNames]
@@ -190,6 +202,25 @@ const GameScreen = ({ navigation, route }) => {
     teamMembers,
   });
   const currentTeamMembers = multiplayerEnabled ? multiplayer.teamMembers : teamMembers;
+  const canPresentRouteOverview = isFocused && showOnboarding === false
+    && state === 'waiting' && !placementRequest && !connectionMenuOpen
+    && (!multiplayerEnabled || (
+      multiplayer.gameplay?.phase === 'waiting'
+      && !multiplayer.gameplay?.currentAction
+      && multiplayer.isConnected && !multiplayer.isLoading
+      && multiplayer.presenceLoaded && multiplayer.isActiveLeaderConnected
+      && !multiplayer.isRoomExpired && !multiplayer.roomMeta.disconnectedAt
+    ));
+  const routeOverview = useRouteOverview({
+    canPresent: canPresentRouteOverview,
+    connected: multiplayer.isConnected,
+    gameData,
+    gameID,
+    localSession: `local:${gameData.createdAt ?? route?.key}:${localRematch?.number ?? 0}:${localRematch?.signature ?? initialRouteSignature}`,
+    multiplayerEnabled,
+    routeSignature,
+    sessionId: multiplayer.gameplay?.sessionId,
+  });
 
   gamePieces.forEach((piece) => {
     if (!pieceRefs.current[piece.id]) pieceRefs.current[piece.id] = React.createRef();
@@ -212,6 +243,7 @@ const GameScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     setDevRouteStops(null);
+    setLocalRematch(null);
     setPlacementRequest(null);
     setPlacementPosition(null);
   }, [gameData]);
@@ -598,10 +630,15 @@ const GameScreen = ({ navigation, route }) => {
       multiplayer.rematch().catch((error) => console.log('Unable to start rematch', error));
       return;
     }
-    setDevRouteStops(await getFreshRouteSnapshotForDuration(
+    const nextStops = await getFreshRouteSnapshotForDuration(
       gameData?.duration || 'long',
       routeStops
-    ));
+    );
+    setDevRouteStops(nextStops);
+    setLocalRematch((previous) => ({
+      number: (previous?.number ?? 0) + 1,
+      signature: getOverviewRouteSignature(nextStops),
+    }));
     resetLocalGame();
   };
 
@@ -1170,6 +1207,7 @@ const GameScreen = ({ navigation, route }) => {
   }, [currentTeamMembers, multiplayer, multiplayerEnabled]);
 
   const handleDiceRollStart = () => {
+    if (routeOverview.blocksRoll) return;
     if (state === 'waiting' && (!multiplayerEnabled || multiplayer.canControlTurn)) {
       setState('rolling');
     }
@@ -1392,6 +1430,7 @@ const GameScreen = ({ navigation, route }) => {
   };
 
   const requestRoll = async (value = rollDice(), inputMethod = 'shortcut') => {
+    if (routeOverview.blocksRoll) return;
     if (!multiplayerEnabled) {
       startLocalRoll(value, inputMethod === 'boardDice'
         ? (DICE_RESULT_DURATION + DICE_RESULT_EXIT_BUFFER) * getDiceTimingMultiplier(roomRules)
@@ -1915,6 +1954,7 @@ const GameScreen = ({ navigation, route }) => {
   )];
   const progress = `${currentLeg + 1} / ${routeModel.finalStopIndex + 1}`;
   const canRoll = state === 'waiting'
+    && !routeOverview.blocksRoll
     && !activeProgress.isDone
     && (!multiplayerEnabled || (multiplayer.canControlTurn && multiplayer.isConnected));
   const movingStop = placementRequest?.mode === 'move' ? placementRequest.stop : null;
@@ -1945,6 +1985,9 @@ const GameScreen = ({ navigation, route }) => {
         moveTargets={moveTargets}
         movementRouteModel={movementRouteModel}
         parkAtMovementEnd={parkAtMovementEnd}
+        paused={routeOverview.visible && boardMapReady}
+        onCanvasCreated={handleBoardCanvasCreated}
+        onMapFrame={handleBoardMapFrame}
         onDiceRollStart={stableDiceRollStart}
         onDiceRoll={stableBoardDiceRoll}
         onDriveStart={stableDriveStart}
@@ -1998,10 +2041,12 @@ const GameScreen = ({ navigation, route }) => {
         isConnected={!multiplayerEnabled || multiplayer.isConnected}
         isHost={multiplayerEnabled && multiplayer.isHost}
         isLoading={multiplayerEnabled && multiplayer.isLoading}
+        isOpen={connectionMenuOpen}
         isRoomExpired={multiplayerEnabled && multiplayer.isRoomExpired}
         leaders={multiplayerEnabled ? multiplayer.leaders : []}
         localDeviceID={multiplayerEnabled ? multiplayer.deviceID : null}
         onLeave={handleLeaveGame}
+        onToggle={() => setConnectionMenuOpen((open) => !open)}
         onReturnHome={returnHome}
         onReplaceLeader={handleReplaceLeader}
         onTransferHost={handleTransferHost}
@@ -2026,7 +2071,7 @@ const GameScreen = ({ navigation, route }) => {
         isConnected={!multiplayerEnabled || multiplayer.isConnected}
         localTeamId={multiplayer.localTeamId}
         multiplayerEnabled={multiplayerEnabled}
-        visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading) && !showOnboarding}
+        visible={state === 'waiting' && (!multiplayerEnabled || !multiplayer.isLoading) && !showOnboarding && !routeOverview.blocksRoll}
       />
       <RoadblockOverlay
         canChoose={!multiplayerEnabled || multiplayer.canControlTurn}
@@ -2061,6 +2106,13 @@ const GameScreen = ({ navigation, route }) => {
         routeModel={routeModel}
       />
       <GameOnboarding onDismiss={dismissOnboarding} visible={showOnboarding === true} />
+      <RoutePreview
+        boardMapReady={boardMapReady}
+        duration={gameData.duration}
+        onClose={routeOverview.dismiss}
+        routeModel={routeModel}
+        visible={routeOverview.visible}
+      />
       {placementRequest && (
         <CountryStopPlacementForm
           mode={placementRequest.mode}

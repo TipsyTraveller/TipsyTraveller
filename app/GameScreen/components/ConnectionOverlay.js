@@ -8,11 +8,13 @@ const ConnectionOverlay = ({
   isConnected,
   isHost,
   isLoading,
+  isOpen,
   isRoomExpired,
   leaders = [],
   connectedPlayers = [],
   localDeviceID,
   onLeave,
+  onToggle,
   onReturnHome,
   onReplaceLeader,
   onTransferHost,
@@ -21,7 +23,6 @@ const ConnectionOverlay = ({
   roomMeta,
 }) => {
   const insets = useSafeAreaInsets();
-  const [isOpen, setIsOpen] = useState(false);
   const [pendingHost, setPendingHost] = useState(null);
 
   const status = useMemo(() => {
@@ -85,7 +86,7 @@ const ConnectionOverlay = ({
         <Pressable
           accessibilityLabel="Open game connection menu"
           accessibilityRole="button"
-          onPress={() => setIsOpen((open) => !open)}
+          onPress={onToggle}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
         >
           <Text style={styles.menuButtonText}>{isOpen ? 'CLOSE' : 'GAME'}</Text>

@@ -58,6 +58,9 @@ const GameScene = memo(({
   moveTargets,
   movementRouteModel = null,
   parkAtMovementEnd = false,
+  paused = false,
+  onCanvasCreated,
+  onMapFrame,
   onDiceRoll,
   onDiceRollStart,
   onDriveStart,
@@ -113,6 +116,8 @@ const GameScene = memo(({
   return (
     <GameCanvas
     style={canvasStyle}
+    frameloop={paused ? 'never' : 'always'}
+    onCreated={onCanvasCreated}
     camera={{ position: DONE_POS.toArray(), fov: 50, near: 0.5, far: 40 }}
     dpr={[1, 1.5]}
     gl={{
@@ -128,7 +133,7 @@ const GameScene = memo(({
     <directionalLight position={[-6, 5, 4]} intensity={0.32} color="#8fd8ff" />
 
     <Suspense fallback={<MapFallback />}>
-      <MapPlane placementActive={placementActive} onMapPointSelected={onMapPointSelected} />
+      <MapPlane onMapFrame={onMapFrame} placementActive={placementActive} onMapPointSelected={onMapPointSelected} />
     </Suspense>
     <DottedRouteLine
       activeCarProgressRef={activeCarProgressRef}

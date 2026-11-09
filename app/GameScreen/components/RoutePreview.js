@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { Vector3 } from 'three';
@@ -178,12 +178,27 @@ const Itinerary = ({ stops }) => (
   </>
 );
 
-const RoutePreview = ({ duration = 'long', onClose, routeModel, stops = routeModel?.countryStops ?? [], visible }) => {
+const RoutePreview = ({
+  boardMapReady = true, duration = 'long', onClose, routeModel, stops = routeModel?.countryStops ?? [], visible,
+}) => {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const [mapWaitExpired, setMapWaitExpired] = useState(false);
+  const mapLoading = visible && !boardMapReady;
+  const waitingForMap = mapLoading && !mapWaitExpired;
   const hasMap = (routeModel?.markers.length ?? 0) >= 2;
   const stacked = !hasMap || width - insets.left - insets.right < 620;
   const routeDuration = DURATION_TARGET_MINUTES[duration] ? duration : 'long';
+
+  useEffect(() => {
+    if (!mapLoading) {
+      setMapWaitExpired(false);
+      return undefined;
+    }
+    // Keep the board's recovery controls reachable if GL cannot start.
+    const timer = setTimeout(() => setMapWaitExpired(true), 5000);
+    return () => clearTimeout(timer);
+  }, [mapLoading]);
 
   if (!visible) return null;
 
@@ -238,12 +253,17 @@ const RoutePreview = ({ duration = 'long', onClose, routeModel, stops = routeMod
               <Text style={styles.rules}>Finish · 1st +{FINISH_BONUSES[0]} · 2nd +{FINISH_BONUSES[1]} · 3rd +{FINISH_BONUSES[2]}</Text>
             </View>
             <Pressable
-              accessibilityLabel="Let's drive"
+              accessibilityLabel={waitingForMap ? 'Loading board map' : "Let's drive"}
               accessibilityRole="button"
+              accessibilityState={{ busy: waitingForMap, disabled: waitingForMap }}
+              disabled={waitingForMap}
               onPress={onClose}
               style={({ pressed }) => [styles.button, pressed && styles.pressed]}
             >
-              <Text style={styles.buttonText}>LET’S DRIVE</Text>
+              {waitingForMap && <ActivityIndicator size="small" color={TOURING_NAVY} />}
+              <Text style={styles.buttonText} accessibilityLiveRegion="polite">
+                {waitingForMap ? 'LOADING MAP…' : 'LET’S DRIVE'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -300,7 +320,7 @@ const styles = StyleSheet.create({
   scoring: { gap: 3 },
   rules: { color: TOURING_NAVY, fontFamily: 'dogicapixel', fontSize: 7, lineHeight: 10 },
   button: {
-    minHeight: 44, justifyContent: 'center', paddingHorizontal: 14,
+    minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14,
     borderRadius: 6, borderWidth: 2, borderColor: TOURING_NAVY, backgroundColor: TOURING_TEAL,
   },
   pressed: { backgroundColor: TOURING_GOLD },
