@@ -32,6 +32,7 @@ release. The current Android release uses debug signing and is not production-re
 | `app/HostName/HostName.js` | Host identity and room creation |
 | `app/JoinGame/JoinGame.js` | Room validation and team assignment |
 | `app/Lobby/Lobby.js` | Realtime roster and start controls |
+| `app/Rules/Rules.js` | Lobby how-to-play rules screen |
 | `app/CharacterSelection/CharachterSelection.js` | Vehicle selection/readiness |
 | `app/Account/Account.js` | Local profile, statistics, identity |
 | `app/Settings/Settings.js` | Local preferences and game guide |

@@ -741,7 +741,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         !current
         || current.phase !== 'moving'
         || action?.id !== actionId
-        || completedAt + 250 < action.movementEndsAt
+        || completedAt + 650 < action.movementEndsAt
       ) {
         return undefined;
       }

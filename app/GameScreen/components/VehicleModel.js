@@ -91,6 +91,7 @@ const prepareVehicleScene = (scene, color, preserveMaterials, isPreview = false)
     if (!child.isMesh) return;
 
     child.frustumCulled = false;
+    child.renderOrder = isPreview ? 0 : 20;
 
     if (preserveMaterials) {
       child.material = Array.isArray(child.material)
@@ -132,7 +133,7 @@ const prepareVehicleScene = (scene, color, preserveMaterials, isPreview = false)
 };
 
 const VehicleModel = memo(({ color = '#d71920', mode = 'board', model }) => {
-  const { scene } = useGLTF(model.source);
+  const { scene } = useGLTF(model.source, false, false);
   const isPreview = mode === 'preview';
   const preparedScene = useMemo(
     () => prepareVehicleScene(scene, color, model.preserveMaterials, isPreview),

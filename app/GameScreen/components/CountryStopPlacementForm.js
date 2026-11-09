@@ -36,7 +36,7 @@ export default function CountryStopPlacementForm({ mode, onCancel, onSaved, posi
             </View>
             {mode === 'move' ? (
               <Text style={styles.bannerSubtext}>
-                The cyan nameplate marks the stop you’re editing. Click the map to place it.
+                Connected pin is bouncing in cyan with a name badge. Click map to set new position.
               </Text>
             ) : null}
             {mode === 'move' && stop?.position ? (

@@ -4,6 +4,7 @@ import {
   StyleSheet, Text, View,
 } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { off, onValue, push, ref } from 'firebase/database';
 import { db } from '../../firebaseConfig';
@@ -22,6 +23,7 @@ const asTeamObject = (players, teamKey) => Object.fromEntries(getTeamEntries(pla
 
 export default function Lobby({ navigation, route }) {
   const { gameID, gameSettings } = route.params;
+  const isFocused = useIsFocused();
   const [gameData, setGameData] = useState(gameSettings || route.params || {});
   const [teamMembers, setTeamMembers] = useState();
   const [localDeviceID, setLocalDeviceID] = useState(null);
@@ -65,13 +67,13 @@ export default function Lobby({ navigation, route }) {
   }, [gameID]);
 
   useEffect(() => {
-    if (!teamMembers || !navigation.isFocused()) return;
+    if (!teamMembers || !isFocused) return;
     if (gameData?.status === 'characterSelection') {
       navigation.navigate('CharacterSelection', { gameID, gameData, teamMembers });
     } else if (gameData?.status === 'game' && gameData?.gameplay) {
       navigation.replace('GameScreen', { gameID, gameData, teamMembers });
     }
-  }, [gameData, gameID, navigation, teamMembers]);
+  }, [gameData, gameID, isFocused, navigation, teamMembers]);
 
   const runRosterAction = async (actionKey, mutate) => {
     if (!host || pendingRosterAction) return false;
@@ -120,12 +122,9 @@ export default function Lobby({ navigation, route }) {
     }
   };
 
-    const handleRules = () => {
-        Alert.alert(
-            "How to play",
-            "Use one phone per team; that phone stays with the team leader. When your team is called, roll the die, move, and complete the country challenge. Pass the phone when a challenge names a player. Roadblocks make a leading team beat a hard challenge or take a detour. Progress, challenges, and finishing position earn points. If a phone disconnects, rejoin with the same device to restore the current turn."
-        );
-    };
+  const handleRules = () => {
+    navigation.navigate('RulesScreen', { gameID });
+  };
 
   const handleRemovePlayer = (teamKey, playerId, player) => {
     if (player.isLeader) {

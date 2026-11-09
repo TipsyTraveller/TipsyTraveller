@@ -624,6 +624,13 @@ const BoardDice = memo(({
     }
 
     if (stateRef.current.mode === 'idle') {
+      diceRef.current.visible = enabled;
+      if (!enabled) {
+        if (labelRef.current) labelRef.current.visible = false;
+        return;
+      }
+
+      const safeDelta = Math.min(delta, 0.1);
       const bob = Math.sin(clock.elapsedTime * 2.2) * IDLE_BOB_HEIGHT;
       const targetPosition = IDLE_TARGET
         .set(0, 0, -IDLE_SCREEN_DISTANCE)
@@ -634,9 +641,9 @@ const BoardDice = memo(({
       LABEL_CAMERA_UP.set(0, 1, 0).applyQuaternion(camera.quaternion);
       targetPosition.addScaledVector(LABEL_CAMERA_UP, bob);
       diceRef.current.position.copy(targetPosition);
-      diceRef.current.rotation.x += delta * 0.45;
-      diceRef.current.rotation.y += delta * 0.7;
-      diceRef.current.rotation.z += delta * 0.25;
+      diceRef.current.rotation.x += safeDelta * 0.45;
+      diceRef.current.rotation.y += safeDelta * 0.7;
+      diceRef.current.rotation.z += safeDelta * 0.25;
 
       if (labelRef.current) {
         labelRef.current.visible = enabled;

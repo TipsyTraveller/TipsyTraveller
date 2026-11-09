@@ -1,5 +1,5 @@
-import { memo, Suspense, useCallback, useMemo, useState } from 'react';
-import { Canvas } from '@react-three/fiber/native';
+import { memo, Suspense, useMemo } from 'react';
+import GameCanvas from '../../shared/components/GameCanvas';
 import { DONE_POS } from '../constants/camera';
 import CameraController from './CameraController';
 import BoardDice from './BoardDice';
@@ -37,9 +37,48 @@ const GamePiecesFallback = ({ gamePieces, routeModel, teamProgress }) => (
   </>
 );
 
+const CountryMarkersFallback = ({
+  currentLeg,
+  movingMarkerIndex = -1,
+  occupiedMarkerIndexes,
+  routeModel,
+  targetLeg,
+}) => {
+  const isMovePlacement = movingMarkerIndex >= 0;
+  const destinationLeg = targetLeg !== undefined && targetLeg !== null && targetLeg > currentLeg
+    ? targetLeg
+    : currentLeg + 1;
+  const activeMarker = isMovePlacement
+    ? -1
+    : Math.min(destinationLeg, routeModel.markers.length - 1);
+
+  return (
+    <>
+      {routeModel.markers.map((position, index) => {
+        const isMoving = isMovePlacement && index === movingMarkerIndex;
+        if (occupiedMarkerIndexes.has(index) && !isMoving) return null;
+
+        return (
+          <group key={`${position.x}-${position.y}-${index}`} position={[position.x, position.y, MAP_Z + 0.09]}>
+            <mesh>
+              <circleGeometry args={[isMoving ? 0.22 : (index === activeMarker ? 0.145 : 0.11), 16]} />
+              <meshBasicMaterial color={isMoving ? '#00E5FF' : (index === activeMarker ? '#FFD700' : '#E53935')} />
+            </mesh>
+            <mesh position={[0, 0, -0.003]}>
+              <ringGeometry args={[isMoving ? 0.24 : (index === activeMarker ? 0.16 : 0.12), isMoving ? 0.34 : (index === activeMarker ? 0.22 : 0.17), 16]} />
+              <meshBasicMaterial color={isMoving ? '#00E5FF' : '#1BA39C'} />
+            </mesh>
+          </group>
+        );
+      })}
+    </>
+  );
+};
+
 const GameScene = memo(({
   activeCarProgressRef,
   activeDetourTeamId = null,
+  activeTeamColor,
   cameraMode,
   canvasStyle,
   currentLeg,
@@ -48,12 +87,12 @@ const GameScene = memo(({
   diceVisible = true,
   detourRouteModels,
   driving,
-  lowPower,
   gamePieces,
   moveFromLeg,
   moveStartDelay,
   moveTargetLeg,
   movingMarkerIndex = -1,
+  movingMarkerStop = null,
   movingPieceId,
   moveTargets,
   movementRouteModel = null,
@@ -81,28 +120,17 @@ const GameScene = memo(({
   routeModel,
   vehicleInMotion,
 }) => {
-  const [hasMapFrame, setHasMapFrame] = useState(false);
-  const handleMapFrame = useCallback(() => setHasMapFrame(true), []);
   const occupiedMarkerIndexes = useMemo(() => new Set(
     gamePieces
       .filter((piece) => !(vehicleInMotion && piece.id === movingPieceId))
-      .filter((piece) => !(Number(teamProgress[piece.id]?.detour?.step) > 0))
+      .filter((piece) => !teamProgress[piece.id]?.detour)
       .map((piece) => teamProgress[piece.id]?.currentLeg ?? 0)
   ), [gamePieces, movingPieceId, teamProgress, vehicleInMotion]);
 
-  const onDetour = activeDetourTeamId !== null && detourPreviewModel;
-  const detourHasNextWaypoint = onDetour && detourTargetLeg < detourPreviewModel.finalStopIndex;
-  const drivingDetour = vehicleInMotion && onDetour && movementRouteModel;
-  const mainTargetLeg = onDetour
-    ? routeModel.countryStops.findIndex((stop) => stop.id === detourPreviewModel.countryStops.at(-1)?.id)
-    : moveTargetLeg;
-
   return (
-    <Canvas
+    <GameCanvas
     style={canvasStyle}
-    // Let the loaded map render before pausing for an overlay.
-    frameloop={lowPower && hasMapFrame ? 'never' : 'always'}
-    camera={{ position: DONE_POS.toArray(), fov: 50 }}
+    camera={{ position: DONE_POS.toArray(), fov: 50, near: 0.5, far: 40 }}
     dpr={[1, 1.5]}
     gl={{
       antialias: true,
@@ -117,18 +145,24 @@ const GameScene = memo(({
     <directionalLight position={[-6, 5, 4]} intensity={0.32} color="#8fd8ff" />
 
     <Suspense fallback={<MapFallback />}>
-      <MapPlane onMapFrame={handleMapFrame} placementActive={placementActive} onMapPointSelected={onMapPointSelected} />
+      <MapPlane placementActive={placementActive} onMapPointSelected={onMapPointSelected} />
     </Suspense>
     <DottedRouteLine
       activeCarProgressRef={activeCarProgressRef}
+      activeColor={activeTeamColor}
       driving={driving}
       fromLeg={moveFromLeg}
+      moveStartDelay={moveStartDelay}
       pathRevealDuration={pathRevealDuration}
       toLeg={moveTargetLeg}
       routeModel={routeModel}
       movementRouteModel={movementRouteModel}
     />
-    {showDetourPreview && detourPreviewModel && <DetourRouteLine routeModel={detourPreviewModel} />}
+    <DetourRouteLine
+      routeModel={detourPreviewModel}
+      selected={detourPreviewSelected}
+      visible={showDetourPreview}
+    />
     {roadblocks && roadblocks.length > 0 && (
       <group name="roadblocks">
         {roadblocks.map((roadblock) => (
@@ -161,52 +195,63 @@ const GameScene = memo(({
       />
     </Suspense>
     {showDetourPreview && detourPreviewModel && (
-      <CountryMarkers
-        activeCarProgressRef={activeCarProgressRef}
-        currentLeg={detourCurrentLeg}
-        labelMode={detourPreviewSelected ? 'next-and-finish' : 'all'}
-        movementRouteModel={movementRouteModel}
-        movementStartLeg={detourCurrentLeg}
-        movementTargetLeg={detourTargetLeg}
-        occupiedMarkerIndexes={detourOccupiedIndexes}
-        routeModel={detourPreviewModel}
-        targetLeg={detourTargetLeg}
-        variant="detour"
-        vehicleInMotion={Boolean(drivingDetour)}
-      />
+      <Suspense fallback={null}>
+        <CountryMarkers
+          currentLeg={detourCurrentLeg ?? 0}
+          occupiedMarkerIndexes={detourOccupiedIndexes || new Set([0, detourPreviewModel.finalStopIndex])}
+          routeModel={detourPreviewModel}
+          showLabels
+          showStopNumbers={false}
+          targetLeg={detourTargetLeg ?? 1}
+        />
+      </Suspense>
     )}
     {Object.entries(detourRouteModels || {}).map(([teamId, detourModel]) => {
       if (!detourModel || teamId === activeDetourTeamId) return null;
-      const detourStep = Number(teamProgress[teamId]?.detour?.step) || 0;
+      const detourStep = Math.min(
+        Number(teamProgress[teamId]?.detour?.step) || 0,
+        detourModel.finalStopIndex
+      );
+      const occupiedIndexes = new Set([0, detourModel.finalStopIndex]);
+      if (detourStep > 0 && detourStep < detourModel.finalStopIndex) {
+        occupiedIndexes.add(detourStep);
+      }
 
       return (
-        <group key={teamId}>
-          <DetourRouteLine routeModel={detourModel} />
+        <Suspense key={`inactive-detour-pins-${teamId}`} fallback={null}>
           <CountryMarkers
             currentLeg={detourStep}
-            labelMode="none"
-            occupiedMarkerIndexes={new Set([detourStep])}
+            occupiedMarkerIndexes={occupiedIndexes}
             routeModel={detourModel}
-            variant="detour"
+            showLabels
+            showStopNumbers={false}
+            targetLeg={Math.min(detourStep + 1, detourModel.finalStopIndex)}
           />
-        </group>
+        </Suspense>
       );
     })}
-    <CountryMarkers
-      activeCarProgressRef={activeCarProgressRef}
-      animateArrival={!drivingDetour || !detourHasNextWaypoint}
-      animateDeparture={!drivingDetour || detourCurrentLeg === 0}
-      currentLeg={currentLeg}
-      highlightDestination={!detourHasNextWaypoint}
-      movementRouteModel={movementRouteModel}
-      movementStartLeg={moveFromLeg}
-      movementTargetLeg={moveTargetLeg}
-      movingMarkerIndex={movingMarkerIndex}
-      occupiedMarkerIndexes={occupiedMarkerIndexes}
-      routeModel={routeModel}
-      targetLeg={mainTargetLeg}
-      vehicleInMotion={vehicleInMotion}
-    />
+    <Suspense fallback={
+      <CountryMarkersFallback
+        currentLeg={currentLeg}
+        movingMarkerIndex={movingMarkerIndex}
+        occupiedMarkerIndexes={occupiedMarkerIndexes}
+        routeModel={routeModel}
+        targetLeg={moveTargetLeg}
+      />
+    }>
+      <CountryMarkers
+        activeCarProgressRef={movementRouteModel ? null : activeCarProgressRef}
+        currentLeg={currentLeg}
+        movementStartLeg={moveFromLeg}
+        movementTargetLeg={moveTargetLeg}
+        movingMarkerIndex={movingMarkerIndex}
+        movingMarkerStop={movingMarkerStop}
+        occupiedMarkerIndexes={occupiedMarkerIndexes}
+        routeModel={routeModel}
+        targetLeg={moveTargetLeg}
+        vehicleInMotion={vehicleInMotion}
+      />
+    </Suspense>
     <CameraController
       mode={cameraMode}
       overviewFocusOffset={isRoadblockState ? 0.62 : 0}
@@ -231,7 +276,7 @@ const GameScene = memo(({
       rollAction={rollAction}
       visible={diceVisible}
     />
-    </Canvas>
+    </GameCanvas>
   );
 });
 

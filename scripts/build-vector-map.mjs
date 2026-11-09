@@ -20,6 +20,9 @@ const SOURCE_PATH = new URL('../assets/map.svg', import.meta.url);
 const OUTPUT_PATH = process.env.MAP_OUTPUT
   ? pathToFileURL(path.resolve(process.env.MAP_OUTPUT))
   : new URL('../assets/models/world-map-vector.glb', import.meta.url);
+const MOBILE_OUTPUT_PATH = process.env.MAP_MOBILE_OUTPUT
+  ? pathToFileURL(path.resolve(process.env.MAP_MOBILE_OUTPUT))
+  : new URL('../assets/models/world-map-vector-mobile.glb', import.meta.url);
 const TWO_D_OUTPUT_PATH = process.env.MAP_2D_OUTPUT
   ? pathToFileURL(path.resolve(process.env.MAP_2D_OUTPUT))
   : null;
@@ -549,3 +552,16 @@ const result = await exporter.parseAsync(scene, {
 
 await fs.writeFile(OUTPUT_PATH, Buffer.from(result));
 console.log(`Wrote ${OUTPUT_PATH.pathname}`);
+
+// Native Expo GL renders at the device's full pixel ratio. Ship a flat board
+// there so phones do not also allocate and draw the relief walls and normals.
+const mobileScene = new THREE.Scene();
+mobileScene.name = 'WorldMapFlat';
+mobileScene.add(landTop.clone(), borders.clone());
+const mobileResult = await exporter.parseAsync(mobileScene, {
+  binary: true,
+  onlyVisible: true,
+  trs: false,
+});
+await fs.writeFile(MOBILE_OUTPUT_PATH, Buffer.from(mobileResult));
+console.log(`Wrote ${MOBILE_OUTPUT_PATH.pathname}`);

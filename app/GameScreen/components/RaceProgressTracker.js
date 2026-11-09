@@ -2,7 +2,6 @@ import React, { memo, useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { TOURING_CREAM, TOURING_GOLD, TOURING_NAVY, TOURING_TEAL } from '../constants/touringPalette';
 
 const VehicleIcon = ({ color, isActive }) => (
   <View style={[styles.vehicleIcon, isActive && styles.vehicleIconActive]}>
@@ -10,13 +9,13 @@ const VehicleIcon = ({ color, isActive }) => (
       <Path
         d="M3 13.5 5.6 9h5.2l3.4-4h8.1l4.2 4H30l1.5 4.5v2H3v-2Z"
         fill={color}
-        stroke={TOURING_NAVY}
+        stroke="#111111"
         strokeWidth="2"
         strokeLinejoin="round"
       />
-      <Path d="m13.4 9 2.4-2.4h5.5L23.8 9H13.4Z" fill={TOURING_CREAM} />
-      <Circle cx="9" cy="15.5" r="2.6" fill={TOURING_NAVY} stroke={TOURING_NAVY} strokeWidth="1.3" />
-      <Circle cx="26" cy="15.5" r="2.6" fill={TOURING_NAVY} stroke={TOURING_NAVY} strokeWidth="1.3" />
+      <Path d="m13.4 9 2.4-2.4h5.5L23.8 9H13.4Z" fill="#FFF1CD" />
+      <Circle cx="9" cy="15.5" r="2.6" fill="#2C3E50" stroke="#111111" strokeWidth="1.3" />
+      <Circle cx="26" cy="15.5" r="2.6" fill="#2C3E50" stroke="#111111" strokeWidth="1.3" />
     </Svg>
   </View>
 );
@@ -30,7 +29,7 @@ const FinishFlag = () => (
           key={index}
           style={[
             styles.flagSquare,
-            { backgroundColor: (Math.floor(index / 3) + index) % 2 === 0 ? TOURING_NAVY : TOURING_CREAM },
+            { backgroundColor: (Math.floor(index / 3) + index) % 2 === 0 ? '#111111' : '#FFF1CD' },
           ]}
         />
       ))}
@@ -91,7 +90,7 @@ const RaceProgressTracker = ({
 
         <View style={styles.routeArea} pointerEvents="none">
           <View style={styles.trackBounds}>
-            <View style={styles.trackRail}><View style={styles.trackRoad} /></View>
+            <View style={styles.trackRail} />
             {routeModel.stopProgress.map((progress, index) => (
               <View
                 key={`${routeModel.countryStops[index]?.id || index}-tick`}
@@ -156,9 +155,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
     paddingVertical: 4,
     borderWidth: 2,
-    borderColor: TOURING_NAVY,
+    borderColor: '#111111',
     borderRadius: 9,
-    backgroundColor: TOURING_CREAM,
+    backgroundColor: 'rgba(255, 241, 205, 0.92)',
   },
   finishHeader: {
     height: 18,
@@ -174,7 +173,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 2,
-    backgroundColor: TOURING_NAVY,
+    backgroundColor: '#111111',
   },
   flagGrid: {
     position: 'absolute',
@@ -185,7 +184,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     borderWidth: 1,
-    borderColor: TOURING_NAVY,
+    borderColor: '#111111',
   },
   flagSquare: {
     width: '33.333%',
@@ -208,13 +207,11 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: '50%',
-    width: 5,
-    marginLeft: -2.5,
-    borderRadius: 2.5,
-    padding: 1,
-    backgroundColor: TOURING_NAVY,
+    width: 3,
+    marginLeft: -1.5,
+    borderRadius: 1.5,
+    backgroundColor: '#2C3E50',
   },
-  trackRoad: { flex: 1, borderRadius: 1.5, backgroundColor: TOURING_TEAL },
   stopTick: {
     position: 'absolute',
     left: '50%',
@@ -223,15 +220,13 @@ const styles = StyleSheet.create({
     marginTop: -1,
     marginLeft: -4,
     borderRadius: 1,
-    backgroundColor: TOURING_CREAM,
-    borderColor: TOURING_NAVY,
-    borderWidth: 0.5,
+    backgroundColor: '#1BA39C',
   },
   majorStopTick: {
     width: 12,
     height: 3,
     marginLeft: -6,
-    backgroundColor: TOURING_GOLD,
+    backgroundColor: '#D71920',
   },
   vehiclePosition: {
     position: 'absolute',
@@ -263,8 +258,8 @@ const styles = StyleSheet.create({
     marginLeft: -5,
     borderRadius: 5,
     borderWidth: 2,
-    borderColor: TOURING_NAVY,
-    backgroundColor: TOURING_TEAL,
+    borderColor: '#111111',
+    backgroundColor: '#1BA39C',
   },
   actionButton: {
     minHeight: 26,
@@ -272,15 +267,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 1,
     borderWidth: 2,
-    borderColor: TOURING_NAVY,
+    borderColor: '#111111',
     borderRadius: 7,
-    backgroundColor: TOURING_TEAL,
+    backgroundColor: '#1BA39C',
   },
   actionButtonDisabled: {
     opacity: 0.45,
   },
   actionLabel: {
-    color: TOURING_NAVY,
+    color: '#FFFFFF',
     fontFamily: 'dogicapixelbold',
     fontSize: 6,
   },

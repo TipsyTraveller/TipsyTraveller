@@ -15,6 +15,7 @@ import GameScreen from "../GameScreen/GameScreen";
 import CharacterSelection from "../CharacterSelection/CharachterSelection";
 import Account from '../Account/Account';
 import Settings from '../Settings/Settings';
+import Rules from '../Rules/Rules';
 import { DEV_GAME_ROUTE_PARAMS, START_ON_DEV_GAME_SCREEN } from "./devGameRoute";
 import DevPortal from '../shared/dev/DevPortal';
 import { navigationRef } from '../shared/dev/devNavigation';
@@ -85,6 +86,11 @@ export default function App() {
             name='SettingsScreen'
             component={ Settings }
             options={{ headerShown: false, gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name='RulesScreen'
+            component={ Rules }
+            options={{ headerShown: false }}
           />
           </Stack.Navigator>
         </NavigationContainer>
