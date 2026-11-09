@@ -1,6 +1,7 @@
 import { memo, Suspense, useLayoutEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
+import BadgeOutlineText from './BadgeOutlineText';
 import BadgeText from './BadgeText';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
 import { TOURING_GOLD, TOURING_NAVY, TOURING_TEAL } from '../constants/touringPalette';
@@ -114,11 +115,9 @@ const CountryMarker = ({
           scale={[radius * 0.91, radius * 0.91, 1]}
         />
         <group ref={number}>
-          <Suspense fallback={null}>
-            <BadgeText fontSize={radius * 0.79} material={navy} position={numberPosition}>
-              {stopNumber}
-            </BadgeText>
-          </Suspense>
+          <BadgeOutlineText fontSize={radius * 0.79} material={navy} position={numberPosition}>
+            {stopNumber}
+          </BadgeOutlineText>
         </group>
       </group>
     </group>
