@@ -147,7 +147,7 @@ const GameScreen = ({ navigation, route }) => {
   const [localMovementPath, setLocalMovementPath] = useState(null);
   const [localTurnNumber, setLocalTurnNumber] = useState(1);
   const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(null);
   const activeCarProgressRef = useRef(0);
   const visualActionIdRef = useRef(null);
   const multiplayerSessionIdRef = useRef(null);
@@ -1290,16 +1290,13 @@ const GameScreen = ({ navigation, route }) => {
   };
 
   const startLocalRoadblockTest = () => {
-    if (
-      !['waiting', 'rolling'].includes(state)
-      || !activePiece
-      || activeProgress.isDone
-      || activeProgress.detour
-    ) return;
+    if (showOnboarding !== false) return 'Finish onboarding before testing a roadblock.';
+    if (state !== 'waiting' || !activePiece) return 'Test a roadblock while waiting for the next roll.';
+    if (activeProgress.detour) return 'Finish the active detour before testing another roadblock.';
 
     const currentLeg = activeProgress.currentLeg;
     const targetLeg = Math.min(currentLeg + 1, routeModel.finalStopIndex);
-    if (targetLeg <= currentLeg) return;
+    if (activeProgress.isDone || targetLeg <= currentLeg) return 'Start a new route to test another roadblock.';
     const action = {
       id: `local-roadblock-test-${currentLeg}-${Date.now()}`,
       type: 'roll',
@@ -1316,7 +1313,7 @@ const GameScreen = ({ navigation, route }) => {
       timerPace: roomRules.challengeTimerPace,
       turnNumber: localTurnNumber,
     });
-    if (!event) return;
+    if (!event) return 'No detour is available on this leg. Try from another stop.';
 
     activeCarProgressRef.current = routeModel.stopProgress[currentLeg] ?? 0;
     setLastRoll(action.value);
@@ -1331,6 +1328,7 @@ const GameScreen = ({ navigation, route }) => {
     setLocalPendingAction(action);
     setLocalRoadblock(event);
     setState('roadblock');
+    return null;
   };
 
   const handleRoadblockAction = (choice) => {
@@ -1652,6 +1650,14 @@ const GameScreen = ({ navigation, route }) => {
 
   const stableDevDriveToStop = useLatestCallback(startDevDriveToStop);
   const stableRoadblockTest = useLatestCallback(startLocalRoadblockTest);
+  const initialRoadblockTestStarted = useRef(false);
+  const shouldStartRoadblockTest = route?.params?.devRoadblockTest && gameID === 'DEV-INSTANT';
+  useEffect(() => {
+    if (!shouldStartRoadblockTest || showOnboarding !== false || initialRoadblockTestStarted.current) return;
+    initialRoadblockTestStarted.current = true;
+    stableRoadblockTest();
+  }, [shouldStartRoadblockTest, showOnboarding, stableRoadblockTest]);
+
   const requestRollRef = useRef(requestRoll);
   requestRollRef.current = requestRoll;
   const handleRestartRef = useRef(handleRematch);
@@ -1707,9 +1713,10 @@ const GameScreen = ({ navigation, route }) => {
         return [...filtered, newRoadblock];
       });
     });
-    const unsubTestRoadblock = devEventBus.on('dev:testRoadblock', () => {
-      if (multiplayerEnabled) return;
-      stableRoadblockTest();
+    const unsubTestRoadblock = devEventBus.on('dev:testRoadblock', ({ onResult } = {}) => {
+      if (multiplayerEnabled || !navigation.isFocused()) return;
+      const message = stableRoadblockTest();
+      onResult?.(message);
     });
     const unsubClearRoadblocks = devEventBus.on('dev:clearRoadblocks', () => {
       setRoadblocks([]);
@@ -1760,7 +1767,7 @@ const GameScreen = ({ navigation, route }) => {
       unsubPlacement();
       unsubRestart();
     };
-  }, [multiplayerEnabled, routeStops, stableDevDriveToStop, stableRoadblockTest]);
+  }, [multiplayerEnabled, navigation, routeStops, stableDevDriveToStop, stableRoadblockTest]);
 
   const handleMapPointSelected = async (point) => {
     if (!placementRequest || !point) return;
@@ -1876,13 +1883,6 @@ const GameScreen = ({ navigation, route }) => {
     : state === 'moving'
       ? detourStep
       : Math.min(detourStep + 1, (detourPreviewModel?.finalStopIndex ?? 3));
-  const detourOccupiedIndexes = useMemo(() => {
-    const set = new Set([0, detourPreviewModel?.finalStopIndex ?? 3]);
-    if (state === 'challenge' && roadblockEvent?.status === 'detourChallenge') {
-      set.add(detourStep);
-    }
-    return set;
-  }, [detourPreviewModel?.finalStopIndex, detourStep, roadblockEvent?.status, state]);
   const visibleRoadblocks = useMemo(
     () => liveRoadblock ? [...roadblocks.filter((item) => item.id !== liveRoadblock.id), liveRoadblock] : roadblocks,
     [liveRoadblock, roadblocks]
@@ -1961,7 +1961,6 @@ const GameScreen = ({ navigation, route }) => {
         isRoadblockState={state === 'roadblock'}
         detourCurrentLeg={detourCurrentLeg}
         detourTargetLeg={detourTargetLeg}
-        detourOccupiedIndexes={detourOccupiedIndexes}
         rollAction={multiplayerEnabled ? multiplayer.gameplay?.currentAction : null}
         targetRef={targetRef}
         teamProgress={teamProgress}
@@ -2061,7 +2060,7 @@ const GameScreen = ({ navigation, route }) => {
         pieceRefs={pieceRefs.current}
         routeModel={routeModel}
       />
-      <GameOnboarding onDismiss={dismissOnboarding} visible={showOnboarding} />
+      <GameOnboarding onDismiss={dismissOnboarding} visible={showOnboarding === true} />
       {placementRequest && (
         <CountryStopPlacementForm
           mode={placementRequest.mode}

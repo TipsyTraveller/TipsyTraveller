@@ -1,60 +1,11 @@
-import { memo, useEffect, useMemo } from 'react';
-import * as THREE from 'three';
-import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
+import { memo } from 'react';
+import { TouringRoadMesh, useTouringRoad } from './TouringRoad';
 
-const SEGMENTS = 180;
-const ROUTE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.0125;
+const DetourRouteLine = memo(({ routeModel, selected = false, inactive = false }) => {
+  const road = useTouringRoad(routeModel, 'detour');
+  const opacity = inactive ? 0.62 : (selected ? 0.95 : road.opacity);
 
-const buildRibbon = (routeModel) => {
-  const positions = [];
-  const indices = [];
-  const point = new THREE.Vector3();
-  const halfWidth = 0.024;
-
-  for (let index = 0; index <= SEGMENTS; index += 1) {
-    const progress = index / SEGMENTS;
-    routeModel.curve.getPointAt(progress, point);
-    const angle = routeModel.getTangentAngle(progress, 0.008);
-    const nx = -Math.sin(angle) * halfWidth;
-    const ny = Math.cos(angle) * halfWidth;
-    positions.push(point.x + nx, point.y + ny, ROUTE_Z);
-    positions.push(point.x - nx, point.y - ny, ROUTE_Z);
-
-    if (index < SEGMENTS) {
-      const base = index * 2;
-      indices.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
-    }
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setIndex(indices);
-  geometry.computeBoundingSphere();
-  return geometry;
-};
-
-const DetourRouteLine = memo(({ routeModel, selected = false, visible = false }) => {
-  const geometry = useMemo(() => routeModel ? buildRibbon(routeModel) : null, [routeModel]);
-  useEffect(() => () => geometry?.dispose?.(), [geometry]);
-
-  if (!visible || !routeModel || !geometry) return null;
-
-  return (
-    <group name="roadblock-detour-preview">
-      <mesh geometry={geometry} renderOrder={3.5} frustumCulled={false}>
-        <meshBasicMaterial
-          color={selected ? '#FFD700' : '#FFB11B'}
-          depthWrite={false}
-          opacity={selected ? 1 : 0.82}
-          side={THREE.DoubleSide}
-          toneMapped={false}
-          transparent
-        />
-      </mesh>
-    </group>
-  );
+  return <TouringRoadMesh road={road} opacity={opacity} renderOrder={3.5} />;
 });
-
-DetourRouteLine.displayName = 'DetourRouteLine';
 
 export default DetourRouteLine;

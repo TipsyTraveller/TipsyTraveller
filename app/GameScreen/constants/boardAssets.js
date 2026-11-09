@@ -7,7 +7,6 @@ const MOBILE_MAP_MODEL_SOURCE = require('../../../assets/models/world-map-vector
 export const MAP_MODEL_SOURCE = Platform.OS === 'web'
   ? DESKTOP_MAP_MODEL_SOURCE
   : MOBILE_MAP_MODEL_SOURCE;
-export const MARKER_MODEL_SOURCE = require('../../../assets/models/location.glb');
 
 // Timing helpers for the board load. Logs are dev-only so release builds stay quiet.
 export const perfNow = () => (
@@ -34,5 +33,4 @@ export const preloadBoardAssets = () => {
   }
 
   useGLTF.preload(MAP_MODEL_SOURCE, false, false);
-  useGLTF.preload(MARKER_MODEL_SOURCE, false, false);
 };

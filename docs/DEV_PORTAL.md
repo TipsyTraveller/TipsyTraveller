@@ -14,7 +14,9 @@ not a production authorization boundary.
   assign default vehicles to unready teams, and remove test bots.
 - **Board & Game Tools:** force rolls 1–3, move to a route stop and open its challenge,
   skip active challenge/roadblock steps, test or clear roadblocks, and reset board
-  state. The roadblock-event shortcut places the barrier on the next leg from the
+  state. Test Roadblock Event opens a mock board from Home and runs on the current
+  mock board when it is waiting for a roll. Use Instant Board Play to test from a
+  live room. The shortcut places the barrier on the next leg from the
   active team's current position and may use a relaxed detour only when that leg has
   no production-valid pair. Use several route families and roll lengths to inspect
   production-validated branches, both temporary challenges, and final rejoin.

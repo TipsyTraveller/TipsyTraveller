@@ -277,10 +277,31 @@ export default function DevPortalModal({ visible, onClose }) {
     onClose();
   };
 
-  const handleTestRoadblock = () => {
-    devEventBus.emit('dev:testRoadblock');
-    showStatus('Started the complete roadblock choice flow!');
-    onClose();
+  const handleTestRoadblock = async () => {
+    const routeInfo = getCurrentRouteInfo();
+    if (routeInfo?.name === 'GameScreen') {
+      const { gameID } = routeInfo.params;
+      if (gameID && !String(gameID).startsWith('DEV-')) {
+        showStatus('Roadblock testing uses a local board. Open Instant Board Play from Screens.');
+        return;
+      }
+
+      let message = 'The board is still loading. Try again in a moment.';
+      devEventBus.emit('dev:testRoadblock', { onResult: (result) => { message = result; } });
+      if (message) showStatus(message);
+      else onClose();
+      return;
+    }
+
+    setLoadingAction('roadblockTest');
+    try {
+      await startInstantGameScreen({ devRoadblockTest: true });
+      onClose();
+    } catch (error) {
+      showStatus(error.message || 'Could not open the local test board.');
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   const handleClearRoadblocks = () => {
@@ -745,6 +766,7 @@ export default function DevPortalModal({ visible, onClose }) {
                 <TouchableOpacity
                   style={[styles.actionButton, styles.primaryButton]}
                   onPress={handleTestRoadblock}
+                  disabled={Boolean(loadingAction)}
                 >
                   <Text style={styles.actionButtonText}>🧭 Test Roadblock Event</Text>
                 </TouchableOpacity>

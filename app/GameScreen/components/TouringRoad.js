@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { MAP_RELIEF_DEPTH, MAP_Z } from '../constants/mapCoordinates';
-import { TOURING_CREAM, TOURING_NAVY, TOURING_TEAL } from '../constants/touringPalette';
+import { TOURING_CREAM, TOURING_GOLD, TOURING_NAVY, TOURING_TEAL } from '../constants/touringPalette';
 
 const ROUTE_Z = MAP_Z + MAP_RELIEF_DEPTH + 0.012;
 const DASH_LENGTH = 0.10;
@@ -10,6 +10,7 @@ const MAX_SAMPLE_LENGTH = 0.045;
 const HIGHLIGHT_TEAL = '#66CFC2';
 const ROAD_STYLES = {
   main: { edge: 0.034, road: 0.028, dash: 0.007, fill: TOURING_TEAL, lift: 0, opacity: 0.84 },
+  detour: { edge: 0.031, road: 0.025, dash: 0.007, fill: TOURING_GOLD, lift: 0.001, opacity: 0.84 },
   highlight: { edge: 0.024, road: 0.020, dash: 0.007, fill: HIGHLIGHT_TEAL, lift: 0.002 },
 };
 
@@ -112,15 +113,15 @@ export const useTouringRoad = (routeModel, variant, animated = false) => {
   return road;
 };
 
-export const TouringRoadMesh = ({ road, visible = true }) => (
-  <mesh renderOrder={3} visible={visible}>
+export const TouringRoadMesh = ({ road, visible = true, opacity = road.opacity, renderOrder = 3 }) => (
+  <mesh renderOrder={renderOrder} visible={visible}>
     <primitive object={road.geometry} attach="geometry" />
     <meshBasicMaterial
-      depthWrite={road.opacity === 1}
-      opacity={road.opacity}
+      depthWrite={opacity === 1}
+      opacity={opacity}
       side={THREE.DoubleSide}
       toneMapped={false}
-      transparent={road.opacity < 1}
+      transparent={opacity < 1}
       vertexColors
     />
   </mesh>

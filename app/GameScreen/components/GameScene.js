@@ -4,7 +4,6 @@ import { DONE_POS } from '../constants/camera';
 import CameraController from './CameraController';
 import BoardDice from './BoardDice';
 import CountryMarkers, { DestinationLabel } from './CountryMarkers';
-import LegacyDetourMarkers from './LegacyDetourMarkers';
 import DottedRouteLine from './DottedRouteLine';
 import GamePieces from './GamePieces';
 import MapPlane, { OCEAN_COLOR } from './MapPlane';
@@ -73,7 +72,6 @@ const GameScene = memo(({
   detourPreviewSelected = false,
   showDetourPreview = false,
   detourCurrentLeg = 0,
-  detourOccupiedIndexes,
   detourTargetLeg = 1,
   isRoadblockState = false,
   rollAction,
@@ -85,7 +83,7 @@ const GameScene = memo(({
   const occupiedMarkerIndexes = useMemo(() => new Set(
     gamePieces
       .filter((piece) => !(vehicleInMotion && piece.id === movingPieceId))
-      .filter((piece) => !teamProgress[piece.id]?.detour)
+      .filter((piece) => !(Number(teamProgress[piece.id]?.detour?.step) > 0))
       .map((piece) => teamProgress[piece.id]?.currentLeg ?? 0)
   ), [gamePieces, movingPieceId, teamProgress, vehicleInMotion]);
 
@@ -94,6 +92,23 @@ const GameScene = memo(({
   const destinationStop = driving && vehicleInMotion && !placementActive
     ? destinationModel.countryStops[destinationIndex]
     : null;
+  const previewDetour = showDetourPreview ? detourPreviewModel : null;
+  const drivingDetour = Boolean(previewDetour && activeDetourTeamId && driving && movementRouteModel);
+  const activeDetourStep = Number(teamProgress[activeDetourTeamId]?.detour?.step) || 0;
+  const detourOccupiedIndexes = useMemo(
+    () => new Set(drivingDetour && vehicleInMotion ? [] : [activeDetourStep]),
+    [activeDetourStep, drivingDetour, vehicleInMotion]
+  );
+
+  // A detour segment can start or end at a temporary stop rather than a main stop.
+  const mainMoveStartLeg = movementRouteModel
+    && movementRouteModel.countryStops[0]?.id !== routeModel.countryStops[moveFromLeg]?.id
+    ? -1
+    : moveFromLeg;
+  const mainMoveTargetLeg = movementRouteModel
+    && movementRouteModel.countryStops[destinationIndex]?.id !== routeModel.countryStops[moveTargetLeg]?.id
+    ? -1
+    : moveTargetLeg;
 
   return (
     <GameCanvas
@@ -124,11 +139,6 @@ const GameScene = memo(({
       toLeg={moveTargetLeg}
       routeModel={routeModel}
       movementRouteModel={movementRouteModel}
-    />
-    <DetourRouteLine
-      routeModel={detourPreviewModel}
-      selected={detourPreviewSelected}
-      visible={showDetourPreview}
     />
     {roadblocks && roadblocks.length > 0 && (
       <group name="roadblocks">
@@ -161,50 +171,52 @@ const GameScene = memo(({
         vehicleInMotion={vehicleInMotion}
       />
     </Suspense>
-    {showDetourPreview && detourPreviewModel && (
-      <Suspense fallback={null}>
-        <LegacyDetourMarkers
-          currentLeg={detourCurrentLeg ?? 0}
-          occupiedMarkerIndexes={detourOccupiedIndexes || new Set([0, detourPreviewModel.finalStopIndex])}
-          routeModel={detourPreviewModel}
-          targetLeg={detourTargetLeg ?? 1}
+    {previewDetour && (
+      <group>
+        <DetourRouteLine routeModel={previewDetour} selected={detourPreviewSelected} />
+        <CountryMarkers
+          activeCarProgressRef={activeCarProgressRef}
+          currentLeg={detourCurrentLeg}
+          movementRouteModel={drivingDetour ? movementRouteModel : null}
+          movementStartLeg={detourCurrentLeg}
+          movementTargetLeg={detourTargetLeg}
+          occupiedMarkerIndexes={detourOccupiedIndexes}
+          routeModel={previewDetour}
+          targetLeg={detourTargetLeg}
+          variant="detour"
+          vehicleInMotion={drivingDetour && vehicleInMotion}
         />
-      </Suspense>
+      </group>
     )}
     {Object.entries(detourRouteModels || {}).map(([teamId, detourModel]) => {
-      if (!detourModel || teamId === activeDetourTeamId) return null;
+      if (!detourModel || (previewDetour && teamId === activeDetourTeamId)) return null;
       const detourStep = Math.min(
         Number(teamProgress[teamId]?.detour?.step) || 0,
         detourModel.finalStopIndex
       );
-      const occupiedIndexes = new Set([0, detourModel.finalStopIndex]);
-      if (detourStep > 0 && detourStep < detourModel.finalStopIndex) {
-        occupiedIndexes.add(detourStep);
-      }
-
       return (
-        <Suspense key={`inactive-detour-pins-${teamId}`} fallback={null}>
-          <LegacyDetourMarkers
+        <group key={teamId}>
+          <DetourRouteLine routeModel={detourModel} inactive />
+          <CountryMarkers
             currentLeg={detourStep}
-            occupiedMarkerIndexes={occupiedIndexes}
+            occupiedMarkerIndexes={new Set([detourStep])}
             routeModel={detourModel}
-            targetLeg={Math.min(detourStep + 1, detourModel.finalStopIndex)}
+            variant="detour"
           />
-        </Suspense>
+        </group>
       );
     })}
     <CountryMarkers
-      activeCarProgressRef={movementRouteModel ? null : activeCarProgressRef}
+      activeCarProgressRef={activeCarProgressRef}
       currentLeg={currentLeg}
-      movementStartLeg={moveFromLeg}
-      movementTargetLeg={moveTargetLeg}
+      movementRouteModel={movementRouteModel}
+      movementStartLeg={mainMoveStartLeg}
+      movementTargetLeg={mainMoveTargetLeg}
       movingMarkerIndex={movingMarkerIndex}
       movingMarkerStop={movingMarkerStop}
       occupiedMarkerIndexes={occupiedMarkerIndexes}
       routeModel={routeModel}
-      targetLeg={destinationStop && destinationStop.id === routeModel.countryStops[moveTargetLeg]?.id
-        ? moveTargetLeg
-        : -1}
+      targetLeg={destinationStop ? mainMoveTargetLeg : -1}
       vehicleInMotion={vehicleInMotion}
     />
     {destinationStop?.name && (

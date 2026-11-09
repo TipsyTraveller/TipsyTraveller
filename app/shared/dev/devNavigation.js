@@ -34,7 +34,9 @@ export const getCurrentRouteInfo = () => {
 /**
  * Starts GameScreen directly with mock data, bypassing lobby and character selection entirely.
  */
-export const startInstantGameScreen = async ({ teamCount = 2, teamModels, duration = 'long', routeStops } = {}) => {
+export const startInstantGameScreen = async ({
+  teamCount = 2, teamModels, duration = 'long', routeStops, devRoadblockTest = false,
+} = {}) => {
   const isThreeTeams = teamCount === 3;
   const deviceID = await getOrCreateDevDeviceId();
   const availableStops = routeStops || await getCountryStops();
@@ -92,6 +94,7 @@ export const startInstantGameScreen = async ({ teamCount = 2, teamModels, durati
     isDevGame: true,
     gameData: mockGameData,
     teamMembers: mockTeamMembers,
+    ...(devRoadblockTest ? { devRoadblockTest: true } : {}),
   });
 };
 

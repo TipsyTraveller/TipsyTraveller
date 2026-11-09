@@ -129,6 +129,7 @@ const CountryMarkers = memo(({
   currentLeg,
   movementStartLeg = currentLeg,
   movementTargetLeg = currentLeg,
+  movementRouteModel = null,
   movingMarkerIndex = -1,
   movingMarkerStop = null,
   occupiedMarkerIndexes = NO_OCCUPIED_MARKERS,
@@ -139,9 +140,9 @@ const CountryMarkers = memo(({
 }) => {
   const detour = variant === 'detour';
   const activeIndex = vehicleInMotion && movingMarkerIndex < 0 ? targetLeg : -1;
-  const startDistance = routeModel.stopDistances[movementStartLeg] ?? 0;
-  const endDistance = routeModel.stopDistances[movementTargetLeg] ?? startDistance;
-  const transitioning = vehicleInMotion && activeCarProgressRef && movementTargetLeg > movementStartLeg;
+  const startDistance = movementRouteModel ? 0 : (routeModel.stopDistances[movementStartLeg] ?? 0);
+  const endDistance = movementRouteModel?.length ?? routeModel.stopDistances[movementTargetLeg] ?? startDistance;
+  const transitioning = vehicleInMotion && activeCarProgressRef && endDistance > startDistance;
 
   return routeModel.markers.map((position, index) => {
     // The first and last detour waypoints already have main route badges.
@@ -170,7 +171,7 @@ const CountryMarkers = memo(({
         movePhase={movePhase}
         occupied={occupied}
         position={position}
-        routeLength={routeModel.length}
+        routeLength={movementRouteModel?.length ?? routeModel.length}
         startDistance={startDistance}
         stopNumber={detour ? index : index + 1}
         variant={editing ? 'editing' : (movingMarkerIndex >= 0 ? 'muted' : variant)}
