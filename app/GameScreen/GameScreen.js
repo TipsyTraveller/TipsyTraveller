@@ -44,6 +44,7 @@ import {
 import { createInitialTeamProgress, getGamePiecesForGame } from './constants/gamePieces';
 import { getDefaultModelOption, getModelOption } from './constants/modelOptions';
 import { devEventBus } from '../shared/dev/devEventBus';
+import { isDevPortalEnabled } from '../shared/dev/devConfig';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
 import useRouteOverview, { getOverviewRouteSignature } from './hooks/useRouteOverview';
 import {
@@ -201,6 +202,36 @@ const GameScreen = ({ navigation, route }) => {
     routeModel,
     teamMembers,
   });
+  const { gameplay, isConnected, canTestTurns, devTurnTeamId } = multiplayer;
+  const runDevTurnAction = useLatestCallback((turn, action) => (
+    navigation.isFocused() ? multiplayer.runDevTurnAction(turn, action) : false
+  ));
+
+  useEffect(() => {
+    if (!multiplayerEnabled || !isFocused || !isDevPortalEnabled()) return undefined;
+    const activeTeamId = gameplay?.activeTeamId;
+    const publish = () => devEventBus.emit('dev:multiplayerState', {
+      gameID,
+      isConnected,
+      canTestTurns,
+      canAct: Boolean(devTurnTeamId),
+      turn: {
+        teamId: activeTeamId,
+        sessionId: gameplay?.sessionId,
+        revision: gameplay?.revision,
+      },
+      teamLabel: gamePieces.find((piece) => piece.id === activeTeamId)?.label || activeTeamId,
+      turnNumber: gameplay?.turnNumber,
+      phase: gameplay?.phase,
+      roll: gameplay?.currentAction?.value,
+      roadblockStatus: gameplay?.roadblock?.status,
+      runAction: runDevTurnAction,
+    });
+    const unsubscribe = devEventBus.on('dev:requestMultiplayerState', publish);
+    publish();
+    return unsubscribe;
+  }, [canTestTurns, devTurnTeamId, gameID, gamePieces, gameplay, isConnected, isFocused, multiplayerEnabled, runDevTurnAction]);
+
   const currentTeamMembers = multiplayerEnabled ? multiplayer.teamMembers : teamMembers;
   const canPresentRouteOverview = isFocused && showOnboarding === false
     && state === 'waiting' && !placementRequest && !connectionMenuOpen

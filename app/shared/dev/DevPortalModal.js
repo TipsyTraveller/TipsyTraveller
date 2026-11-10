@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,12 +32,13 @@ import {
 } from './devNavigation';
 import { devEventBus } from './devEventBus';
 import CountryStopsTab from './CountryStopsTab';
+import { DICE_MAX_RESULT } from '../../GameScreen/constants/diceBounds';
 import { resolveGameRouteStops } from '../../GameScreen/constants/countryStops';
 import { subscribeCountryStops } from '../../GameScreen/services/countryStopsService';
 
 const TABS = [
   { id: 'screens', icon: '🚀', label: 'Screens' },
-  { id: 'multiplayer', icon: '👥', label: 'Bots' },
+  { id: 'multiplayer', icon: '👥', label: 'Multiplayer' },
   { id: 'board', icon: '🎲', label: 'Board' },
   ...(Platform.OS === 'web' ? [{ id: 'countries', icon: '🗺️', label: 'Countries' }] : []),
   { id: 'tools', icon: '⚙️', label: 'Identity' },
@@ -52,6 +53,8 @@ export default function DevPortalModal({ visible, onClose }) {
   const [statusMessage, setStatusMessage] = useState('');
   const [authoredRouteStops, setAuthoredRouteStops] = useState([]);
   const [confirmingStorageClear, setConfirmingStorageClear] = useState(false);
+  const [multiplayerState, setMultiplayerState] = useState(null);
+  const turnActionPending = useRef(false);
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const isCompact = width < 560;
@@ -62,7 +65,7 @@ export default function DevPortalModal({ visible, onClose }) {
       detectActiveGamePin();
       const routeInfo = getCurrentRouteInfo();
       if (routeInfo?.name === 'GameScreen') {
-        setActiveTab('board');
+        setActiveTab(routeInfo.params?.gameData?.devTurnTesting ? 'multiplayer' : 'board');
       }
       AsyncStorage.getItem('dev_portal_button_corner')
         .then((saved) => {
@@ -79,6 +82,13 @@ export default function DevPortalModal({ visible, onClose }) {
     });
     return () => backSub.remove();
   }, [visible, onClose]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'multiplayer') return undefined;
+    const unsubscribe = devEventBus.on('dev:multiplayerState', setMultiplayerState);
+    devEventBus.emit('dev:requestMultiplayerState');
+    return unsubscribe;
+  }, [activeTab, visible]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return undefined;
@@ -171,6 +181,27 @@ export default function DevPortalModal({ visible, onClose }) {
   };
 
   // --- Handlers: Multiplayer & Bots ---
+  const handleDevTurnAction = async (state, action) => {
+    if (!state?.canAct || turnActionPending.current) return;
+    turnActionPending.current = true;
+    setLoadingAction('devTurn');
+    try {
+      const committed = await state.runAction(state.turn, action);
+      if (!committed) {
+        showStatus('The turn changed or is unavailable. Check the current state and try again.');
+      } else if (action.type === 'roll') {
+        onClose();
+      } else {
+        showStatus('Synced to the room.');
+      }
+    } catch (error) {
+      showStatus(`Could not sync the turn: ${error.message}`);
+    } finally {
+      turnActionPending.current = false;
+      setLoadingAction(null);
+    }
+  };
+
   const handleAutoFillLobby = async () => {
     if (!gamePin.trim()) {
       Alert.alert('Game PIN Required', 'Enter or detect an active 4-digit game PIN.');
@@ -338,6 +369,27 @@ export default function DevPortalModal({ visible, onClose }) {
   const currentRouteInfo = getCurrentRouteInfo();
   const currentRouteName = currentRouteInfo?.name || 'Unknown';
   const currentGameData = currentRouteInfo?.params?.gameData;
+  const turnState = currentRouteName === 'GameScreen'
+    && multiplayerState?.gameID === currentRouteInfo.params?.gameID
+    ? multiplayerState
+    : null;
+  const turnActions = [];
+  if (turnState?.canAct) {
+    if (turnState.phase === 'waiting') {
+      for (let value = 1; value <= DICE_MAX_RESULT; value += 1) {
+        turnActions.push({ type: 'roll', value, label: `Roll ${value}` });
+      }
+    } else if (turnState.phase === 'challenge') {
+      turnActions.push({ type: 'endTurn', label: 'Skip challenge & end turn' });
+    } else if (turnState.phase === 'roadblock') {
+      if (turnState.roadblockStatus === 'choice') {
+        turnActions.push({ type: 'startRoadblock', label: 'Start roadblock challenge' });
+      } else if (turnState.roadblockStatus === 'challenge') {
+        turnActions.push({ type: 'passRoadblock', label: 'Pass roadblock' });
+      }
+      turnActions.push({ type: 'detour', label: 'Take detour' });
+    }
+  }
   const shouldUseAuthoredStops = Platform.OS === 'web'
     && (!currentGameData?.routeStops || currentRouteInfo?.params?.isDevGame);
   const activeRouteStops = shouldUseAuthoredStops && authoredRouteStops.length >= 2
@@ -576,6 +628,43 @@ export default function DevPortalModal({ visible, onClose }) {
             {/* TAB 2: MULTIPLAYER & BOTS */}
             {activeTab === 'multiplayer' && (
               <View style={styles.section}>
+                <Text style={styles.sectionHeading}>Multiplayer Turn Testing</Text>
+                {turnState?.phase && (
+                  <Text style={styles.sectionDescription} accessibilityLiveRegion="polite">
+                    Room {turnState.gameID} · Turn {turnState.turnNumber} · {turnState.teamLabel}
+                    {'\n'}{turnState.phase} · Revision {turnState.turn.revision}
+                    {turnState.roll ? ` · Roll ${turnState.roll}` : ''}
+                  </Text>
+                )}
+                {!turnState?.canTestTurns ? (
+                  <Text style={styles.subtext}>
+                    Quick Host a test room below, choose your ride, and finish your turn on the board.
+                    Reopen Multiplayer to play the active rival team.
+                  </Text>
+                ) : !turnActions.length ? (
+                  <Text style={styles.subtext}>
+                    {!turnState.isConnected ? 'Waiting for the room to reconnect.'
+                      : turnState.phase === 'done' ? 'The game is complete.'
+                      : turnState.phase === 'moving' ? 'Waiting for synchronized movement to finish.'
+                      : turnState.phase ? 'Play your own turn on the board.'
+                      : 'Waiting for gameplay to sync.'}
+                  </Text>
+                ) : (
+                  <View style={styles.buttonRow}>
+                    {turnActions.map((action) => (
+                      <TouchableOpacity
+                        key={action.label}
+                        style={[styles.actionButton, styles.primaryButton, loadingAction && styles.disabledButton]}
+                        onPress={() => handleDevTurnAction(turnState, action)}
+                        disabled={Boolean(loadingAction)}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: Boolean(loadingAction) }}
+                      >
+                        <Text style={styles.actionButtonText}>{action.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
                 <Text style={styles.sectionHeading}>Target Game PIN</Text>
                 <View style={styles.pinInputRow}>
                   <TextInput
@@ -616,7 +705,8 @@ export default function DevPortalModal({ visible, onClose }) {
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.subtext}>
-                  Hosts a live multiplayer room at Vehicle Selection with rival team(s) already ready.
+                  Quick Host starts at Vehicle Selection with rival teams ready. To test on two devices,
+                  use Screens → Live Lobby and have the second device join by PIN before starting.
                 </Text>
 
                 <TouchableOpacity
@@ -1127,6 +1217,9 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: '#1ba39c',
     borderColor: '#178c86',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   accentButton: {
     backgroundColor: '#2f80ed',

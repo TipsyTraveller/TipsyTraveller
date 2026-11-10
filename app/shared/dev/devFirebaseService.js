@@ -178,6 +178,7 @@ export const createLiveTestRoom = async ({
     difficulty,
     duration,
     nrOfPlayers,
+    devTurnTesting: true,
     HostName: 'Dev Host',
     hostDeviceID: deviceID,
     createdAt: Date.now(),

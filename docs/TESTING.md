@@ -90,6 +90,15 @@ also needs the matching Xcode/CocoaPods or Android SDK toolchain.
    challenges, roadblocks, and used content reset on every client. Verify a non-host
    cannot start it and every player can leave to Home.
 
+For a quicker sync check, use **Dev Portal → Screens → Live Lobby**, join from a
+second client by PIN before starting, and use **Multiplayer → Auto-Pick Vehicles**
+if bots are waiting on vehicle selection. Finish the host's turn on the board,
+then pick a rival roll in the Multiplayer tab. Compare the roll and movement on
+both clients. Reopen the tab to resolve a roadblock or skip the challenge; check
+that both clients agree on the next team and revision. In a three-team test room,
+repeat for Team 3. Verify the controls are unavailable on non-host clients and in
+regular rooms. For a single-client smoke test, use **Multiplayer → Quick Host**.
+
 ## Reconnection and performance
 
 For reconnection, let Firebase write `disconnectedAt`, rejoin from the same

@@ -10,8 +10,13 @@ not a production authorization boundary.
 - **Screens / Quick Start:** open mock two- or three-team GameScreen, quick-host a live
   multiplayer room directly on CharacterSelection with rival teams already ready, open
   mock character selection, create a live test lobby, or navigate to setup screens.
-- **Multiplayer & Bots:** target a four-digit PIN, fill a lobby, add team bots,
-  assign default vehicles to unready teams, and remove test bots.
+- **Multiplayer:** quick-host a live test room, choose your ride, and play your
+  first turn on the board. When a rival team is active, open this tab to pick
+  its roll, resolve a roadblock, or skip a challenge and end the turn. The tab
+  shows the room, active team, phase, and revision; a roll closes the portal
+  so you can watch the board. These controls are available to the host in rooms
+  created by the Dev Portal (`devTurnTesting: true`). The same tab can fill
+  lobbies by PIN, add/remove team bots, and assign default vehicles.
 - **Board & Game Tools:** force rolls 1–3, move to a route stop and open its challenge,
   skip active challenge/roadblock steps, test or clear roadblocks, and reset board
   state. Test Roadblock Event opens a mock board from Home and runs on the current

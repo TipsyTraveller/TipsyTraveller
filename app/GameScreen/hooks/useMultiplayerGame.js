@@ -11,6 +11,8 @@ import {
   set,
 } from 'firebase/database';
 import { db } from '../../../firebaseConfig';
+import { isDevPortalEnabled } from '../../shared/dev/devConfig';
+import { DICE_MAX_RESULT } from '../constants/diceBounds';
 import {
   addDrinksByRule,
   addDrinksToPlayer,
@@ -116,6 +118,12 @@ const getConnectedPlayers = (teamMembers, presence = {}) => (
 );
 
 const ROOM_EXPIRY_MS = 10 * 60 * 1000;
+
+const matchesDevTurn = (gameplay, turn) => (
+  gameplay?.sessionId === turn.sessionId
+  && gameplay?.revision === turn.revision
+  && gameplay?.activeTeamId === turn.teamId
+);
 
 const stableSerialize = (value) => {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
@@ -293,6 +301,18 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     && identity.localTeamId
     && identity.localTeamId === gameplay?.activeTeamId
   );
+  const canTestTurns = Boolean(gameData?.devTurnTesting === true && isDevPortalEnabled() && isHost);
+  const devTurnTeamId = canTestTurns
+    && isConnected
+    && !isRoomExpired
+    && roomMeta.status === 'game'
+    && identity.localTeamId
+    && gameplay?.activeTeamId !== identity.localTeamId
+    ? gameplay?.activeTeamId || null
+    : null;
+  const canActForDevTurn = useCallback((turn) => (
+    Boolean(devTurnTeamId && turn.teamId === devTurnTeamId && matchesDevTurn(gameplay, turn))
+  ), [devTurnTeamId, gameplay]);
 
   useEffect(() => {
     if (!enabled || !gameplay?.sessionId || !identity.localPlayerId || !identity.localTeamId) return;
@@ -487,12 +507,14 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
     return result.committed;
   }, [deviceID, enabled, gameID, isConnected, isHost, isRoomExpired]);
-  const submitRoll = useCallback(async (value, inputMethod = 'shortcut') => {
-    if (!enabled || !gameID || !canControlTurn || !deviceID) return false;
+  const submitRoll = useCallback(async (value, inputMethod = 'shortcut', devTurn = null) => {
+    if (!enabled || !gameID || !deviceID) return false;
+    if (devTurn ? !canActForDevTurn(devTurn) : !canControlTurn) return false;
 
     const gameplayRef = ref(db, `games/${gameID}/gameplay`);
     const expectedSessionId = gameplay?.sessionId;
     const expectedRevision = gameplay?.revision;
+    const actingTeamId = devTurn?.teamId ?? identity.localTeamId;
     const action = buildRollAction({
       deviceID,
       gameplay,
@@ -508,7 +530,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         || current.sessionId !== expectedSessionId
         || current.revision !== expectedRevision
         || current.phase !== 'waiting'
-        || current.activeTeamId !== identity.localTeamId
+        || current.activeTeamId !== actingTeamId
         || current.teamProgress?.[current.activeTeamId]?.isDone
       ) {
         return undefined;
@@ -613,16 +635,16 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [canControlTurn, deviceID, enabled, gameID, gameplay, identity.localTeamId, now, routeModel]);
+  }, [canActForDevTurn, canControlTurn, deviceID, enabled, gameID, gameplay, identity.localTeamId, now, routeModel]);
 
-  const resolveRoadblock = useCallback(async (choice) => {
+  const resolveRoadblock = useCallback(async (choice, devTurn = null) => {
     const isTimeout = choice === 'timeout';
     if (
       !enabled
       || !gameID
       || !isConnected
       || isRoomExpired
-      || (!canControlTurn && !isTimeout)
+      || (devTurn ? !canActForDevTurn(devTurn) : (!canControlTurn && !isTimeout))
     ) return false;
 
     const resolvedAt = now();
@@ -634,7 +656,9 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         || current.phase !== 'roadblock'
         || !roadblock
         || !action
-        || (!isTimeout && current.activeTeamId !== identity.localTeamId)
+        || (devTurn
+          ? !matchesDevTurn(current, devTurn)
+          : (!isTimeout && current.activeTeamId !== identity.localTeamId))
       ) {
         return undefined;
       }
@@ -704,6 +728,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
     return result.committed;
   }, [
+    canActForDevTurn,
     canControlTurn,
     enabled,
     gameID,
@@ -1621,15 +1646,17 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   ]);
 
   const completeChallenge = useCallback(async (options = {}) => {
-    const { force = false } = options;
-    if (!enabled || !gameID || (!canControlTurn && !force)) return false;
+    const { force = false, devTurn = null } = options;
+    if (!enabled || !gameID) return false;
+    if (devTurn ? !canActForDevTurn(devTurn) : (!canControlTurn && !force)) return false;
 
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
       if (
         !current
         || current.phase !== 'challenge'
-        || (!force && current.activeTeamId !== identity.localTeamId)
-        || (!force && current.challengeRound && current.challengeRound.stage !== 'result')
+        || (devTurn && !matchesDevTurn(current, devTurn))
+        || (!devTurn && !force && current.activeTeamId !== identity.localTeamId)
+        || (!devTurn && !force && current.challengeRound && current.challengeRound.stage !== 'result')
       ) {
         return undefined;
       }
@@ -1713,7 +1740,24 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
+  }, [canActForDevTurn, canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
+
+  const runDevTurnAction = useCallback(async (turn, action) => {
+    if (!canActForDevTurn(turn)) return false;
+    if (gameplay.phase === 'waiting' && action.type === 'roll'
+      && Number.isInteger(action.value) && action.value >= 1 && action.value <= DICE_MAX_RESULT) {
+      return submitRoll(action.value, 'shortcut', turn);
+    }
+    if (gameplay.phase === 'challenge' && action.type === 'endTurn') {
+      return completeChallenge({ devTurn: turn });
+    }
+    if (gameplay.phase === 'roadblock') {
+      if (action.type === 'detour') return resolveRoadblock('detour', turn);
+      if (action.type === 'startRoadblock') return resolveRoadblock('challenge', turn);
+      if (action.type === 'passRoadblock') return resolveRoadblock('completed', turn);
+    }
+    return false;
+  }, [canActForDevTurn, completeChallenge, gameplay, resolveRoadblock, submitRoll]);
 
   const cancelAutoAdvance = useCallback(async () => {
     if (!enabled || !gameID || !canControlTurn) return false;
@@ -1832,10 +1876,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     cancelAutoAdvance,
     canClaimHost,
     canControlTurn,
+    canTestTurns,
     connectedPlayers,
     completeChallenge,
     completeMovement,
     deviceID,
+    devTurnTeamId,
     gameplay,
     isConnected,
     isActiveLeaderConnected,
@@ -1850,6 +1896,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     replaceTeamLeader,
     resolveRoadblock,
     roomMeta,
+    runDevTurnAction,
     serverNow: now,
     submitRoll,
     teamMembers: liveTeamMembers,
