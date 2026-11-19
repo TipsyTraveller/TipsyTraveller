@@ -18,6 +18,7 @@ the relevant source files, then open only the topic required by the task.
 | [Multiplayer](MULTIPLAYER.md) | Firebase schemas, synchronization, identity, rooms, security |
 | [3D board](3D_BOARD.md) | Scene, map, route, markers, camera, rendering performance |
 | [Challenges](CHALLENGES.md) | Challenge selection, word game, GeoGuessr, challenge lifecycle |
+| [Beta scenario](BETA_SCENARIO.md) | Nine-player preset, fixed team content, validation, snapshots and pending integration boundaries |
 | [Vehicles and dice](VEHICLES_AND_DICE.md) | Vehicle models, movement, parking, dice interaction |
 | [Screens](SCREENS.md) | Screen behavior, navigation flow, route parameters |
 | [Dev Portal](DEV_PORTAL.md) | Development shortcuts, bots, board tools, content authoring |

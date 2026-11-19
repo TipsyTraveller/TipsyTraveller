@@ -15,14 +15,14 @@ import {
   SIZE_IT_UP_CHALLENGE_TYPE,
   SIZE_IT_UP_DURATION_SECONDS,
   SIZE_IT_UP_POOL_VERSION,
-} from './sizeItUp';
+} from './sizeItUp.js';
 import {
   PERSONAL_MATCH_CHALLENGE_ID,
   PERSONAL_MATCH_CHALLENGE_TYPE,
   PERSONAL_MATCH_DURATION_SECONDS,
   PERSONAL_MATCH_POOL_VERSION,
   PERSONAL_MATCH_SUCCESS_POINTS,
-} from './personalMatch';
+} from './personalMatch.js';
 
 export const DURATION_STOP_COUNTS = { short: 6, medium: 9, long: 12 };
 export const DURATION_TARGET_MINUTES = { short: 20, medium: 30, long: 40 };

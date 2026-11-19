@@ -1,7 +1,8 @@
 # Development, verification, and limitations
 
-There is no checked-in automated test, lint, or type-check command. Choose checks
-proportionate to the change and report only what actually ran.
+Package A's beta content tests use Node's built-in test runner. There is no lint or
+type-check command. Choose checks proportionate to the change and report only what
+actually ran.
 
 ## Commands
 
@@ -13,10 +14,18 @@ npm run web            # web compatibility testing, normally localhost:8081
 npm run ios:native     # checked-in native iOS development client
 npm run android
 npm run build:map      # regenerate map GLB after SVG/generator changes
+npm run test:beta-content # pure beta preset, validation and snapshot tests
 ```
 
 Node requirements are 22.13+ on Node 22, 24.3+ on Node 24, or Node 26. Native work
 also needs the matching Xcode/CocoaPods or Android SDK toolchain.
+
+The beta tests cover only the content contract and snapshot helpers described in
+[BETA_SCENARIO.md](BETA_SCENARIO.md). Serialized preview/room/reconnect/rematch copies
+exercise data independence, not the live consumers. They do not verify multiplayer
+transactions, portal UI, Android bundling, photo availability or physical devices.
+Node may emit `MODULE_TYPELESS_PACKAGE_JSON` while loading the Expo ES modules;
+the test command does not change the application's module configuration.
 
 ## Minimum verification by change
 
@@ -122,7 +131,8 @@ landscape layout, and camera motion.
 - Expo GL is unreliable in the iOS Simulator. Android release currently uses debug
   signing. There is no CI or environment-based Firebase project selection.
 - Native folders are intentionally checked in; Expo config/native changes must agree.
-- No TypeScript, schema validation, error boundary, test suite, or lint command exists.
+- No TypeScript, error boundary or lint command exists. Schema validation and
+  automated tests currently cover only the standalone beta content contract.
 - Several legacy/unused components and imports remain; do not clean them up as part of
   unrelated work.
 
