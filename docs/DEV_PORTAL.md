@@ -8,7 +8,10 @@ not a production authorization boundary.
 ## Capabilities
 
 - **Beta Test:** edit the nine-player preset's countries, order, challenges and
-  exact Team 1/2/3 content. Save one local draft, restore the preset, inspect a
+  exact Team 1/2/3 content. Toggle **Altijd spelen** beside a selected challenge to
+  guarantee it for every team. It stays in its country when landed on; skipping
+  that country carries the card to the next landing without shortening the roll.
+  Due cards take priority over roadblocks and Roadside Duels. Save one local draft, restore the preset, inspect a
   read-only route/content preview, or create a real lobby with the host and six
   named guests without phones. Two further leader phones join by PIN. Invalid
   geometry/content is rejected; Belgium and Italy remain mandatory. See

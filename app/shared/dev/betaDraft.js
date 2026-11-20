@@ -91,3 +91,12 @@ export const editBetaTeamContent = (scenario, stopId, teamId, contentId) => {
   plan.contentByTeam[teamId] = option.fixedContent;
   return createBetaSnapshot(next);
 };
+
+export const editBetaMustPlay = (scenario, stopId, mustPlay) => {
+  if (typeof mustPlay !== 'boolean') throw new Error('Kies aan of uit.');
+  const next = createBetaSnapshot(scenario);
+  const plan = next.betaScenario.stops[stopId];
+  if (!plan) throw new Error('Start en finish krijgen geen opdracht.');
+  plan.mustPlay = mustPlay;
+  return createBetaSnapshot(next);
+};

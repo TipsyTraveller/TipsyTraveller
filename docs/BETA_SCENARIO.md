@@ -16,9 +16,22 @@ betaScenario
   presetId: nine-friends-2026-11-20
   playerCount: 9
   stops/{countryId}
+    mustPlay?                        boolean; guarantee this challenge for every team
     challenge                        complete challenge record, shared by all teams
     contentByTeam/{team1|team2|team3}  complete fixed-content record
 ```
+
+The Beta Test editor’s **Altijd spelen** switch stores `mustPlay: true` on the
+selected stop plan. Dice movement is unchanged. Each team plays it at its original
+country if it lands there; otherwise the card carries forward to the next country
+that team lands on. Multiple due cards play sequentially in route order at that
+landing, including Greece, before advancing the turn or ending the game. Required
+cards take priority over duels and roadblocks for that landing. Per-team
+`gameplay.playedBetaStopIdsByTeam` records which source cards have opened;
+`challengeStopData.betaSourceStopId` identifies the carried card while the stop
+metadata points to the actual landing country. The current card and history survive
+reconnects. The flag survives draft/room snapshots; choosing another challenge
+resets it. Missing/false flags preserve normal play.
 
 Only interior stops have plans. Start and Greece have none. All three teams use
 the chosen challenge at a stop, with their own minigame content. Fixed-content

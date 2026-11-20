@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Path, Polyline, Text as SvgText } from 'react-native-svg';
 import { BETA_TEAM_IDS, createBetaPreset, createBetaSnapshot, getBetaContentOptions } from '../../GameScreen/constants/betaScenario';
@@ -7,7 +7,7 @@ import { COUNTRY_CITY_COORDINATES, DEFAULT_COUNTRY_STOPS } from '../../GameScree
 import { geoToEuropeSvgCoords } from '../../GameScreen/constants/europeMapPaths';
 import { EUROPE_MAP_OVERVIEW_PATH_DATA } from '../../GameScreen/constants/europeMapOverviewPath';
 import {
-  createBetaDraft, editBetaChallenge, editBetaRoute, editBetaTeamContent,
+  createBetaDraft, editBetaChallenge, editBetaMustPlay, editBetaRoute, editBetaTeamContent,
   getBetaContentId, getBetaContentLabel, loadBetaDraft, saveBetaDraft,
 } from './betaDraft';
 import { createBetaLobby } from './betaRoomService';
@@ -44,7 +44,7 @@ function Preview({ snapshot, onClose }) {
   });
   return <View style={styles.card}>
     <Text style={styles.heading}>Preview · {snapshot.routeStops.length} landen</Text>
-    <Text style={styles.copy}>De geplande route en opdrachten. Dobbelworpen kunnen landen overslaan; speciale gebeurtenissen kunnen een opdracht vervangen.</Text>
+    <Text style={styles.copy}>De geplande route en opdrachten. Met “Altijd spelen” krijgt elk team de opdracht in dat land. Slaat de worp het land over, dan verhuist de opdracht naar het volgende land waar dat team landt.</Text>
     <Svg viewBox="0 0 1000 700" width="100%" height={240} accessibilityLabel="Bèta-routekaart">
       <Path d={EUROPE_MAP_OVERVIEW_PATH_DATA} fill="#304c55" stroke="#76929a" strokeWidth={1} />
       <Polyline points={points.filter(Boolean).map((point) => `${point.svgX},${point.svgY}`).join(' ')} fill="none" stroke="#ffd700" strokeWidth={3} />
@@ -57,7 +57,7 @@ function Preview({ snapshot, onClose }) {
       const plan = snapshot.betaScenario.stops[stop.id];
       const content = plan?.contentByTeam[teamId];
       return <View key={stop.id} style={styles.previewStop}>
-        <Text style={styles.label}>{index + 1}. {stop.name} · {plan?.challenge.title || (index === 0 ? 'Start' : 'Finish')}</Text>
+        <Text style={styles.label}>{index + 1}. {stop.name} · {plan?.challenge.title || (index === 0 ? 'Start' : 'Finish')}{plan?.mustPlay ? ' · Altijd spelen' : ''}</Text>
         {plan && <Text style={styles.copy}>{plan.challenge.prompt}</Text>}
         {content?.type !== 'ordinary' && content && <Text style={styles.accent}>{getBetaContentLabel(content)}</Text>}
         {content?.question && <Text style={styles.copy}>{content.question.options.join(' · ')}</Text>}
@@ -155,7 +155,7 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
       return <View key={stop.id} style={styles.card}>
         <Pressable accessibilityRole="button" accessibilityLabel={`Bewerk ${stop.name}`} onPress={() => setExpanded(isOpen ? null : stop.id)}>
           <Text style={styles.label}>{index + 1}. {stop.name}{['belgium', 'italy'].includes(stop.id) ? ' ★' : ''}</Text>
-          <Text style={styles.copy}>{plan?.challenge.title || (index === 0 ? 'Start · geen opdracht' : 'Finish · geen opdracht')}</Text>
+          <Text style={styles.copy}>{plan?.challenge.title || (index === 0 ? 'Start · geen opdracht' : 'Finish · geen opdracht')}{plan?.mustPlay ? ' · Altijd spelen' : ''}</Text>
         </Pressable>
         {isOpen && <>
           <View style={styles.row}>
@@ -169,6 +169,13 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
               options={stop.challenges.filter((challenge) => challenge.minPlayers <= 3).map((challenge) => ({ id: challenge.id, label: challenge.title }))}
               onChange={(id) => edit((value) => editBetaChallenge(value, stop.id, id))} />
             <Text style={styles.copy}>{plan.challenge.prompt}</Text>
+            <View style={styles.row}>
+              <Switch accessibilityLabel={`Altijd spelen: ${stop.name}`} value={plan.mustPlay === true} disabled={pending}
+                trackColor={{ false: '#405567', true: '#157d77' }}
+                onValueChange={(enabled) => edit((value) => editBetaMustPlay(value, stop.id, enabled))} />
+              <Text style={styles.label}>Altijd spelen</Text>
+            </View>
+            <Text style={styles.copy}>Elk team speelt deze opdracht hier. Wordt dit land overgeslagen, dan schuift de opdracht door naar het volgende land waar het team landt. De worp blijft hetzelfde. Meerdere doorgeschoven opdrachten komen na elkaar, ook bij de finish. Een andere opdracht kiezen zet dit uit.</Text>
             {plan.challenge.type && BETA_TEAM_IDS.map((key, teamIndex) => {
               const options = getBetaContentOptions(stop, plan.challenge.id);
               const selected = plan.contentByTeam[key];

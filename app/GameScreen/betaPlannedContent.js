@@ -84,6 +84,24 @@ export const getBetaPlannedChallengeId = (betaScenario, stop, stopIndex = null) 
   getBetaStopPlan(betaScenario, stop, stopIndex)?.challengeId || null
 );
 
+export const isBetaRequiredStop = (betaScenario, stop) => (
+  getBetaStopPlan(betaScenario, stop)?.mustPlay === true
+);
+
+// Required cards stay attached to their country until reached, then carry forward
+// to the next landing. Per-team history makes reconnects and transaction retries safe.
+export const getBetaRequiredLanding = (betaScenario, routeStops, stopIndex, playedStopIds = []) => {
+  if (!isBetaScenario(betaScenario)) return null;
+  const played = new Set(playedStopIds || []);
+  for (let index = 1; index <= stopIndex && index < routeStops.length - 1; index += 1) {
+    const stop = routeStops[index];
+    if (isBetaRequiredStop(betaScenario, stop) && !played.has(stop.id)) {
+      return { stop, plan: getBetaStopPlan(betaScenario, stop) };
+    }
+  }
+  return null;
+};
+
 /**
  * Fixed content for one team on one stop. Returns null unless the resolved challenge
  * is the planned one, so a special event that replaced the assignment never inherits

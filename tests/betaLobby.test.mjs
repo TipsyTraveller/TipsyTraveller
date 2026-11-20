@@ -5,7 +5,7 @@ import { createBetaRoomRecords, reduceBetaLobby, transactBetaLobby, runBetaLobby
 import { chooseTeamForJoin, chooseTeamForLocalPlayer, countPlayers, getLobbyReadiness } from '../app/Lobby/lobbyState.js';
 import { getRoomRoute } from '../app/shared/roomNavigation.js';
 import {
-  BETA_DRAFT_KEY, createBetaDraft, editBetaChallenge, editBetaRoute, editBetaTeamContent,
+  BETA_DRAFT_KEY, createBetaDraft, editBetaChallenge, editBetaMustPlay, editBetaRoute, editBetaTeamContent,
   loadBetaDraft, saveBetaDraft,
 } from '../app/shared/dev/betaDraft.js';
 import { DEFAULT_COUNTRY_STOPS } from '../app/GameScreen/constants/countryStops.js';
@@ -283,4 +283,25 @@ test('editor changes challenge and exact team content without changing other tea
   assert.deepEqual(editBetaTeamContent(scenario, 'belgium', 'team1', words[5]), scenario);
   assert.throws(() => editBetaTeamContent(scenario, 'belgium', 'team2', words[5]));
   assert.throws(() => editBetaChallenge(scenario, 'greece', 'guess-country-word'));
+});
+
+
+test('Always play persists in drafts and rooms and resets when choosing another challenge', async () => {
+  const original = createBetaDraft();
+  const scenario = editBetaMustPlay(original.scenario, 'belgium', true);
+  assert.equal(original.scenario.betaScenario.stops.belgium.mustPlay, undefined);
+  let saved;
+  const storage = { getItem: async () => saved, setItem: async (_, value) => { saved = value; } };
+  await saveBetaDraft(storage, { ...original, scenario });
+  const loaded = await loadBetaDraft(storage);
+  assert.equal(loaded.scenario.betaScenario.stops.belgium.mustPlay, true);
+  const room = createBetaRoomRecords({ ...options(), scenario: loaded.scenario });
+  assert.equal(room.gameData.betaScenario.stops.belgium.mustPlay, true);
+  assert.equal(editBetaMustPlay(scenario, 'belgium', false).betaScenario.stops.belgium.mustPlay, false);
+  const other = scenario.routeStops.find((stop) => stop.id === 'belgium').challenges.find((card) => !card.type && card.id !== scenario.betaScenario.stops.belgium.challenge.id);
+  assert.equal(editBetaChallenge(scenario, 'belgium', other.id).betaScenario.stops.belgium.mustPlay, undefined);
+  assert.throws(() => editBetaMustPlay(scenario, 'greece', true));
+  assert.throws(() => editBetaMustPlay(scenario, 'belgium', 'true'));
+  const invalid = clone(scenario); invalid.betaScenario.stops.belgium.mustPlay = 'true';
+  await assert.rejects(saveBetaDraft(storage, { ...original, scenario: invalid }));
 });

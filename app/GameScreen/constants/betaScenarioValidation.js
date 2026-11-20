@@ -104,6 +104,9 @@ export const validateBetaScenario = (draft, { difficulty = 'easy' } = {}) => {
       return;
     }
     const { challenge, contentByTeam } = plan;
+    if (plan.mustPlay !== undefined && typeof plan.mustPlay !== 'boolean') {
+      add(`${path}.mustPlay`, 'invalid_must_play', 'Always play must be a boolean.');
+    }
     const type = challenge.type || 'ordinary';
     requireFields(challenge, ['id', 'title', 'prompt', 'penalty'], `${path}.challenge`);
     if (!supportedTypes.includes(type)) add(path, 'unsupported_challenge', 'This challenge type is not supported.');

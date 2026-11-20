@@ -177,7 +177,7 @@ const ChallengePopup = ({
   onCompleteRef.current = onComplete;
   // Keyed on content, not object identity, so a parent re-render cannot restart the card animations.
   const challengeKey = challenge
-    ? `${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || challenge.sizeRoundId || challenge.personalQuestionId || ''}`
+    ? `${challenge.betaSourceStopId || ''}:${challenge.stopIndex}:${challenge.title}:${challenge.monumentId || challenge.sizeRoundId || challenge.personalQuestionId || ''}`
     : '';
 
   useEffect(() => {

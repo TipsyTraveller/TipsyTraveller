@@ -14,7 +14,7 @@ import {
   PERSONAL_MATCH_CHALLENGE_TYPE,
   SIZE_IT_UP_CHALLENGE_TYPE,
 } from './constants/challenges';
-import { getBetaLandingPlan } from './betaPlannedContent';
+import { getBetaLandingPlan, getBetaRequiredLanding } from './betaPlannedContent';
 
 /**
  * Pure challenge selection for a team that lands on a stop. It is the authoritative
@@ -23,7 +23,8 @@ import { getBetaLandingPlan } from './betaPlannedContent';
  * effects, so a re-run of a Firebase transaction yields the same result.
  *
  * With a beta scenario the planned challenge and per-team content win over history
- * filters; a Roadside Duel still replaces the plan and then avoids reserved photos.
+ * filters. A Roadside Duel replaces optional plans and avoids reserved photos;
+ * required plans always keep their selected challenge.
  */
 export const resolveLandingChallenge = ({
   betaScenario = null,
@@ -40,21 +41,30 @@ export const resolveLandingChallenge = ({
   fromLeg,
   timerPace,
 }) => {
-  const stop = routeStops[stopIndex];
-  const isRoadsideDuel = didTriggerRoadsideDuel({
+  const landingStop = routeStops[stopIndex];
+  const playedStopIds = current.playedBetaStopIdsByTeam?.[teamId] || [];
+  const required = getBetaRequiredLanding(betaScenario, routeStops, stopIndex, playedStopIds);
+  const stop = required ? {
+    ...landingStop, challenges: [required.plan.challenge], betaSourceStopId: required.stop.id,
+  } : landingStop;
+  const isRoadsideDuel = !required && didTriggerRoadsideDuel({
     fromLeg,
     targetLeg: stopIndex,
     teamId,
     teamProgress: current.teamProgress,
   });
-  const landingPlan = getBetaLandingPlan({ betaScenario, stop, stopIndex, teamId });
+  const landingPlan = getBetaLandingPlan({ betaScenario, stop: required?.stop || stop, stopIndex, teamId });
   const challengeId = getChallengeIdForStop(stop, actionId, {
     teamPlayerCount: players.length,
     forceType: isRoadsideDuel ? GEO_GUESSR_CHALLENGE_TYPE : null,
     usedChallengeKeys: current.usedChallengeKeys,
     plannedChallengeId: landingPlan.plannedChallengeId,
   });
-  const challenge = getChallengeForStop(stopIndex, routeStops, challengeId);
+  const challenge = {
+    ...getChallengeForStop(required ? 0 : stopIndex, required ? [stop] : routeStops, challengeId),
+    stopIndex,
+    ...(required ? { betaSourceStopId: required.stop.id } : {}),
+  };
   const plannedContent = landingPlan.getContent(challengeId);
   let challengeRound = null;
   let usedMonumentIds = Array.isArray(current.usedMonumentIds) ? current.usedMonumentIds : [];
@@ -62,7 +72,7 @@ export const resolveLandingChallenge = ({
   let usedPersonalQuestionIds = Array.isArray(current.usedPersonalQuestionIds)
     ? current.usedPersonalQuestionIds
     : [];
-  const challengeKey = getChallengeKey(stop, challengeId);
+  const challengeKey = getChallengeKey(required?.stop || stop, challengeId);
   const usedChallengeKeys = challengeKey
     ? [...new Set([...(current.usedChallengeKeys || []), challengeKey])]
     : (current.usedChallengeKeys || []);
@@ -145,6 +155,7 @@ export const resolveLandingChallenge = ({
     challenge,
     challengeId,
     challengeRound,
+    challengeStopData: required ? stop : null,
     isRoadsideDuel,
     history: {
       usedMonumentIds,
@@ -152,6 +163,9 @@ export const resolveLandingChallenge = ({
       usedPersonalQuestionIds,
       usedChallengeKeys,
       targetCursors,
+      ...(required ? { playedBetaStopIdsByTeam: {
+        ...(current.playedBetaStopIdsByTeam || {}), [teamId]: [...playedStopIds, required.stop.id],
+      } } : {}),
     },
   };
 };

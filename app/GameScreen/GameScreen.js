@@ -46,7 +46,8 @@ import { getDefaultModelOption, getModelOption } from './constants/modelOptions'
 import { devEventBus } from '../shared/dev/devEventBus';
 import { isDevPortalEnabled } from '../shared/dev/devConfig';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
-import { getBetaLandingPlan, isBetaScenario } from './betaPlannedContent';
+import { getBetaLandingPlan, getBetaRequiredLanding, isBetaScenario } from './betaPlannedContent';
+import { resolveLandingChallenge } from './landingChallenge';
 import useRouteOverview, { getOverviewRouteSignature } from './hooks/useRouteOverview';
 import {
   addDrinksByRule,
@@ -166,6 +167,7 @@ const GameScreen = ({ navigation, route }) => {
   const usedSizeRoundIdsRef = useRef([]);
   const usedPersonalQuestionIdsRef = useRef([]);
   const usedChallengeKeysRef = useRef([]);
+  const playedBetaStopIdsByTeamRef = useRef({});
   const targetCursorsRef = useRef({});
   const devForceChallengeTypeRef = useRef(null);
   const localRoadblockHistoryRef = useRef([]);
@@ -325,6 +327,7 @@ const GameScreen = ({ navigation, route }) => {
     usedSizeRoundIdsRef.current = [];
     usedPersonalQuestionIdsRef.current = [];
     usedChallengeKeysRef.current = [];
+    playedBetaStopIdsByTeamRef.current = {};
     targetCursorsRef.current = {};
     setState('waiting');
     setActiveTeamIndex(0);
@@ -408,7 +411,7 @@ const GameScreen = ({ navigation, route }) => {
     }
 
     setIsCarDriving(false);
-    setMovingPieceId(gameplay.challengeStopData ? action?.teamId || null : null);
+    setMovingPieceId(gameplay.challengeStopData && !gameplay.challengeStopData.betaSourceStopId ? action?.teamId || null : null);
     setRemainingMoves(0);
 
     if (gameplay.phase === 'challenge') {
@@ -434,7 +437,9 @@ const GameScreen = ({ navigation, route }) => {
           : {}),
         ...(gameplay.challengeRound || {}),
         ...(gameplay.challengeStopData
-          ? { markerPosition: gameplay.challengeStopData.position, isDetour: true }
+          ? { markerPosition: gameplay.challengeStopData.position,
+              betaSourceStopId: gameplay.challengeStopData.betaSourceStopId,
+              isDetour: !gameplay.challengeStopData.betaSourceStopId }
           : {}),
       });
       setState('challenge');
@@ -512,6 +517,26 @@ const GameScreen = ({ navigation, route }) => {
   ) => {
     const stop = routeStops[stopIndex];
     const players = getTeamPlayers(currentTeamMembers, pieceId);
+    if (getBetaRequiredLanding(gameData?.betaScenario, routeStops, stopIndex, playedBetaStopIdsByTeamRef.current[pieceId])) {
+      const landing = resolveLandingChallenge({
+        betaScenario: gameData?.betaScenario, actionId: seed,
+        current: { teamProgress: currentTeamProgress, usedChallengeKeys: usedChallengeKeysRef.current,
+          usedMonumentIds: usedMonumentIdsRef.current, usedSizeRoundIds: usedSizeRoundIdsRef.current,
+          usedPersonalQuestionIds: usedPersonalQuestionIdsRef.current, targetCursors: targetCursorsRef.current,
+          playedBetaStopIdsByTeam: playedBetaStopIdsByTeamRef.current },
+        difficulty: gameData?.difficulty, monumentPool: getCachedMonumentPool(), players,
+        requiredTeamIds: gamePieces.map((piece) => piece.id), routeStops, startedAt: Date.now(),
+        stopIndex, teamId: pieceId, fromLeg, timerPace: roomRules.challengeTimerPace,
+      });
+      const history = landing.history;
+      playedBetaStopIdsByTeamRef.current = history.playedBetaStopIdsByTeam;
+      usedChallengeKeysRef.current = history.usedChallengeKeys;
+      usedMonumentIdsRef.current = history.usedMonumentIds;
+      usedSizeRoundIdsRef.current = history.usedSizeRoundIds;
+      usedPersonalQuestionIdsRef.current = history.usedPersonalQuestionIds;
+      targetCursorsRef.current = history.targetCursors;
+      return { ...landing.challenge, ...(landing.challengeRound || {}) };
+    }
     const isRoadsideDuel = didTriggerRoadsideDuel({
       fromLeg,
       targetLeg: stopIndex,
@@ -648,6 +673,7 @@ const GameScreen = ({ navigation, route }) => {
     usedSizeRoundIdsRef.current = [];
     usedPersonalQuestionIdsRef.current = [];
     usedChallengeKeysRef.current = [];
+    playedBetaStopIdsByTeamRef.current = {};
     targetCursorsRef.current = {};
     setState('waiting');
     setActiveTeamIndex(0);
@@ -782,6 +808,11 @@ const GameScreen = ({ navigation, route }) => {
       return;
     }
 
+    const stopIndex = teamProgress[activePiece.id]?.currentLeg;
+    if (getBetaRequiredLanding(gameData?.betaScenario, routeStops, stopIndex, playedBetaStopIdsByTeamRef.current[activePiece.id])) {
+      setCurrentChallenge(createLocalChallenge(stopIndex, activePiece.id, `local-required-${Date.now()}`, { fromLeg: stopIndex }));
+      return;
+    }
     const nextActiveTeamIndex = getNextActiveTeamIndex(gamePieces, teamProgress, activeTeamIndex);
     setCurrentChallenge(null);
     if (nextActiveTeamIndex === null) {
@@ -1339,7 +1370,8 @@ const GameScreen = ({ navigation, route }) => {
       turnNumber: localTurnNumber,
       roadblockHistory: localRoadblockHistoryRef.current,
     };
-    if (shouldTriggerRoadblock({ action, gameplay: localGameplay })) {
+    if (!getBetaRequiredLanding(gameData?.betaScenario, routeStops, targetLeg, playedBetaStopIdsByTeamRef.current[activePiece.id])
+      && shouldTriggerRoadblock({ action, gameplay: localGameplay })) {
       const event = createRoadblockEvent({
         action,
         routeModel,
@@ -1628,7 +1660,8 @@ const GameScreen = ({ navigation, route }) => {
     setLocalRoadblock(null);
 
     const nextActiveTeamIndex = getNextActiveTeamIndex(gamePieces, nextTeamProgress, activeTeamIndex);
-    if ((hasFinishedRoute || completedRoadblock) && !activeDevDrive) {
+    const requiredLanding = getBetaRequiredLanding(gameData?.betaScenario, routeStops, landedLeg, playedBetaStopIdsByTeamRef.current[pieceId]);
+    if ((hasFinishedRoute || completedRoadblock) && !requiredLanding && !activeDevDrive) {
       if (nextActiveTeamIndex === null) {
         setState('done');
         return;

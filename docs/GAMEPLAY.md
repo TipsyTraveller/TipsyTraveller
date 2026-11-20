@@ -12,6 +12,12 @@
    challenge after a non-final landing.
 5. Finished teams are skipped. The game ends after every team finishes.
 
+In beta rooms, plans marked `mustPlay` guarantee the challenge for every team.
+A team plays it in its original country when landing there. Skipping that country
+carries the card to the team's next landing without shortening its roll. Multiple
+due cards play in route order at that landing, including Greece, before the turn
+or game ends. These cards take priority over Roadside Duels and roadblocks.
+
 | Player setting | Teams | Capacity | Minimum to start |
 |---|---:|---:|---:|
 | `1-4` | 2 | 4 | 2 |
