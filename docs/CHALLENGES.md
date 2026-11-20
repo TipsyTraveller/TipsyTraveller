@@ -33,8 +33,10 @@ paused to reduce mobile contention.
 
 ## Guess the Country Word
 
-Every bundled country includes this typed challenge with six country-themed entries,
-a 30-second duration, and 10 success points. It is excluded for one-player teams.
+Every bundled country includes this typed challenge with twelve country-themed entries
+(word list version 3): six easier, familiar words followed by six original entries.
+The challenge has a 30-second duration and 10 success points, and is excluded for
+one-player teams.
 The action ID deterministically selects both explainer and secret word.
 
 The active leader device runs `intro → playing → result`: pass the phone, press
