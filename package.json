@@ -11,7 +11,8 @@
     "ios:native": "bash ./scripts/run-ios.sh",
     "build:map": "node scripts/build-vector-map.mjs",
     "web": "expo start --web",
-    "test:beta-content": "node --test tests/betaScenario.test.mjs"
+    "test:beta-content": "node --test tests/betaScenario.test.mjs",
+    "test:beta-lobby": "node --test tests/betaLobby.test.mjs"
   },
   "dependencies": {
     "@lottiefiles/dotlottie-react": "^0.13.5",

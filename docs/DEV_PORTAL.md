@@ -7,6 +7,12 @@ not a production authorization boundary.
 
 ## Capabilities
 
+- **Beta Test:** edit the nine-player preset's countries, order, challenges and
+  exact Team 1/2/3 content. Save one local draft, restore the preset, inspect a
+  read-only route/content preview, or create a real lobby with the host and six
+  named guests without phones. Two further leader phones join by PIN. Invalid
+  geometry/content is rejected; Belgium and Italy remain mandatory. See
+  [BETA_SCENARIO.md](BETA_SCENARIO.md) for the contract and remaining gameplay work.
 - **Screens / Quick Start:** open mock two- or three-team GameScreen, quick-host a live
   multiplayer room directly on CharacterSelection with rival teams already ready, open
   mock character selection, create a live test lobby, or navigate to setup screens.
@@ -17,6 +23,7 @@ not a production authorization boundary.
   so you can watch the board. These controls are available to the host in rooms
   created by the Dev Portal (`devTurnTesting: true`). The same tab can fill
   lobbies by PIN, add/remove team bots, and assign default vehicles.
+  These bot/fill/vehicle shortcuts reject beta rooms.
 - **Board & Game Tools:** force rolls 1–3, move to a route stop and open its challenge,
   skip active challenge/roadblock steps, test or clear roadblocks, and reset board
   state. Test Roadblock Event opens a mock board from Home and runs on the current
@@ -53,6 +60,8 @@ see [MULTIPLAYER.md](MULTIPLAYER.md).
 - `app/shared/dev/devConfig.js`: visibility.
 - `DevPortal.js`, `DevPortalButton.js`, `DevPortalModal.js`: container and UI.
 - `CountryStopsTab.js`: web authoring controls.
+- `BetaTestTab.js`, `betaDraft.js`, `betaRoomService.js`: beta editor, local draft,
+  snapshot preview and real nine-player room setup (all platforms).
 - `devNavigation.js`: navigation ref and instant starters.
 - `devFirebaseService.js`: test rooms, bots, ready-up.
 - `devEventBus.js`: decoupled board actions and placement handoff.

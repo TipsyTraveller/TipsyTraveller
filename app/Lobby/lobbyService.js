@@ -1,5 +1,5 @@
 import {
-  get, onDisconnect, push, ref, runTransaction, serverTimestamp, set, update,
+  get, onDisconnect, onValue, push, ref, runTransaction, serverTimestamp, set, update,
 } from 'firebase/database';
 import { db } from '../../firebaseConfig';
 import {
@@ -11,8 +11,17 @@ import {
   PLAYER_CAPACITY,
   withPlayerCounter,
 } from './lobbyState';
+import { runBetaLobbyTransaction } from './betaLobbyState';
 
 const transactionError = (code, message) => ({ code, message });
+
+export const runBetaRoomAction = async (action) => {
+  const rootRef = ref(db);
+  return runBetaLobbyTransaction({
+    subscribe: (ready, failed) => onValue(rootRef, ready, failed),
+    transact: (updater) => runTransaction(rootRef, updater, { applyLocally: false }),
+  }, { ...action, now: Date.now() });
+};
 
 export const restoreHostConnection = async ({ gameID, gameData, deviceID }) => {
   if (!gameID || !deviceID || gameData?.hostDeviceID !== deviceID) return false;
@@ -60,6 +69,9 @@ export const joinRoomTransaction = async ({ gameID, deviceID, name, badge = null
   }
 
   const game = gameSnapshot.val();
+  if (game.betaScenario) {
+    return runBetaRoomAction({ kind: 'join', gameID, deviceID, playerId, name, badge, profileId });
+  }
   if (game.disconnectedAt && Date.now() - game.disconnectedAt > 10 * 60 * 1000) {
     return transactionError('expired', 'This game expired after the host disconnected.');
   }
@@ -128,6 +140,9 @@ export const mutateLobbyRoster = async ({ gameID, hostDeviceID, mutate }) => {
   let outcome = transactionError('unavailable', 'The lobby changed before the action completed.');
   const gameSnapshot = await get(ref(db, `games/${gameID}`));
   const game = gameSnapshot.val();
+  if (game?.betaScenario) {
+    return runBetaRoomAction({ kind: 'roster', gameID, deviceID: hostDeviceID, mutate });
+  }
   if (!game || game.status !== 'lobby') {
     return { ...transactionError('closed', 'The room is no longer accepting lobby changes.'), ok: false };
   }
@@ -152,6 +167,10 @@ export const mutateLobbyRoster = async ({ gameID, hostDeviceID, mutate }) => {
 
 export const startCharacterSelection = async ({ gameID, hostDeviceID }) => {
   let outcome = transactionError('unavailable', 'The lobby changed before the game could start.');
+  const gameSnapshot = await get(ref(db, `games/${gameID}`));
+  if (gameSnapshot.val()?.betaScenario) {
+    return runBetaRoomAction({ kind: 'start', gameID, deviceID: hostDeviceID });
+  }
   const playersSnapshot = await get(ref(db, `players/${gameID}`));
   const players = playersSnapshot.val() || {};
 

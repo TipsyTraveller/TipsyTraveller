@@ -28,6 +28,9 @@ Development may start on `GameScreen` when `START_ON_DEV_GAME_SCREEN` in
   avoids duplicate insertion, assigns the least populated valid team, and joins.
 - `LobbyScreen`: listens to room and roster, supports host removal and local players,
   starts character selection, and opens `RulesScreen`.
+  Beta lobbies reserve two guest places and one leader phone per team, require
+  exactly nine players to start, and return Home instead of opening ordinary room
+  settings. The Beta Test portal supplies the host and six guest names at creation.
 - `RulesScreen`: displays the concise how-to-play guide in the app's card style and
   returns automatically if the room advances from the lobby.
 - `CharacterSelection`: identifies the local team role, preselects the leader's saved

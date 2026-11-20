@@ -80,10 +80,12 @@ export default function JoinGame ({ navigation }) {
                 });
                 if (joinResult.ok) {
                     await saveActiveGameId(gamePin);
-                    const playersSnapshot = await get(ref(db, `players/${gamePin}`));
+                    const [playersSnapshot, currentGameSnapshot] = await Promise.all([
+                        get(ref(db, `players/${gamePin}`)), get(ref(db, `games/${gamePin}`)),
+                    ]);
                     const roomRoute = getRoomRoute({
                         gameID: gamePin,
-                        gameData: gameSettings,
+                        gameData: currentGameSnapshot.val() || gameSettings,
                         teamMembers: playersSnapshot.val(),
                     });
                     navigation.navigate(roomRoute.name, roomRoute.params);

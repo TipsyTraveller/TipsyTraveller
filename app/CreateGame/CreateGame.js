@@ -1,7 +1,7 @@
 import { Alert, Platform, View, StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
-import { ref, runTransaction } from "firebase/database";
+import { get, ref, runTransaction } from "firebase/database";
 import { db } from "../../firebaseConfig";
 
 //COMPONENTS
@@ -56,6 +56,11 @@ export default function SelectionPages ({ navigation, route }) {
 
         setIsSaving(true);
         try {
+            const existingGame = await get(ref(db, `games/${editingGameID}`));
+            if (existingGame.val()?.betaScenario) {
+                Alert.alert("Fixed beta scenario", "Create a new beta lobby to use another route or player setup.");
+                return;
+            }
             const routeStops = await getRouteSnapshotForDuration(gameSettings.duration);
             let rejectionMessage = "The room may have closed or moved on from the lobby.";
 
@@ -64,6 +69,10 @@ export default function SelectionPages ({ navigation, route }) {
                 (root) => {
                     const currentGame = root?.games?.[editingGameID];
                     if (!currentGame || currentGame.status !== "lobby") return;
+                    if (currentGame.betaScenario) {
+                        rejectionMessage = "Beta rooms keep their saved route and nine-player setup. Create a new beta lobby to use another scenario.";
+                        return;
+                    }
                     const players = root?.players?.[editingGameID] || {};
                     const playerCount = countPlayers(players);
                     const nextCapacity = PLAYER_CAPACITY[gameSettings.nrOfPlayers];

@@ -3,6 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../../firebaseConfig';
 import { getRouteSnapshotForDuration } from '../../GameScreen/services/countryStopsService';
 
+const rejectBetaTools = async (gameID) => {
+  const snapshot = await get(ref(db, `games/${gameID}`));
+  if (snapshot.val()?.betaScenario) throw new Error('Beta rooms require three real leader phones. Bots and automatic vehicle selection are disabled.');
+};
+
 export const getOrCreateDevDeviceId = async () => {
   let deviceID = await AsyncStorage.getItem('deviceID');
   if (!deviceID) {
@@ -25,6 +30,7 @@ export const addBotPlayer = async (gameID, targetTeamNr = 2, customName) => {
   if (!gameID) {
     throw new Error('Please enter or select a game PIN.');
   }
+  await rejectBetaTools(gameID);
 
   const playersRef = ref(db, `players/${gameID}`);
   const snapshot = await get(playersRef);
@@ -65,6 +71,7 @@ export const autoFillLobby = async (gameID) => {
   if (!gameID) {
     throw new Error('Please enter or select a game PIN.');
   }
+  await rejectBetaTools(gameID);
 
   const gameSnap = await get(ref(db, `games/${gameID}`));
   const gameData = gameSnap.exists() ? gameSnap.val() : {};
@@ -98,6 +105,7 @@ export const readyUpTeams = async (gameID, { excludeTeamKeys = [] } = {}) => {
   if (!gameID) {
     throw new Error('Please enter or select a game PIN.');
   }
+  await rejectBetaTools(gameID);
 
   const gameSnap = await get(ref(db, `games/${gameID}`));
   const gameData = gameSnap.exists() ? gameSnap.val() : {};
@@ -233,6 +241,7 @@ export const removeBotPlayers = async (gameID) => {
   if (!gameID) {
     throw new Error('Please enter or select a game PIN.');
   }
+  await rejectBetaTools(gameID);
 
   const playersSnap = await get(ref(db, `players/${gameID}`));
   if (!playersSnap.exists()) return { removed: 0 };

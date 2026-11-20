@@ -1,6 +1,6 @@
 # Development, verification, and limitations
 
-Package A's beta content tests use Node's built-in test runner. There is no lint or
+Beta content and lobby tests use Node's built-in test runner. There is no lint or
 type-check command. Choose checks proportionate to the change and report only what
 actually ran.
 
@@ -15,15 +15,18 @@ npm run ios:native     # checked-in native iOS development client
 npm run android
 npm run build:map      # regenerate map GLB after SVG/generator changes
 npm run test:beta-content # pure beta preset, validation and snapshot tests
+npm run test:beta-lobby   # editor/storage, nine-player roster and transaction retries
 ```
 
 Node requirements are 22.13+ on Node 22, 24.3+ on Node 24, or Node 26. Native work
 also needs the matching Xcode/CocoaPods or Android SDK toolchain.
 
-The beta tests cover only the content contract and snapshot helpers described in
+The beta tests cover the content contract, editor/storage and lobby reducers in
 [BETA_SCENARIO.md](BETA_SCENARIO.md). Serialized preview/room/reconnect/rematch copies
 exercise data independence, not the live consumers. They do not verify multiplayer
-transactions, portal UI, Android bundling, photo availability or physical devices.
+Firebase SDK transactions, deployed rules, portal UI, Android bundling, photo
+availability or physical devices. The lobby suite simulates optimistic conflicts
+using the same reducer and transaction wrapper as the live service.
 Node may emit `MODULE_TYPELESS_PACKAGE_JSON` while loading the Expo ES modules;
 the test command does not change the application's module configuration.
 
@@ -74,6 +77,15 @@ the test command does not change the application's module configuration.
    four seconds, can be skipped immediately, and leaves the full standings visible.
 
 ## Focused multiplayer flow
+
+For Beta Test setup, open the portal tab, edit and save a concept, reload the app,
+and check the route/team content is preserved. Preview the secret content as host
+before play. Create a lobby with seven names, then join from two other phones:
+verify 3/3/3 people, three leaders, rejection of a fourth phone, and disabled Start
+until all nine are present. Check duplicate joins, guest removal/re-addition and
+concurrent start/roster attempts. Ordinary settings and dev bot tools must not
+change this room. Confirm the saved scenario reaches vehicle selection. These
+live/device checks remain separate from the local transaction harness.
 
 1. Create on device A, join on B, verify team/leader assignment and realtime roster.
 2. Start character selection, choose each required model, and verify synchronized game
@@ -131,8 +143,8 @@ landscape layout, and camera motion.
 - Expo GL is unreliable in the iOS Simulator. Android release currently uses debug
   signing. There is no CI or environment-based Firebase project selection.
 - Native folders are intentionally checked in; Expo config/native changes must agree.
-- No TypeScript, error boundary or lint command exists. Schema validation and
-  automated tests currently cover only the standalone beta content contract.
+- No TypeScript, error boundary or lint command exists. Automated tests currently
+  cover beta content, editor/storage and pure lobby transaction behavior.
 - Several legacy/unused components and imports remain; do not clean them up as part of
   unrelated work.
 

@@ -23,6 +23,8 @@ games/{gameID}
   teamModels/{team1|team2|team3}: modelId
   teamNames/{team1|team2|team3}: displayName
   routeStops[]: ordered snapshot, immutable during one session and replaced on rematch
+  betaScenario?: schemaVersion 1, presetId, playerCount 9, stops/{countryId}
+    challenge, contentByTeam/{team1|team2|team3}
   gameplay
     schemaVersion: 12
     sessionId, revision, phase, activeTeamId, turnNumber, updatedAt
@@ -53,6 +55,15 @@ The synchronized round moves through private answer handoff, timed team guess, a
 result stages. Its result transaction awards points and per-player drinks together,
 and any connected client may finalize an expired guess without duplicating awards.
 Older rooms lazily receive an empty used-question list.
+
+Beta rooms created by Dev Portal use the optional [beta contract](BETA_SCENARIO.md).
+They begin with seven registered people and reserve the two remaining slots for
+real leader phones. Beta joins, host roster changes and both start transitions
+atomically inspect room status and roster in a common-root transaction; callbacks
+recheck the current data on retries. Start requires nine players, three per team,
+and three distinct leader phones. Ordinary room settings cannot replace a beta
+route. In-game fixed-content selection and beta rematch preservation are pending B;
+the presence of the snapshot alone does not yet implement those behaviors.
 
 Schema 11 adds `usedSizeRoundIds` and the single-team Size It Up round snapshot.
 Estimate adjustments are written only when an interaction commits, not on every

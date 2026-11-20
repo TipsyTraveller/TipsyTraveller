@@ -32,12 +32,14 @@ import {
 } from './devNavigation';
 import { devEventBus } from './devEventBus';
 import CountryStopsTab from './CountryStopsTab';
+import BetaTestTab from './BetaTestTab';
 import { DICE_MAX_RESULT } from '../../GameScreen/constants/diceBounds';
 import { resolveGameRouteStops } from '../../GameScreen/constants/countryStops';
 import { subscribeCountryStops } from '../../GameScreen/services/countryStopsService';
 
 const TABS = [
   { id: 'screens', icon: '🚀', label: 'Screens' },
+  { id: 'beta', icon: '🧪', label: 'Beta Test' },
   { id: 'multiplayer', icon: '👥', label: 'Multiplayer' },
   { id: 'board', icon: '🎲', label: 'Board' },
   ...(Platform.OS === 'web' ? [{ id: 'countries', icon: '🗺️', label: 'Countries' }] : []),
@@ -46,6 +48,7 @@ const TABS = [
 
 export default function DevPortalModal({ visible, onClose }) {
   const [activeTab, setActiveTab] = useState('screens');
+  const [betaDraft, setBetaDraft] = useState(null);
   const [gamePin, setGamePin] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [buttonCorner, setButtonCorner] = useState('top-right');
@@ -472,7 +475,9 @@ export default function DevPortalModal({ visible, onClose }) {
             style={styles.scrollBody}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
           >
+            {activeTab === 'beta' && <BetaTestTab onClose={onClose} draft={betaDraft} setDraft={setBetaDraft} />}
             {/* TAB 1: SCREENS */}
             {activeTab === 'screens' && (
               <View style={styles.section}>
@@ -1131,6 +1136,7 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     backgroundColor: '#101b25',
     paddingHorizontal: 8,
     paddingVertical: 8,

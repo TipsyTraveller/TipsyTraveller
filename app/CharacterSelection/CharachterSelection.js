@@ -14,6 +14,7 @@ import { MODEL_OPTIONS } from '../GameScreen/constants/modelOptions';
 import { createInitialGameplay } from '../GameScreen/gameplayState';
 import { getProfile } from '../shared/storage/userSettings';
 import { getLobbyReadiness } from '../Lobby/lobbyState';
+import { runBetaRoomAction } from '../Lobby/lobbyService';
 
 const getRequiredTeamKeys = (gameData) => (
   gameData?.nrOfPlayers === '9-12'
@@ -164,6 +165,17 @@ export default function CharacterSelection({ navigation, route }) {
 
     const startedAt = Date.now();
     const startGame = async () => {
+      if (liveGameData?.betaScenario) {
+        const deviceID = await AsyncStorage.getItem('deviceID');
+        await runBetaRoomAction({
+          kind: 'beginGame', gameID, deviceID,
+          initializeGameplay: (game, players) => {
+            if (!initialGameplayRef.current) initialGameplayRef.current = createInitialGameplay(game, startedAt, players);
+            return initialGameplayRef.current;
+          },
+        });
+        return;
+      }
       const playersSnapshot = await get(ref(db, `players/${gameID}`));
       await runTransaction(ref(db, `games/${gameID}`), (currentGame) => {
         if (!currentGame || currentGame.status !== 'characterSelection') return undefined;

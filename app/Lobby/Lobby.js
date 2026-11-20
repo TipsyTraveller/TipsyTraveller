@@ -13,8 +13,8 @@ import LowerButtonContainer from '../shared/components/LowerButtonContainer/Lowe
 import InputField from '../shared/components/InputField/InputField';
 import BackButton from '../shared/components/BackButton/BackButton';
 import {
-  chooseTeamForJoin, countPlayers, getLobbyReadiness, getRequiredTeamKeys,
-  getTeamEntries, PLAYER_CAPACITY,
+  chooseTeamForLocalPlayer, countPlayers, getLobbyReadiness, getRequiredTeamKeys,
+  getTeamEntries, getPlayerCapacity,
 } from './lobbyState';
 import { mutateLobbyRoster, startCharacterSelection } from './lobbyService';
 import { saveActiveGameId } from '../shared/storage/userSettings';
@@ -39,6 +39,7 @@ export default function Lobby({ navigation, route }) {
   );
   const requiredTeamKeys = getRequiredTeamKeys(gameData);
   const roomIsFull = readiness.capacity && readiness.playerCount >= readiness.capacity;
+  const localPlacesFull = roomIsFull || Boolean(gameData?.betaScenario && !chooseTeamForLocalPlayer(gameData, teamMembers));
 
   useEffect(() => {
     AsyncStorage.getItem('deviceID').then(setLocalDeviceID);
@@ -97,17 +98,18 @@ export default function Lobby({ navigation, route }) {
 
   const handleAddPlayer = async () => {
     const trimmedName = userName.trim();
-    if (!trimmedName || isAddingPlayer || roomIsFull) return;
+    if (!trimmedName || isAddingPlayer || localPlacesFull) return;
     Keyboard.dismiss();
     setIsAddingPlayer(true);
     const playerId = push(ref(db, `players/${gameID}/team1`)).key;
     try {
       const added = await runRosterAction(`add:${playerId}`, ({ game, players }) => {
-        const capacity = PLAYER_CAPACITY[game.nrOfPlayers];
+        const capacity = getPlayerCapacity(game);
         if (!capacity || countPlayers(players) >= capacity) {
           return { error: { code: 'full', message: 'This room is full.' } };
         }
-        const teamKey = chooseTeamForJoin(game, players);
+        const teamKey = chooseTeamForLocalPlayer(game, players);
+        if (!teamKey) return { error: { code: 'reserved', message: 'The remaining places are reserved for leader phones joining by PIN.' } };
         const team = asTeamObject(players, teamKey);
         return {
           players: {
@@ -189,6 +191,10 @@ export default function Lobby({ navigation, route }) {
   };
 
   const handleBack = () => {
+    if (gameData?.betaScenario) {
+      navigation.navigate('Home');
+      return;
+    }
     if (!host) {
       navigation.goBack();
       return;
@@ -261,7 +267,7 @@ export default function Lobby({ navigation, route }) {
             </Text>
             <View style={styles.inputContainer}>
               <InputField
-                placeholder={roomIsFull ? 'ROOM FULL' : 'PLAYER NAME'}
+                placeholder={localPlacesFull ? 'LOCAL PLACES FULL' : 'PLAYER NAME'}
                 value={userName}
                 setValue={setUserName}
                 accessibilityLabel="Local player name"
@@ -272,18 +278,19 @@ export default function Lobby({ navigation, route }) {
               <Pressable
                 accessibilityLabel="Add player"
                 accessibilityRole="button"
-                accessibilityState={{ disabled: !userName.trim() || isAddingPlayer || roomIsFull }}
-                disabled={!userName.trim() || isAddingPlayer || roomIsFull}
+                accessibilityState={{ disabled: !userName.trim() || isAddingPlayer || localPlacesFull }}
+                disabled={!userName.trim() || isAddingPlayer || localPlacesFull}
                 onPress={handleAddPlayer}
                 style={({ pressed }) => [
                   styles.addButton,
-                  (!userName.trim() || isAddingPlayer || roomIsFull) && styles.addButtonDisabled,
+                  (!userName.trim() || isAddingPlayer || localPlacesFull) && styles.addButtonDisabled,
                   pressed && styles.addButtonPressed,
                 ]}
               >
                 <Text style={styles.addButtonText}>{isAddingPlayer ? 'ADDING' : 'ADD'}</Text>
               </Pressable>
             </View>
+            {gameData?.betaScenario && <Text style={styles.readinessText}>BETA · 3 teams of 3. The other two leader phones join using the PIN. The saved route is fixed.</Text>}
           </View>
         )}
 
