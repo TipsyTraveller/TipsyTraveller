@@ -38,6 +38,7 @@ games/{gameID}
     challengeStop, challengeStopData, challengeId, challengeRound
     roadblock, roadblockHistory[], usedMonumentIds[], usedSizeRoundIds[],
       usedPersonalQuestionIds[], usedChallengeKeys[]
+    playedBetaStopIdsByTeam?/{teamId}: source country IDs of opened required beta cards
     targetCursors/{teamId:role}: next roster index
 players/{gameID}
   playerCounter

@@ -5,7 +5,7 @@ import { createBetaRoomRecords, reduceBetaLobby, transactBetaLobby, runBetaLobby
 import { chooseTeamForJoin, chooseTeamForLocalPlayer, countPlayers, getLobbyReadiness } from '../app/Lobby/lobbyState.js';
 import { getRoomRoute } from '../app/shared/roomNavigation.js';
 import {
-  BETA_DRAFT_KEY, createBetaDraft, editBetaChallenge, editBetaRoute, editBetaTeamContent,
+  BETA_DRAFT_KEY, createBetaDraft, editBetaChallenge, editBetaMustPlay, editBetaRoute, editBetaTeamContent,
   loadBetaDraft, saveBetaDraft, saveBetaTextChallenge, editBetaChallengeDrinks,
 } from '../app/shared/dev/betaDraft.js';
 import { DEFAULT_COUNTRY_STOPS } from '../app/GameScreen/constants/countryStops.js';
@@ -320,4 +320,36 @@ test('drink counts apply to every selected challenge type and survive switching 
     assert.equal(switched.betaScenario.stops[stopId].challenge.penaltySips, 0);
   }
   for (const count of [-1, 10, 1.5, NaN, '2']) assert.throws(() => editBetaChallengeDrinks(source, 'belgium', count));
+});
+
+test('Always play persists in drafts and rooms and resets when choosing another challenge', async () => {
+  const original = createBetaDraft();
+  const scenario = editBetaMustPlay(original.scenario, 'belgium', true);
+  assert.equal(original.scenario.betaScenario.stops.belgium.mustPlay, undefined);
+  let saved;
+  const storage = { getItem: async () => saved, setItem: async (_, value) => { saved = value; } };
+  await saveBetaDraft(storage, { ...original, scenario });
+  const loaded = await loadBetaDraft(storage);
+  assert.equal(loaded.scenario.betaScenario.stops.belgium.mustPlay, true);
+  const room = createBetaRoomRecords({ ...options(), scenario: loaded.scenario });
+  assert.equal(room.gameData.betaScenario.stops.belgium.mustPlay, true);
+  assert.equal(editBetaMustPlay(scenario, 'belgium', false).betaScenario.stops.belgium.mustPlay, false);
+  const other = scenario.routeStops.find((stop) => stop.id === 'belgium').challenges.find((card) => !card.type && card.id !== scenario.betaScenario.stops.belgium.challenge.id);
+  assert.equal(editBetaChallenge(scenario, 'belgium', other.id).betaScenario.stops.belgium.mustPlay, undefined);
+  assert.throws(() => editBetaMustPlay(scenario, 'greece', true));
+  assert.throws(() => editBetaMustPlay(scenario, 'belgium', 'true'));
+  const invalid = clone(scenario); invalid.betaScenario.stops.belgium.mustPlay = 'true';
+  await assert.rejects(saveBetaDraft(storage, { ...original, scenario: invalid }));
+});
+
+
+test('editing a custom card preserves its Always play toggle and drink count', () => {
+  const custom = saveBetaTextChallenge(createBetaPreset(), 'belgium', { title: 'Toast', prompt: 'Say hello', penaltySips: 3 });
+  const id = custom.betaScenario.stops.belgium.challenge.id;
+  const enabled = editBetaMustPlay(custom, 'belgium', true);
+  const edited = saveBetaTextChallenge(enabled, 'belgium', { id, title: 'Better toast', prompt: 'Say cheers', penaltySips: 4 });
+  assert.equal(edited.betaScenario.stops.belgium.mustPlay, true);
+  assert.equal(edited.betaScenario.stops.belgium.challenge.penaltySips, 4);
+  const changedDrinks = editBetaChallengeDrinks(edited, 'belgium', 0);
+  assert.equal(changedDrinks.betaScenario.stops.belgium.mustPlay, true);
 });

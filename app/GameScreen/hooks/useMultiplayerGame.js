@@ -62,7 +62,7 @@ import { getRoomRules } from '../constants/roomRules';
 import { incrementTeamCareerCounter, normalizeCareerCounters } from '../careerStats';
 import { getProfile, syncCareerStats } from '../../shared/storage/userSettings';
 import { getFreshRouteSnapshotForDuration } from '../services/countryStopsService';
-import { isBetaScenario } from '../betaPlannedContent';
+import { isBetaScenario, getBetaRequiredLanding } from '../betaPlannedContent';
 import { resolveLandingChallenge } from '../landingChallenge';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
@@ -536,6 +536,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     if (!enabled || !gameID || !deviceID) return false;
     if (devTurn ? !canActForDevTurn(devTurn) : !canControlTurn) return false;
 
+    if (!(await ensureBetaScenario())) return false;
+    const betaScenario = betaScenarioRef.current;
     const gameplayRef = ref(db, `games/${gameID}/gameplay`);
     const expectedSessionId = gameplay?.sessionId;
     const expectedRevision = gameplay?.revision;
@@ -615,7 +617,8 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       const roomRules = getRoomRules(gameDataRef.current);
-      const roadblock = shouldTriggerRoadblock({ action, gameplay: current })
+      const roadblock = !getBetaRequiredLanding(betaScenario, routeModel.countryStops, action.targetLeg, current.playedBetaStopIdsByTeam?.[actingTeamId])
+        && shouldTriggerRoadblock({ action, gameplay: current })
         ? createRoadblockEvent({
             action,
             routeModel,
@@ -660,7 +663,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [canActForDevTurn, canControlTurn, deviceID, enabled, gameID, gameplay, identity.localTeamId, now, routeModel]);
+  }, [canActForDevTurn, canControlTurn, deviceID, enabled, ensureBetaScenario, gameID, gameplay, identity.localTeamId, now, routeModel]);
 
   const resolveRoadblock = useCallback(async (choice, devTurn = null) => {
     const isTimeout = choice === 'timeout';
@@ -968,7 +971,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         };
       }
 
-      if (!hasFinishedRoute) {
+      if (!hasFinishedRoute || getBetaRequiredLanding(betaScenario, routeModel.countryStops, action.targetLeg, current.playedBetaStopIdsByTeam?.[action.teamId])) {
         const landing = resolveLandingChallenge({
           betaScenario,
           actionId: action.id,
@@ -992,7 +995,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           teamProgress,
           careerCounters,
           challengeStop: action.targetLeg,
-          challengeStopData: null,
+          challengeStopData: landing.challengeStopData,
           challengeId: landing.challengeId,
           challengeRound: landing.challengeRound,
           ...landing.history,
@@ -1600,6 +1603,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (
         !current
         || current.phase !== 'challenge'
+        || (current.challengeStopData?.betaSourceStopId !== gameplay?.challengeStopData?.betaSourceStopId)
         || (devTurn && !matchesDevTurn(current, devTurn))
         || (!devTurn && !force && current.activeTeamId !== identity.localTeamId)
         || (!devTurn && !force && current.challengeRound && current.challengeRound.stage !== 'result')
@@ -1656,6 +1660,27 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         };
       }
 
+      const stopIndex = current.teamProgress?.[current.activeTeamId]?.currentLeg;
+      const betaScenario = betaScenarioRef.current;
+      if (getBetaRequiredLanding(betaScenario, routeModel.countryStops, stopIndex, current.playedBetaStopIdsByTeam?.[current.activeTeamId])) {
+        const updatedAt = now();
+        const landing = resolveLandingChallenge({
+          betaScenario, actionId: `${current.currentAction?.id || current.turnNumber}:required:${current.revision}`,
+          current, difficulty: gameDataRef.current?.difficulty, monumentPool: getCachedMonumentPool(),
+          players: getTeamPlayers(teamMembersRef.current, current.activeTeamId),
+          requiredTeamIds: getRequiredTeamIds(gameDataRef.current), routeStops: routeModel.countryStops,
+          startedAt: updatedAt, stopIndex, teamId: current.activeTeamId, fromLeg: stopIndex,
+          timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
+        });
+        return {
+          ...current, ...landing.history, revision: (current.revision || 0) + 1,
+          challengeStop: stopIndex, challengeStopData: landing.challengeStopData,
+          challengeId: landing.challengeId, challengeRound: landing.challengeRound,
+          careerCounters: incrementTeamCareerCounter(current.careerCounters, teamMembersRef.current, current.activeTeamId, 'challengesCompleted'),
+          updatedAt,
+        };
+      }
+
       const teamIds = getRequiredTeamIds(gameDataRef.current);
       const nextTeamId = getNextActiveTeamId(
         teamIds,
@@ -1686,7 +1711,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [canActForDevTurn, canControlTurn, enabled, gameID, identity.localTeamId, now, routeModel]);
+  }, [canActForDevTurn, canControlTurn, enabled, gameID, gameplay?.challengeStopData?.betaSourceStopId, identity.localTeamId, now, routeModel]);
 
   const runDevTurnAction = useCallback(async (turn, action) => {
     if (!canActForDevTurn(turn)) return false;

@@ -5,11 +5,11 @@ import { DEFAULT_COUNTRY_STOPS } from '../app/GameScreen/constants/countryStops.
 import { DEFAULT_MONUMENT_POOL } from '../app/GameScreen/constants/monumentPool.js';
 import { PERSONAL_MATCH_QUESTIONS } from '../app/GameScreen/constants/personalMatch.js';
 import { SIZE_IT_UP_ROUNDS } from '../app/GameScreen/constants/sizeItUp.js';
-import { createInitialGameplay } from '../app/GameScreen/gameplayState.js';
+import { buildRollAction, createInitialGameplay } from '../app/GameScreen/gameplayState.js';
 import { resolveLandingChallenge } from '../app/GameScreen/landingChallenge.js';
 import {
   getBetaReservedMonumentIds,
-  getBetaStopPlan,
+  getBetaStopPlan, getBetaRequiredLanding,
 } from '../app/GameScreen/betaPlannedContent.js';
 import { selectMonumentFromPool } from '../app/GameScreen/constants/monumentPool.js';
 import { createBetaPreset, createBetaSnapshot } from '../app/GameScreen/constants/betaScenario.js';
@@ -331,4 +331,93 @@ test('a planned challenge the team cannot play falls back instead of stalling', 
     timerPace: 'relaxed',
   });
   assert.notEqual(landing.challengeId, 'guess-country-word');
+});
+
+
+test('required challenges never shorten dice movement', () => {
+  const scenario = createBetaPreset();
+  for (const id of ['ireland', 'belgium', 'albania']) scenario.betaScenario.stops[id].mustPlay = true;
+  const routeModel = { countryStops: scenario.routeStops, finalStopIndex: scenario.routeStops.length - 1,
+    stopDistances: scenario.routeStops.map((_, i) => i * 10) };
+  for (const teamId of TEAMS) {
+    for (let fromLeg = 0; fromLeg < routeModel.finalStopIndex; fromLeg += 1) {
+      for (const value of [1, 2, 3]) {
+        const current = { ...baseGameplay(), activeTeamId: teamId, teamProgress: { [teamId]: { currentLeg: fromLeg } } };
+        const action = buildRollAction({ deviceID: 'test', gameplay: current, now: 1000, routeModel, value });
+        assert.equal(action.value, value);
+        assert.equal(action.targetLeg, Math.min(fromLeg + value, routeModel.finalStopIndex));
+        assert.ok(Number.isFinite(action.movementEndsAt));
+      }
+    }
+  }
+});
+
+test('required cards stay in their country until passed, then play at the landing country once per team', () => {
+  const scenario = createBetaPreset();
+  scenario.betaScenario.stops.ireland.mustPlay = true;
+  const sourceIndex = scenario.routeStops.findIndex((stop) => stop.id === 'ireland');
+  assert.equal(getBetaRequiredLanding(scenario.betaScenario, scenario.routeStops, 0), null);
+  for (const teamId of TEAMS) {
+    const stopIndex = sourceIndex + 2;
+    const args = { betaScenario: scenario.betaScenario, actionId: `carry-${teamId}`, current: baseGameplay(),
+      difficulty: 'easy', monumentPool: DEFAULT_MONUMENT_POOL, players: PLAYERS[teamId],
+      requiredTeamIds: TEAMS, routeStops: scenario.routeStops, startedAt: 5000,
+      stopIndex, teamId, fromLeg: 0, timerPace: 'relaxed' };
+    const landing = resolveLandingChallenge(args);
+    assert.equal(landing.challengeId, scenario.betaScenario.stops.ireland.challenge.id);
+    assert.equal(landing.challengeRound.secretWord, scenario.betaScenario.stops.ireland.contentByTeam[teamId].word);
+    assert.equal(landing.challenge.country, scenario.routeStops[stopIndex].name);
+    assert.equal(landing.challengeStopData.betaSourceStopId, 'ireland');
+    assert.equal(landing.challengeStopData.id, scenario.routeStops[stopIndex].id);
+    assert.equal(landing.challenge.prompt, scenario.betaScenario.stops.ireland.challenge.prompt);
+    assert.deepEqual(landing.history.playedBetaStopIdsByTeam[teamId], ['ireland']);
+    assert.deepEqual(resolveLandingChallenge(args), landing, 'transaction retries are deterministic');
+    const history = JSON.parse(JSON.stringify(landing.history));
+    assert.equal(getBetaRequiredLanding(scenario.betaScenario, scenario.routeStops, stopIndex, history.playedBetaStopIdsByTeam[teamId]), null);
+    const otherTeam = TEAMS.find((id) => id !== teamId);
+    assert.equal(getBetaRequiredLanding(scenario.betaScenario, scenario.routeStops, stopIndex, history.playedBetaStopIdsByTeam[otherTeam]).stop.id, 'ireland');
+  }
+});
+
+test('multiple carried challenges drain in route order at one landing, including Greece', () => {
+  const scenario = createBetaPreset();
+  for (const id of ['ireland', 'belgium', 'albania']) scenario.betaScenario.stops[id].mustPlay = true;
+  for (const teamId of TEAMS) {
+    let current = baseGameplay();
+    const stopIndex = scenario.routeStops.length - 1;
+    for (const sourceId of ['ireland', 'belgium', 'albania']) {
+      const landing = resolveLandingChallenge({ betaScenario: scenario.betaScenario, actionId: `finish-${teamId}-${sourceId}`, current,
+        difficulty: 'easy', monumentPool: DEFAULT_MONUMENT_POOL, players: PLAYERS[teamId],
+        requiredTeamIds: TEAMS, routeStops: scenario.routeStops, startedAt: 5000,
+        stopIndex, teamId, fromLeg: stopIndex, timerPace: 'relaxed' });
+      assert.equal(landing.challengeStopData.betaSourceStopId, sourceId);
+      assert.equal(landing.challenge.country, 'Greece');
+      assert.equal(landing.challengeId, scenario.betaScenario.stops[sourceId].challenge.id);
+      current = apply(current, landing);
+    }
+    assert.equal(getBetaRequiredLanding(scenario.betaScenario, scenario.routeStops, stopIndex, current.playedBetaStopIdsByTeam[teamId]), null);
+  }
+  assert.equal(getBetaRequiredLanding(null, scenario.routeStops, 3), null);
+});
+
+test('Always play protects the chosen challenge and fixed content from a roadside duel for all teams', () => {
+  const scenario = createBetaPreset();
+  const stopIndex = scenario.routeStops.findIndex((stop) => stop.id === 'ireland');
+  const stop = scenario.routeStops[stopIndex];
+  scenario.betaScenario.stops.ireland.mustPlay = true;
+  for (const teamId of TEAMS) {
+    const otherId = TEAMS.find((id) => id !== teamId);
+    const current = { ...baseGameplay(), teamProgress: { [otherId]: { currentLeg: stopIndex } } };
+    const args = { betaScenario: scenario.betaScenario, actionId: `required-${teamId}`, current,
+      difficulty: 'easy', monumentPool: DEFAULT_MONUMENT_POOL, players: PLAYERS[teamId],
+      requiredTeamIds: TEAMS, routeStops: scenario.routeStops, startedAt: 5000,
+      stopIndex, teamId, fromLeg: 0, timerPace: 'relaxed' };
+    const landing = resolveLandingChallenge(args);
+    assert.equal(landing.isRoadsideDuel, false);
+    assert.equal(landing.challengeId, scenario.betaScenario.stops.ireland.challenge.id);
+    assert.equal(landing.challengeRound.secretWord, scenario.betaScenario.stops.ireland.contentByTeam[teamId].word);
+    scenario.betaScenario.stops.ireland.mustPlay = false;
+    assert.equal(resolveLandingChallenge(args).isRoadsideDuel, true);
+    scenario.betaScenario.stops.ireland.mustPlay = true;
+  }
 });

@@ -14,8 +14,10 @@ not a production authorization boundary.
   penalty (0–9 sips per recipient), retaining each card’s existing recipient and
   result rules.
   Custom cards and penalties stay in the local draft and new room snapshot; they
-  do not publish to the master catalogue. Save one local draft, restore the preset,
-  inspect a
+  do not publish to the master catalogue. Toggle **Altijd spelen** to guarantee a
+  selected challenge for every team: skipping its country carries it to the next
+  landing without shortening the roll. Due cards take priority over roadblocks
+  and Roadside Duels. Save one local draft, restore the preset, or inspect a
   read-only route/content preview, or create a real lobby with the host and six
   named guests without phones. Two further leader phones join by PIN. Invalid
   geometry/content is rejected; Belgium and Italy remain mandatory. See

@@ -125,6 +125,18 @@ export const saveBetaTextChallenge = (scenario, stopId, { id, title, prompt, pen
   stop.challenges = existing
     ? stop.challenges.map((item) => item.id === id ? challenge : item)
     : [...stop.challenges, challenge];
+  const mustPlay = existing && next.betaScenario.stops[stopId].challenge.id === existing.id
+    && next.betaScenario.stops[stopId].mustPlay === true;
   next.betaScenario.stops[stopId] = createBetaStopPlan({ stop, challengeId: challenge.id });
+  if (mustPlay) next.betaScenario.stops[stopId].mustPlay = true;
   return editBetaChallengeDrinks(next, stopId, penaltySips);
+};
+
+export const editBetaMustPlay = (scenario, stopId, mustPlay) => {
+  if (typeof mustPlay !== 'boolean') throw new Error('Kies aan of uit.');
+  const next = createBetaSnapshot(scenario);
+  const plan = next.betaScenario.stops[stopId];
+  if (!plan) throw new Error('Start en finish krijgen geen opdracht.');
+  plan.mustPlay = mustPlay;
+  return createBetaSnapshot(next);
 };
