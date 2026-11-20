@@ -1393,9 +1393,15 @@ export const selectMonumentFromPool = ({
   pool = DEFAULT_MONUMENT_POOL,
   usedMonumentIds = [],
   excludeCountryId = null,
+  // Photos planned for a later team (beta scenarios). They are skipped by ordinary
+  // selection so an unplanned duel never reveals a planned answer in advance.
+  reservedMonumentIds = [],
   seed = '',
 }) => {
-  const monuments = normalizeMonumentPool(pool);
+  const allMonuments = normalizeMonumentPool(pool);
+  const reservedSet = new Set(Array.isArray(reservedMonumentIds) ? reservedMonumentIds : []);
+  const unreserved = allMonuments.filter((item) => !reservedSet.has(item.id));
+  const monuments = unreserved.length ? unreserved : allMonuments;
   const usedSet = new Set(Array.isArray(usedMonumentIds) ? usedMonumentIds : []);
 
   // 1. Unused monuments outside the landed country

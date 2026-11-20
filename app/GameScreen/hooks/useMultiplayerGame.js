@@ -31,16 +31,12 @@ import {
 } from '../gameplayState';
 import {
   COUNTRY_WORD_CHALLENGE_TYPE,
-  didTriggerRoadsideDuel,
   GEO_GUESSR_CHALLENGE_TYPE,
   getChallengeForStop,
   getChallengeIdForStop,
   getChallengeKey,
   getCountryWordRound,
-  getGeoGuessrRound,
-  getPersonalMatchRound,
   getResolvedPenaltySips,
-  getSizeItUpRound,
   getTeamPlayers,
   getTargetCursorKey,
   getTargetedChallengeRound,
@@ -66,6 +62,8 @@ import { getRoomRules } from '../constants/roomRules';
 import { incrementTeamCareerCounter, normalizeCareerCounters } from '../careerStats';
 import { getProfile, syncCareerStats } from '../../shared/storage/userSettings';
 import { getFreshRouteSnapshotForDuration } from '../services/countryStopsService';
+import { isBetaScenario } from '../betaPlannedContent';
+import { resolveLandingChallenge } from '../landingChallenge';
 
 const findLocalPlayer = (teamMembers, deviceID) => {
   if (!deviceID) return { localTeamId: null, localPlayerId: null, isTeamLeader: false };
@@ -157,6 +155,11 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   const normalizationInFlightRef = useRef(false);
   const gameDataRef = useRef(gameData);
   gameDataRef.current = gameData;
+  // Optional beta room snapshot. It is immutable for the life of a room (a rematch keeps
+  // it), so one read is enough; transactions never start without knowing whether it exists.
+  const betaScenarioRef = useRef(gameData?.betaScenario || null);
+  const betaScenarioLoadedRef = useRef(Boolean(gameData?.betaScenario));
+  const betaScenarioLoadRef = useRef(null);
   const teamMembersRef = useRef(liveTeamMembers);
   teamMembersRef.current = liveTeamMembers;
   const now = useCallback(() => Date.now() + serverOffset, [serverOffset]);
@@ -224,6 +227,28 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
   useEffect(() => {
     if (!enabled) setLiveTeamMembers(teamMembers || {});
   }, [enabled, teamMembers]);
+
+  const ensureBetaScenario = useCallback(async () => {
+    if (betaScenarioLoadedRef.current) return true;
+    if (!betaScenarioLoadRef.current) {
+      betaScenarioLoadRef.current = get(ref(db, `games/${gameID}/betaScenario`))
+        .then((snapshot) => {
+          betaScenarioRef.current = snapshot.exists() ? snapshot.val() : null;
+          betaScenarioLoadedRef.current = true;
+          return true;
+        })
+        .catch(() => false)
+        .finally(() => { betaScenarioLoadRef.current = null; });
+    }
+    return betaScenarioLoadRef.current;
+  }, [gameID]);
+
+  useEffect(() => {
+    betaScenarioRef.current = gameDataRef.current?.betaScenario || null;
+    betaScenarioLoadedRef.current = Boolean(gameDataRef.current?.betaScenario);
+    betaScenarioLoadRef.current = null;
+    if (enabled && gameID) ensureBetaScenario();
+  }, [enabled, ensureBetaScenario, gameID]);
 
   useEffect(() => {
     if (
@@ -758,6 +783,9 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
   const completeMovement = useCallback(async (actionId) => {
     if (!enabled || !gameID || !actionId || !isConnected || isRoomExpired) return false;
+    // Without the scenario answer a beta room would silently fall back to random content.
+    if (!(await ensureBetaScenario())) return false;
+    const betaScenario = isBetaScenario(betaScenarioRef.current) ? betaScenarioRef.current : null;
 
     const completedAt = now();
     const result = await runTransaction(ref(db, `games/${gameID}/gameplay`), (current) => {
@@ -941,99 +969,21 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       if (!hasFinishedRoute) {
-        const stop = routeModel.countryStops[action.targetLeg];
-        const players = getTeamPlayers(teamMembersRef.current, action.teamId);
-        const isRoadsideDuel = didTriggerRoadsideDuel({
+        const landing = resolveLandingChallenge({
+          betaScenario,
+          actionId: action.id,
+          current,
+          difficulty: gameDataRef.current?.difficulty,
           fromLeg: action.fromLeg,
-          targetLeg: action.targetLeg,
+          monumentPool: getCachedMonumentPool(),
+          players: getTeamPlayers(teamMembersRef.current, action.teamId),
+          requiredTeamIds: teamIds,
+          routeStops: routeModel.countryStops,
+          startedAt: completedAt,
+          stopIndex: action.targetLeg,
           teamId: action.teamId,
-          teamProgress: current.teamProgress,
+          timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
         });
-        const challengeId = getChallengeIdForStop(stop, action.id, {
-          teamPlayerCount: players.length,
-          forceType: isRoadsideDuel ? GEO_GUESSR_CHALLENGE_TYPE : null,
-          usedChallengeKeys: current.usedChallengeKeys,
-        });
-        const challenge = getChallengeForStop(action.targetLeg, routeModel.countryStops, challengeId);
-        let challengeRound = null;
-        let usedMonumentIds = Array.isArray(current.usedMonumentIds) ? current.usedMonumentIds : [];
-        let usedSizeRoundIds = Array.isArray(current.usedSizeRoundIds) ? current.usedSizeRoundIds : [];
-        let usedPersonalQuestionIds = Array.isArray(current.usedPersonalQuestionIds)
-          ? current.usedPersonalQuestionIds
-          : [];
-        const challengeKey = getChallengeKey(stop, challengeId);
-        const usedChallengeKeys = challengeKey
-          ? [...new Set([...(current.usedChallengeKeys || []), challengeKey])]
-          : (current.usedChallengeKeys || []);
-        const targetCursors = { ...(current.targetCursors || {}) };
-
-        if (challenge.type === GEO_GUESSR_CHALLENGE_TYPE) {
-          const geoData = getGeoGuessrRound({
-            challenge,
-            isRoadsideDuel,
-            monumentPool: getCachedMonumentPool(),
-            requiredTeamIds: teamIds,
-            seed: action.id,
-            startedAt: completedAt,
-            stopCountryId: stop?.id || null,
-            usedMonumentIds,
-            difficulty: gameDataRef.current?.difficulty,
-            timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
-          });
-          if (geoData) {
-            challengeRound = geoData.round;
-            usedMonumentIds = geoData.nextUsedMonumentIds;
-          }
-        } else if (challenge.type === SIZE_IT_UP_CHALLENGE_TYPE) {
-          const sizeData = getSizeItUpRound({
-            challenge,
-            difficulty: gameDataRef.current?.difficulty,
-            seed: action.id,
-            startedAt: completedAt,
-            timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
-            usedRoundIds: usedSizeRoundIds,
-          });
-          if (sizeData) {
-            challengeRound = sizeData.round;
-            usedSizeRoundIds = sizeData.nextUsedRoundIds;
-          }
-        } else if (challenge.type === PERSONAL_MATCH_CHALLENGE_TYPE) {
-          const cursorKey = getTargetCursorKey(action.teamId, 'respondent');
-          const personalData = getPersonalMatchRound({
-            challenge,
-            difficulty: gameDataRef.current?.difficulty,
-            players,
-            seed: action.id,
-            targetCursor: targetCursors[cursorKey],
-            timerPace: getRoomRules(gameDataRef.current).challengeTimerPace,
-            usedQuestionIds: usedPersonalQuestionIds,
-          });
-          if (personalData) {
-            challengeRound = personalData.round;
-            usedPersonalQuestionIds = personalData.nextUsedQuestionIds;
-            targetCursors[cursorKey] = (Number(targetCursors[cursorKey]) || 0) + 1;
-          }
-        } else if (challenge.type === COUNTRY_WORD_CHALLENGE_TYPE) {
-          const cursorKey = getTargetCursorKey(action.teamId, 'describer');
-          challengeRound = getCountryWordRound(
-            challenge,
-            players,
-            action.id,
-            gameDataRef.current?.difficulty,
-            getRoomRules(gameDataRef.current).challengeTimerPace,
-            targetCursors[cursorKey]
-          );
-          if (challengeRound) targetCursors[cursorKey] = (Number(targetCursors[cursorKey]) || 0) + 1;
-        } else if (challenge.targeting?.role) {
-          const cursorKey = getTargetCursorKey(action.teamId, challenge.targeting.role);
-          challengeRound = getTargetedChallengeRound(
-            challenge,
-            players,
-            targetCursors[cursorKey],
-            gameDataRef.current?.difficulty
-          );
-          if (challengeRound) targetCursors[cursorKey] = (Number(targetCursors[cursorKey]) || 0) + 1;
-        }
 
         return {
           ...current,
@@ -1043,13 +993,9 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           careerCounters,
           challengeStop: action.targetLeg,
           challengeStopData: null,
-          challengeId,
-          challengeRound,
-          usedMonumentIds,
-          usedSizeRoundIds,
-          usedPersonalQuestionIds,
-          usedChallengeKeys,
-          targetCursors,
+          challengeId: landing.challengeId,
+          challengeRound: landing.challengeRound,
+          ...landing.history,
           roadblock: null,
           updatedAt: completedAt,
         };
@@ -1075,7 +1021,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [enabled, gameID, isConnected, isRoomExpired, now, routeModel]);
+  }, [enabled, ensureBetaScenario, gameID, isConnected, isRoomExpired, now, routeModel]);
 
   const updateChallenge = useCallback(async (action) => {
     if (!enabled || !gameID || !isConnected || isRoomExpired) return false;
@@ -1838,14 +1784,18 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     if (!enabled || !gameID || !isHost || !isConnected || isRoomExpired) return false;
 
     const expectedSessionId = gameplay?.sessionId;
+    if (!(await ensureBetaScenario())) return false;
     const routeSnapshot = await get(ref(db, `games/${gameID}/routeStops`));
     const currentRouteStops = routeSnapshot.exists()
       ? routeSnapshot.val()
       : gameDataRef.current?.routeStops;
-    const nextRouteStops = await getFreshRouteSnapshotForDuration(
-      gameDataRef.current?.duration,
-      currentRouteStops
-    );
+    // A beta scenario repeats exactly: same frozen route and content, clean progress.
+    const nextRouteStops = isBetaScenario(betaScenarioRef.current)
+      ? currentRouteStops
+      : await getFreshRouteSnapshotForDuration(
+          gameDataRef.current?.duration,
+          currentRouteStops
+        );
     const nextGameplay = createInitialGameplay(
       { ...gameDataRef.current, routeStops: nextRouteStops },
       now(),
@@ -1867,7 +1817,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
     });
 
     return result.committed;
-  }, [enabled, gameID, gameplay?.sessionId, isConnected, isHost, isRoomExpired, now]);
+  }, [enabled, ensureBetaScenario, gameID, gameplay?.sessionId, isConnected, isHost, isRoomExpired, now]);
 
   return {
     ...identity,

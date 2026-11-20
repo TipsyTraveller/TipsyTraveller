@@ -18,6 +18,16 @@
     "preview": {
       "distribution": "internal"
     },
+    "beta": {
+      "extends": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "developmentClient": false,
+      "env": {
+        "EXPO_PUBLIC_ENABLE_DEV_PORTAL": "true"
+      }
+    },
     "production": {
       "autoIncrement": true
     }

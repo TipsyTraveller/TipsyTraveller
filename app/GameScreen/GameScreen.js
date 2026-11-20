@@ -46,6 +46,7 @@ import { getDefaultModelOption, getModelOption } from './constants/modelOptions'
 import { devEventBus } from '../shared/dev/devEventBus';
 import { isDevPortalEnabled } from '../shared/dev/devConfig';
 import useMultiplayerGame from './hooks/useMultiplayerGame';
+import { getBetaLandingPlan, isBetaScenario } from './betaPlannedContent';
 import useRouteOverview, { getOverviewRouteSignature } from './hooks/useRouteOverview';
 import {
   addDrinksByRule,
@@ -518,12 +519,20 @@ const GameScreen = ({ navigation, route }) => {
       teamProgress: currentTeamProgress,
     });
     const effectiveForceType = forceType || (isRoadsideDuel ? GEO_GUESSR_CHALLENGE_TYPE : null);
+    const landingPlan = getBetaLandingPlan({
+      betaScenario: gameData?.betaScenario,
+      stop,
+      stopIndex,
+      teamId: pieceId,
+    });
     const challengeId = getChallengeIdForStop(stop, seed, {
       teamPlayerCount: Math.max(players.length, 1),
       forceType: effectiveForceType,
       usedChallengeKeys: usedChallengeKeysRef.current,
+      plannedChallengeId: landingPlan.plannedChallengeId,
     });
     const challenge = getChallengeForStop(stopIndex, routeStops, challengeId);
+    const plannedContent = landingPlan.getContent(challengeId);
     const challengeKey = getChallengeKey(stop, challengeId);
     if (challengeKey) {
       usedChallengeKeysRef.current = [...new Set([...usedChallengeKeysRef.current, challengeKey])];
@@ -541,6 +550,8 @@ const GameScreen = ({ navigation, route }) => {
         usedMonumentIds: usedMonumentIdsRef.current,
         difficulty: gameData?.difficulty,
         timerPace: roomRules.challengeTimerPace,
+        plannedContent,
+        reservedMonumentIds: landingPlan.reservedMonumentIds,
       });
       if (geoData) {
         usedMonumentIdsRef.current = geoData.nextUsedMonumentIds;
@@ -559,6 +570,7 @@ const GameScreen = ({ navigation, route }) => {
         startedAt: Date.now(),
         timerPace: roomRules.challengeTimerPace,
         usedRoundIds: usedSizeRoundIdsRef.current,
+        plannedContent,
       });
       if (sizeData) {
         usedSizeRoundIdsRef.current = sizeData.nextUsedRoundIds;
@@ -579,6 +591,7 @@ const GameScreen = ({ navigation, route }) => {
         targetCursor: targetCursorsRef.current[cursorKey],
         timerPace: roomRules.challengeTimerPace,
         usedQuestionIds: usedPersonalQuestionIdsRef.current,
+        plannedContent,
       });
       if (personalData) {
         usedPersonalQuestionIdsRef.current = personalData.nextUsedQuestionIds;
@@ -599,7 +612,8 @@ const GameScreen = ({ navigation, route }) => {
           seed,
           gameData?.difficulty,
           roomRules.challengeTimerPace,
-          targetCursorsRef.current[getTargetCursorKey(pieceId, 'describer')]
+          targetCursorsRef.current[getTargetCursorKey(pieceId, 'describer')],
+          plannedContent
         )
       : role
         ? getTargetedChallengeRound(
@@ -661,10 +675,13 @@ const GameScreen = ({ navigation, route }) => {
       multiplayer.rematch().catch((error) => console.log('Unable to start rematch', error));
       return;
     }
-    const nextStops = await getFreshRouteSnapshotForDuration(
-      gameData?.duration || 'long',
-      routeStops
-    );
+    // A beta scenario repeats exactly; ordinary games draw a fresh route.
+    const nextStops = isBetaScenario(gameData?.betaScenario)
+      ? routeStops
+      : await getFreshRouteSnapshotForDuration(
+          gameData?.duration || 'long',
+          routeStops
+        );
     setDevRouteStops(nextStops);
     setLocalRematch((previous) => ({
       number: (previous?.number ?? 0) + 1,
@@ -1740,7 +1757,10 @@ const GameScreen = ({ navigation, route }) => {
   routeModelRef.current = routeModel;
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || multiplayerEnabled) return undefined;
+    // A beta scenario is a frozen snapshot: live catalogue edits must not alter it.
+    if (Platform.OS !== 'web' || multiplayerEnabled || isBetaScenario(gameData?.betaScenario)) {
+      return undefined;
+    }
     return subscribeCountryStops(
       (authoredStops) => {
         setDevRouteStops((currentStops) => {
@@ -1760,7 +1780,7 @@ const GameScreen = ({ navigation, route }) => {
         console.warn('Unable to subscribe to authored country stops:', error);
       }
     );
-  }, [gameData?.duration, multiplayerEnabled]);
+  }, [gameData?.betaScenario, gameData?.duration, multiplayerEnabled]);
 
   useEffect(() => {
     const unsubRoll = devEventBus.on('dev:forceRoll', ({ value }) => {
