@@ -232,6 +232,7 @@ import {
   SIZE_IT_UP_CHALLENGE_TYPE,
   SIZE_IT_UP_DURATION_SECONDS,
   SIZE_IT_UP_POOL_VERSION,
+  SIZE_IT_UP_ROUNDS,
 } from './sizeItUp';
 import {
   PERSONAL_MATCH_CHALLENGE_ID,
@@ -307,7 +308,14 @@ export const didTriggerRoadsideDuel = ({ fromLeg = 0, targetLeg = 0, teamId, tea
 export const getChallengeIdForStop = (
   stop,
   seed = '',
-  { teamPlayerCount = 0, forceType = null, usedChallengeKeys = [] } = {}
+  {
+    teamPlayerCount = 0,
+    forceType = null,
+    usedChallengeKeys = [],
+    // Beta scenarios fix the challenge per stop. A special event (forceType) still wins,
+    // and used-challenge history must never replace an assignment for a later team.
+    plannedChallengeId = null,
+  } = {}
 ) => {
   const challenges = Array.isArray(stop?.challenges)
     ? stop.challenges
@@ -315,6 +323,13 @@ export const getChallengeIdForStop = (
   if (forceType) {
     const forced = challenges.find((challenge) => challenge?.type === forceType);
     if (forced?.id) return forced.id;
+  }
+  if (plannedChallengeId) {
+    const planned = challenges.find((challenge) => challenge?.id === plannedChallengeId);
+    const requiredPlayers = Number(planned?.minPlayers) || (
+      planned?.type === COUNTRY_WORD_CHALLENGE_TYPE ? 2 : 1
+    );
+    if (planned && teamPlayerCount >= requiredPlayers) return planned.id;
   }
   const used = new Set(Array.isArray(usedChallengeKeys) ? usedChallengeKeys : []);
   const eligibleChallenges = challenges.filter((challenge) => (
@@ -360,11 +375,15 @@ export const getCountryWordRound = (
   seed = '',
   difficulty = 'easy',
   timerPace = 'relaxed',
-  targetCursor = 0
+  targetCursor = 0,
+  plannedContent = null
 ) => {
   if (challenge?.type !== COUNTRY_WORD_CHALLENGE_TYPE || players.length < 2) return null;
+  const plannedWord = typeof plannedContent?.secretWord === 'string'
+    ? plannedContent.secretWord.trim()
+    : '';
   const words = Array.isArray(challenge.words) ? challenge.words.filter(Boolean) : [];
-  if (!words.length) return null;
+  if (!plannedWord && !words.length) return null;
 
   const cursor = Math.max(0, Math.round(Number(targetCursor) || 0));
   const selectedPlayer = players[cursor % players.length];
@@ -372,7 +391,7 @@ export const getCountryWordRound = (
     stage: 'intro',
     selectedPlayerId: selectedPlayer.playerId,
     selectedPlayerName: selectedPlayer.name,
-    secretWord: words[hashSeed(`${seed}:word`) % words.length],
+    secretWord: plannedWord || words[hashSeed(`${seed}:word`) % words.length],
     startedAt: null,
     result: null,
     pointsAwarded: 0,
@@ -383,6 +402,27 @@ export const getCountryWordRound = (
   };
 };
 
+const getPlannedPersonalQuestion = (plannedContent) => {
+  const prompt = typeof plannedContent?.prompt === 'string' ? plannedContent.prompt.trim() : '';
+  const options = Array.isArray(plannedContent?.options)
+    ? plannedContent.options.map((option) => String(option))
+    : [];
+  const id = String(plannedContent?.questionId || '');
+  return id && prompt && options.length === 4 ? { id, prompt, options } : null;
+};
+
+const getPlannedMonument = (plannedContent, monumentPool) => {
+  const planned = plannedContent?.monument;
+  const id = planned?.id || plannedContent?.monumentId;
+  if (!id) return null;
+  const poolEntry = (Array.isArray(monumentPool) ? monumentPool : monumentPool?.monuments || [])
+    .find((item) => item?.id === id);
+  const merged = { ...(poolEntry || {}), ...(planned || {}) };
+  const hasPosition = Number.isFinite(Number(merged.position?.x))
+    && Number.isFinite(Number(merged.position?.y));
+  return merged.name && hasPosition && merged.imageUrl ? merged : null;
+};
+
 export const getPersonalMatchRound = ({
   challenge,
   difficulty = 'easy',
@@ -391,10 +431,17 @@ export const getPersonalMatchRound = ({
   targetCursor = 0,
   timerPace = 'relaxed',
   usedQuestionIds = [],
+  plannedContent = null,
 }) => {
   if (challenge?.type !== PERSONAL_MATCH_CHALLENGE_TYPE || players.length < 2) return null;
 
-  const selection = selectPersonalMatchQuestion({ difficulty, seed, usedQuestionIds });
+  const plannedQuestion = getPlannedPersonalQuestion(plannedContent);
+  const selection = plannedQuestion
+    ? {
+        question: plannedQuestion,
+        nextUsedQuestionIds: [...new Set([...(usedQuestionIds || []), plannedQuestion.id])],
+      }
+    : selectPersonalMatchQuestion({ difficulty, seed, usedQuestionIds });
   if (!selection) return null;
 
   const cursor = Math.max(0, Math.round(Number(targetCursor) || 0));
@@ -436,15 +483,24 @@ export const getGeoGuessrRound = ({
   usedMonumentIds = [],
   difficulty = 'easy',
   timerPace = 'relaxed',
+  plannedContent = null,
+  reservedMonumentIds = [],
 }) => {
   if (challenge?.type !== GEO_GUESSR_CHALLENGE_TYPE) return null;
 
-  const { monument, nextUsedMonumentIds } = selectMonumentFromPool({
-    pool: monumentPool,
-    usedMonumentIds,
-    excludeCountryId: stopCountryId,
-    seed,
-  });
+  const plannedMonument = isRoadsideDuel ? null : getPlannedMonument(plannedContent, monumentPool);
+  const { monument, nextUsedMonumentIds } = plannedMonument
+    ? {
+        monument: plannedMonument,
+        nextUsedMonumentIds: [...new Set([...(usedMonumentIds || []), plannedMonument.id])],
+      }
+    : selectMonumentFromPool({
+        pool: monumentPool,
+        usedMonumentIds,
+        excludeCountryId: stopCountryId,
+        reservedMonumentIds,
+        seed,
+      });
 
   return {
     nextUsedMonumentIds,
@@ -488,6 +544,14 @@ export const getGeoGuessrRound = ({
   };
 };
 
+const getPlannedSizeRound = (plannedContent) => {
+  const id = plannedContent?.sizeRoundId || plannedContent?.sizeRound?.id;
+  if (!id) return null;
+  const embedded = plannedContent?.sizeRound;
+  if (embedded?.reference?.metres > 0 && embedded?.target?.metres > 0) return { ...embedded, id };
+  return SIZE_IT_UP_ROUNDS.find((round) => round.id === id) || null;
+};
+
 export const getSizeItUpRound = ({
   challenge,
   difficulty = 'easy',
@@ -495,10 +559,17 @@ export const getSizeItUpRound = ({
   startedAt = Date.now(),
   timerPace = 'relaxed',
   usedRoundIds = [],
+  plannedContent = null,
 }) => {
   if (challenge?.type !== SIZE_IT_UP_CHALLENGE_TYPE) return null;
 
-  const { round, nextUsedRoundIds } = selectSizeItUpRound({ seed, usedRoundIds });
+  const plannedRound = getPlannedSizeRound(plannedContent);
+  const { round, nextUsedRoundIds } = plannedRound
+    ? {
+        round: plannedRound,
+        nextUsedRoundIds: [...new Set([...(usedRoundIds || []), plannedRound.id])],
+      }
+    : selectSizeItUpRound({ seed, usedRoundIds });
   const trueRatio = Number(round.target.metres) / Number(round.reference.metres);
   return {
     nextUsedRoundIds,
