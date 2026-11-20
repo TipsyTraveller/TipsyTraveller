@@ -321,7 +321,10 @@ export const getChallengeIdForStop = (
     ? stop.challenges
     : Object.values(stop?.challenges || {});
   if (forceType) {
-    const forced = challenges.find((challenge) => challenge?.type === forceType);
+    const forced = challenges.find((challenge) => challenge?.type === forceType
+      && teamPlayerCount >= (Number(challenge.minPlayers) || (
+        challenge.type === COUNTRY_WORD_CHALLENGE_TYPE ? 2 : 1
+      )));
     if (forced?.id) return forced.id;
   }
   if (plannedChallengeId) {
@@ -349,6 +352,13 @@ export const getChallengeKey = (stop, challengeId) => (
 
 export const getTargetCursorKey = (teamId, role = 'performer') => `${teamId}:${role}`;
 
+// Earlier rooms opened targeted text cards as a result without an outcome.
+export const normalizeTargetedChallengeRound = (challenge, round) => (
+  !challenge?.type && challenge?.targeting?.role && round?.stage === 'result' && !round.result
+    ? { ...round, stage: 'playing', drinkRules: { ...challenge.drinkRules } }
+    : round
+);
+
 export const getTargetedChallengeRound = (
   challenge,
   players,
@@ -360,12 +370,13 @@ export const getTargetedChallengeRound = (
   const cursor = Math.max(0, Math.round(Number(targetCursor) || 0));
   const selectedPlayer = players[cursor % players.length];
   return {
-    stage: 'result',
+    stage: 'playing',
     selectedPlayerId: selectedPlayer.playerId,
     selectedPlayerName: selectedPlayer.name,
     targetRole: role,
     targetCursor: cursor,
     resolvedPenaltySips: resolvePenaltySips(challenge.penaltySips, difficulty),
+    drinkRules: { ...challenge.drinkRules },
   };
 };
 

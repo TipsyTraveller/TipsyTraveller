@@ -21,9 +21,41 @@ export const snapshotBetaDraft = (draft) => {
   };
 };
 
+// Refresh editor pools only. Existing room snapshots and chosen team words stay fixed.
+export const refreshBetaDraftWords = (draft) => {
+  const snapshot = snapshotBetaDraft(draft);
+  let changed = false;
+  for (const stop of snapshot.scenario.routeStops) {
+    const bundled = DEFAULT_COUNTRY_STOPS.find((item) => item.id === stop.id)
+      ?.challenges.find((item) => item.type === 'countryWordGuess');
+    if (!bundled) continue;
+    const plan = snapshot.scenario.betaScenario.stops[stop.id];
+    for (const challenge of stop.challenges) {
+      if (challenge.type !== 'countryWordGuess' || challenge.id !== bundled.id) continue;
+      const selected = plan?.challenge.id === challenge.id ? plan : null;
+      const words = [...new Set([...bundled.words, ...challenge.words, ...(selected?.challenge.words || [])])];
+      const version = Math.max(bundled.wordListVersion, challenge.wordListVersion, selected?.challenge.wordListVersion || 1);
+      if (challenge.wordListVersion === version && challenge.words.length === words.length
+        && challenge.words.every((word, index) => word === words[index])
+        && (!selected || (selected.challenge.wordListVersion === version
+          && selected.challenge.words.length === words.length
+          && selected.challenge.words.every((word, index) => word === words[index])))) continue;
+      challenge.words = words;
+      challenge.wordListVersion = version;
+      if (selected) {
+        selected.challenge.words = [...words];
+        selected.challenge.wordListVersion = version;
+        BETA_TEAM_IDS.forEach((teamId) => { selected.contentByTeam[teamId].wordListVersion = version; });
+      }
+      changed = true;
+    }
+  }
+  return changed ? snapshotBetaDraft(snapshot) : draft;
+};
+
 export const loadBetaDraft = async (storage) => {
   const saved = await storage.getItem(BETA_DRAFT_KEY);
-  return saved ? snapshotBetaDraft(JSON.parse(saved)) : createBetaDraft();
+  return saved ? refreshBetaDraftWords(snapshotBetaDraft(JSON.parse(saved))) : createBetaDraft();
 };
 export const saveBetaDraft = async (storage, draft) => {
   const snapshot = snapshotBetaDraft(draft);

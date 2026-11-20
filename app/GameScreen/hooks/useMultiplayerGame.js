@@ -41,6 +41,7 @@ import {
   getTargetCursorKey,
   getTargetedChallengeRound,
   isBotOnlyTeam,
+  normalizeTargetedChallengeRound,
   PERSONAL_MATCH_CHALLENGE_TYPE,
   SIZE_IT_UP_CHALLENGE_TYPE,
 } from '../constants/challenges';
@@ -266,10 +267,18 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       if (!current?.teamProgress || current.sessionId !== gameplay.sessionId) return undefined;
       const teamProgress = normalizeTeamProgressDrinks(current.teamProgress, liveTeamMembers);
       const careerCounters = normalizeCareerCounters(current.careerCounters, liveTeamMembers);
+      const challengeRound = current.phase === 'challenge'
+        ? normalizeTargetedChallengeRound(getChallengeForStop(
+            current.challengeStopData ? 0 : current.challengeStop,
+            current.challengeStopData ? [current.challengeStopData] : routeModel.countryStops,
+            current.challengeId
+          ), current.challengeRound)
+        : current.challengeRound;
       // RTDB omits empty arrays. Challenge history readers already default missing lists to [].
       if (
         isStructurallyEqual(teamProgress, current.teamProgress)
         && isStructurallyEqual(careerCounters, current.careerCounters || {})
+        && challengeRound === current.challengeRound
         && Number(current.schemaVersion) >= GAMEPLAY_SCHEMA_VERSION
       ) return undefined;
 
@@ -279,6 +288,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
         revision: (current.revision || 0) + 1,
         teamProgress,
         careerCounters,
+        ...(challengeRound !== current.challengeRound ? { challengeRound } : {}),
         updatedAt: now(),
       };
     };
@@ -291,7 +301,7 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }).finally(() => {
         normalizationInFlightRef.current = false;
       });
-  }, [enabled, gameID, gameplay, isConnected, liveTeamMembers, now]);
+  }, [enabled, gameID, gameplay, isConnected, liveTeamMembers, now, routeModel.countryStops]);
 
   const identity = useMemo(
     () => findLocalPlayer(liveTeamMembers, deviceID),
@@ -1276,10 +1286,16 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
 
         const deadline = Number(round.startedAt)
           + (Number(round.durationSeconds) || 30) * 1000;
-        if (isTimeout && (!deadline || updatedAt < deadline)) return undefined;
+        const isControllingLeader = identity.isTeamLeader
+          && current.activeTeamId === identity.localTeamId;
+        const timeoutDeadline = deadline + (isControllingLeader ? 0 : 1200);
+        if (isTimeout && (!deadline || updatedAt < timeoutDeadline)) return undefined;
         if (!isTimeout && current.activeTeamId !== identity.localTeamId) return undefined;
+        if (!isTimeout && deadline && updatedAt >= deadline) return undefined;
 
-        const actionEstimate = Number(action?.estimatedRatio);
+        const actionEstimate = isControllingLeader && action?.estimatedRatio != null
+          ? Number(action.estimatedRatio)
+          : NaN;
         const estimatedRatio = clampSizeEstimate(
           Number.isFinite(actionEstimate) ? actionEstimate : round.estimatedRatio
         );
@@ -1384,10 +1400,10 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
           || round.stage !== 'guessing') {
           return undefined;
         }
-        if (isTimeout) {
-          const deadline = Number(round.guessStartedAt)
-            + (Number(round.durationSeconds) || 25) * 1000;
-          if (!deadline || updatedAt < deadline) return undefined;
+        const deadline = Number(round.guessStartedAt)
+          + (Number(round.durationSeconds) || 25) * 1000;
+        if (isTimeout ? (!deadline || updatedAt < deadline) : updatedAt >= deadline) {
+          return undefined;
         }
 
         if (!isTimeout && (action?.guessIndex === null || action?.guessIndex === undefined)) {
@@ -1504,11 +1520,12 @@ export default function useMultiplayerGame({ enabled, gameData, gameID, routeMod
       }
 
       if (challenge.type !== COUNTRY_WORD_CHALLENGE_TYPE) return undefined;
-      if (actionType === 'timeout') {
-        const challengeDeadline = Number(round.startedAt)
-          + (Number(round.durationSeconds) || Number(challenge.durationSeconds) || 30) * 1000;
-        if (!challengeDeadline || updatedAt < challengeDeadline) return undefined;
-      } else if (current.activeTeamId !== identity.localTeamId) {
+      const challengeDeadline = Number(round.startedAt)
+        + (Number(round.durationSeconds) || Number(challenge.durationSeconds) || 30) * 1000;
+      if (actionType === 'timeout'
+        ? (!challengeDeadline || updatedAt < challengeDeadline)
+        : updatedAt >= challengeDeadline) return undefined;
+      if (actionType !== 'timeout' && current.activeTeamId !== identity.localTeamId) {
         return undefined;
       }
       const guessed = actionType === 'guessed';

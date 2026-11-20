@@ -8,7 +8,7 @@ import { geoToEuropeSvgCoords } from '../../GameScreen/constants/europeMapPaths'
 import { EUROPE_MAP_OVERVIEW_PATH_DATA } from '../../GameScreen/constants/europeMapOverviewPath';
 import {
   createBetaDraft, editBetaChallenge, editBetaMustPlay, editBetaChallengeDrinks, editBetaRoute, editBetaTeamContent, saveBetaTextChallenge,
-  getBetaContentId, getBetaContentLabel, loadBetaDraft, saveBetaDraft,
+  getBetaContentId, getBetaContentLabel, loadBetaDraft, refreshBetaDraftWords, saveBetaDraft,
 } from './betaDraft';
 import { createBetaLobby } from './betaRoomService';
 import { resetRoot } from './devNavigation';
@@ -108,7 +108,13 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
   const createdRoom = useRef(null);
 
   useEffect(() => {
-    if (draft) return undefined;
+    if (draft) {
+      try {
+        const refreshed = refreshBetaDraftWords(draft);
+        if (refreshed !== draft) setDraft(refreshed);
+      } catch (failure) { setError(failure.message); }
+      return undefined;
+    }
     let active = true;
     loadBetaDraft(AsyncStorage).then((saved) => { if (active) setDraft(saved); }).catch(() => {
       if (active) { setDraft(createBetaDraft()); setError('Het concept kon niet worden geladen. De preset staat klaar; het opgeslagen concept is niet overschreven.'); }

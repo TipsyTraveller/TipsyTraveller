@@ -93,7 +93,11 @@ C stores one local draft and uses `createBetaSnapshot` for preview and room
 creation. `betaDraft.js` owns route/challenge/team-content edits and the
 `tipsytraveller_beta_draft_v1` AsyncStorage record (schema version, scenario, host
 name and two guest names per team). Invalid edits leave the prior draft intact;
-corrupt storage is not silently overwritten. Restore Preset resets the scenario
+corrupt storage is not silently overwritten. Opening the editor refreshes bundled
+country word options in saved/in-memory drafts, retaining custom words, selected
+team words and other edits. Only word-pool versions advance together; existing
+room snapshots remain fixed, and Save Draft persists the refreshed editor pools.
+Restore Preset resets the scenario
 while preserving the entered names; Save Draft explicitly persists the result.
 
 `BetaTestTab.js` provides a read-only route/content preview using a detached

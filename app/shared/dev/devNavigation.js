@@ -56,7 +56,7 @@ export const startInstantGameScreen = async ({
   };
 
   const mockTeamMembers = {
-    playerCounter: isThreeTeams ? 4 : 3,
+    playerCounter: isThreeTeams ? 6 : 4,
     team1: {
       devHost: {
         name: 'Dev Host',
@@ -75,6 +75,11 @@ export const startInstantGameScreen = async ({
         isLeader: true,
         deviceID: 'dev-bot-team2',
       },
+      devPartner2: {
+        name: 'Dev Partner (T2)',
+        isLeader: false,
+        deviceID: '',
+      },
     },
     ...(isThreeTeams
       ? {
@@ -83,6 +88,11 @@ export const startInstantGameScreen = async ({
               name: 'Dev Rival (T3)',
               isLeader: true,
               deviceID: 'dev-bot-team3',
+            },
+            devPartner3: {
+              name: 'Dev Partner (T3)',
+              isLeader: false,
+              deviceID: '',
             },
           },
         }

@@ -539,7 +539,7 @@ const ChallengePopup = ({
     return 'No drinks are assigned.';
   };
   const canFinishChallenge = canComplete
-    && ((!isCountryWordChallenge && !isGeoGuessrChallenge && !isSizeItUpChallenge && !isPersonalMatchChallenge)
+    && ((!challenge.stage && !isCountryWordChallenge && !isGeoGuessrChallenge && !isSizeItUpChallenge && !isPersonalMatchChallenge)
       || challengeStage === 'result');
   const missionCode = challenge.code
     ? `MISSION ${challenge.code}-${String(challenge.stopIndex).padStart(2, '0')}`

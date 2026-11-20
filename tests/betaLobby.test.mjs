@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBetaPreset } from '../app/GameScreen/constants/betaScenario.js';
+import { createBetaPreset, getBetaContentOptions } from '../app/GameScreen/constants/betaScenario.js';
 import { createBetaRoomRecords, reduceBetaLobby, transactBetaLobby, runBetaLobbyTransaction } from '../app/Lobby/betaLobbyState.js';
 import { chooseTeamForJoin, chooseTeamForLocalPlayer, countPlayers, getLobbyReadiness } from '../app/Lobby/lobbyState.js';
 import { getRoomRoute } from '../app/shared/roomNavigation.js';
 import {
   BETA_DRAFT_KEY, createBetaDraft, editBetaChallenge, editBetaMustPlay, editBetaRoute, editBetaTeamContent,
-  loadBetaDraft, saveBetaDraft, saveBetaTextChallenge, editBetaChallengeDrinks,
+  loadBetaDraft, refreshBetaDraftWords, saveBetaDraft, saveBetaTextChallenge, editBetaChallengeDrinks,
 } from '../app/shared/dev/betaDraft.js';
 import { DEFAULT_COUNTRY_STOPS } from '../app/GameScreen/constants/countryStops.js';
 
@@ -352,4 +352,53 @@ test('editing a custom card preserves its Always play toggle and drink count', (
   assert.equal(edited.betaScenario.stops.belgium.challenge.penaltySips, 4);
   const changedDrinks = editBetaChallengeDrinks(edited, 'belgium', 0);
   assert.equal(changedDrinks.betaScenario.stops.belgium.mustPlay, true);
+});
+
+
+test('older beta drafts gain current word options without losing selections or other edits', async () => {
+  const draft = createBetaDraft();
+  draft.hostName = 'Host';
+  draft.guestNames = options().guestNames;
+  for (const stop of draft.scenario.routeStops) {
+    const wordCard = stop.challenges.find((card) => card.type === 'countryWordGuess');
+    wordCard.words = wordCard.words.slice(6);
+    wordCard.wordListVersion = 2;
+    const plan = draft.scenario.betaScenario.stops[stop.id];
+    if (plan?.challenge.type === 'countryWordGuess') {
+      plan.challenge.words = [...wordCard.words];
+      plan.challenge.wordListVersion = 2;
+      ['team1', 'team2', 'team3'].forEach((teamId, index) => {
+        plan.contentByTeam[teamId] = { type: 'countryWordGuess', word: wordCard.words[index], wordListVersion: 2 };
+      });
+    }
+  }
+  draft.scenario = saveBetaTextChallenge(draft.scenario, 'belgium', { title: 'My toast', prompt: 'Say cheers', penaltySips: 4 });
+  draft.scenario = editBetaMustPlay(draft.scenario, 'ireland', true);
+  const ireland = draft.scenario.routeStops.find((stop) => stop.id === 'ireland');
+  ireland.challenges.find((card) => card.type === 'countryWordGuess').words.push('My Irish word');
+  const original = clone(draft);
+  const raw = JSON.stringify(draft);
+  const storage = { getItem: async () => raw, setItem: async () => { throw new Error('Loading must not overwrite the saved draft'); } };
+  const refreshed = await loadBetaDraft(storage);
+  assert.deepEqual(draft, original);
+  assert.equal(refreshed.hostName, draft.hostName);
+  assert.deepEqual(refreshed.guestNames, draft.guestNames);
+  assert.deepEqual(refreshed.scenario.betaScenario.stops.belgium, draft.scenario.betaScenario.stops.belgium);
+  for (const stop of refreshed.scenario.routeStops) {
+    const card = stop.challenges.find((item) => item.type === 'countryWordGuess');
+    const bundled = DEFAULT_COUNTRY_STOPS.find((item) => item.id === stop.id).challenges.find((item) => item.type === 'countryWordGuess');
+    assert.ok(bundled.words.every((word) => card.words.includes(word)), stop.id);
+    assert.equal(card.wordListVersion, 3);
+    const editorOptions = getBetaContentOptions(stop, card.id);
+    assert.ok(bundled.words.every((word) => editorOptions.some((option) => option.id === word)), stop.id);
+  }
+  const plan = refreshed.scenario.betaScenario.stops.ireland;
+  assert.equal(plan.mustPlay, true);
+  assert.ok(plan.challenge.words.includes('shamrock'));
+  assert.ok(plan.challenge.words.includes('My Irish word'));
+  for (const teamId of ['team1', 'team2', 'team3']) {
+    assert.equal(plan.contentByTeam[teamId].word, original.scenario.betaScenario.stops.ireland.contentByTeam[teamId].word);
+    assert.equal(plan.contentByTeam[teamId].wordListVersion, 3);
+  }
+  assert.equal(refreshBetaDraftWords(refreshed), refreshed, 'refresh is idempotent for in-memory drafts');
 });

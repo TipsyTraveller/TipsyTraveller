@@ -1013,6 +1013,9 @@ const GameScreen = ({ navigation, route }) => {
 
     if (currentChallenge.type === SIZE_IT_UP_CHALLENGE_TYPE) {
       if (currentChallenge.stage !== 'playing') return;
+      const deadline = Number(currentChallenge.startedAt)
+        + (Number(currentChallenge.durationSeconds) || 30) * 1000;
+      if (actionType !== 'timeoutSizeEstimate' && Date.now() >= deadline) return;
       if (actionType === 'updateSizeEstimate') {
         setCurrentChallenge({
           ...currentChallenge,
@@ -1023,8 +1026,6 @@ const GameScreen = ({ navigation, route }) => {
       }
       if (!['submitSizeEstimate', 'timeoutSizeEstimate'].includes(actionType)) return;
       if (actionType === 'timeoutSizeEstimate') {
-        const deadline = Number(currentChallenge.startedAt)
-          + (Number(currentChallenge.durationSeconds) || 30) * 1000;
         if (Date.now() < deadline) return;
       }
 
@@ -1090,11 +1091,9 @@ const GameScreen = ({ navigation, route }) => {
       const isTimeout = actionType === 'timeoutPersonalGuess';
       if (!['submitPersonalGuess', 'timeoutPersonalGuess'].includes(actionType)
         || currentChallenge.stage !== 'guessing') return;
-      if (isTimeout) {
-        const deadline = Number(currentChallenge.guessStartedAt)
-          + (Number(currentChallenge.durationSeconds) || 25) * 1000;
-        if (!deadline || Date.now() < deadline) return;
-      }
+      const deadline = Number(currentChallenge.guessStartedAt)
+        + (Number(currentChallenge.durationSeconds) || 25) * 1000;
+      if (isTimeout ? (!deadline || Date.now() < deadline) : Date.now() >= deadline) return;
 
       if (!isTimeout && (action?.guessIndex === null || action?.guessIndex === undefined)) return;
       const teamGuessIndex = isTimeout ? null : Number(action.guessIndex);
@@ -1185,6 +1184,9 @@ const GameScreen = ({ navigation, route }) => {
     if (!['guessed', 'failed', 'timeout'].includes(actionType) || currentChallenge.stage !== 'playing') {
       return;
     }
+    const wordDeadline = Number(currentChallenge.startedAt)
+      + (Number(currentChallenge.durationSeconds) || 30) * 1000;
+    if (actionType === 'timeout' ? Date.now() < wordDeadline : Date.now() >= wordDeadline) return;
 
     const guessed = actionType === 'guessed';
     const pointsAwarded = guessed ? (Number(currentChallenge.successPoints) || 10) : 0;
