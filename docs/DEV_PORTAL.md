@@ -8,7 +8,14 @@ not a production authorization boundary.
 ## Capabilities
 
 - **Beta Test:** edit the nine-player preset's countries, order, challenges and
-  exact Team 1/2/3 content. Save one local draft, restore the preset, inspect a
+  exact Team 1/2/3 content. Separate steps cover route editing, preview and player
+  setup. Search countries and long content lists, add ordinary text challenges or
+  edit their title/instructions, and set each selected challenge’s base drink
+  penalty (0–9 sips per recipient), retaining each card’s existing recipient and
+  result rules.
+  Custom cards and penalties stay in the local draft and new room snapshot; they
+  do not publish to the master catalogue. Save one local draft, restore the preset,
+  inspect a
   read-only route/content preview, or create a real lobby with the host and six
   named guests without phones. Two further leader phones join by PIN. Invalid
   geometry/content is rejected; Belgium and Italy remain mandatory. See
