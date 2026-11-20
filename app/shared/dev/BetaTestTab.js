@@ -7,7 +7,7 @@ import { COUNTRY_CITY_COORDINATES, DEFAULT_COUNTRY_STOPS } from '../../GameScree
 import { geoToEuropeSvgCoords } from '../../GameScreen/constants/europeMapPaths';
 import { EUROPE_MAP_OVERVIEW_PATH_DATA } from '../../GameScreen/constants/europeMapOverviewPath';
 import {
-  createBetaDraft, editBetaChallenge, editBetaRoute, editBetaTeamContent,
+  createBetaDraft, editBetaChallenge, editBetaChallengeDrinks, editBetaRoute, editBetaTeamContent, saveBetaTextChallenge,
   getBetaContentId, getBetaContentLabel, loadBetaDraft, saveBetaDraft,
 } from './betaDraft';
 import { createBetaLobby } from './betaRoomService';
@@ -22,18 +22,37 @@ const Action = ({ label, onPress, disabled, secondary = false }) => (
 
 const Choice = ({ label, value, options, disabled, onChange }) => {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   return <View style={styles.choice}>
     <Text style={styles.label}>{label}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ expanded: open, disabled }}
       disabled={disabled} onPress={() => setOpen(!open)} style={styles.input}>
       <Text style={styles.copy}>{options.find((option) => option.id === value)?.label || value || 'Kies…'} ▾</Text>
     </Pressable>
-    {open && options.map((option) => <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${label}: ${option.label}`}
-      onPress={() => { onChange(option.id); setOpen(false); }} style={[styles.option, option.id === value && styles.selected]}>
+    {open && options.length > 8 && <TextInput accessibilityLabel={`Zoek ${label}`} placeholder="Zoeken…" placeholderTextColor="#a9b8c4" style={styles.input} value={search} onChangeText={setSearch} />}
+    {open && options.filter((option) => option.label.toLowerCase().includes(search.toLowerCase())).map((option) => <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${label}: ${option.label}`}
+      onPress={() => { onChange(option.id); setOpen(false); setSearch(''); }} style={[styles.option, option.id === value && styles.selected]}>
       <Text style={styles.copy}>{option.label}</Text>
     </Pressable>)}
   </View>;
 };
+
+function TextChallengeEditor({ challenge, pending, onSave, onCancel }) {
+  const [title, setTitle] = useState(challenge?.title || '');
+  const [prompt, setPrompt] = useState(challenge?.prompt || '');
+  return <View style={styles.editor}>
+    <Text style={styles.label}>{challenge ? 'Tekst bewerken' : 'Nieuwe tekstopdracht'}</Text>
+    <Text style={styles.copy}>Dezelfde opdracht voor alle drie teams. Nieuwe opdrachten duren 30 seconden; bij mislukken geldt het ingestelde aantal slokken voor het hele team.</Text>
+    <Text style={styles.label}>Titel</Text>
+    <TextInput accessibilityLabel="Titel tekstopdracht" placeholder="Bijvoorbeeld: Breng een toast uit" placeholderTextColor="#a9b8c4" style={styles.input} value={title} onChangeText={setTitle} editable={!pending} />
+    <Text style={styles.label}>Wat moeten de spelers doen?</Text>
+    <TextInput accessibilityLabel="Opdrachttekst" placeholder="Schrijf hier de volledige opdracht…" placeholderTextColor="#a9b8c4" style={[styles.input, styles.multiline]} value={prompt} onChangeText={setPrompt} multiline editable={!pending} />
+    <View style={styles.row}>
+      <Action label="Gebruik deze opdracht" disabled={pending || !title.trim() || !prompt.trim()} onPress={() => onSave({ id: challenge?.id, title, prompt })} />
+      <Action label="Annuleren" secondary disabled={pending} onPress={onCancel} />
+    </View>
+  </View>;
+}
 
 function Preview({ snapshot, onClose }) {
   const [teamId, setTeamId] = useState('team1');
@@ -58,7 +77,7 @@ function Preview({ snapshot, onClose }) {
       const content = plan?.contentByTeam[teamId];
       return <View key={stop.id} style={styles.previewStop}>
         <Text style={styles.label}>{index + 1}. {stop.name} · {plan?.challenge.title || (index === 0 ? 'Start' : 'Finish')}</Text>
-        {plan && <Text style={styles.copy}>{plan.challenge.prompt}</Text>}
+        {plan && <><Text style={styles.copy}>{plan.challenge.prompt}</Text><Text style={styles.accent}>{plan.challenge.penaltySips} drankjes · basisstraf</Text></>}
         {content?.type !== 'ordinary' && content && <Text style={styles.accent}>{getBetaContentLabel(content)}</Text>}
         {content?.question && <Text style={styles.copy}>{content.question.options.join(' · ')}</Text>}
         {content?.round && <Text style={styles.copy}>{content.round.reference.metres} m ({content.round.reference.axis}) / {content.round.target.metres} m ({content.round.target.axis})</Text>}
@@ -82,6 +101,9 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
   const [addCountry, setAddCountry] = useState('');
   const [insertBefore, setInsertBefore] = useState('greece');
   const [preview, setPreview] = useState(null);
+  const [step, setStep] = useState('route');
+  const [countrySearch, setCountrySearch] = useState('');
+  const [textEditor, setTextEditor] = useState(null);
   const actionLock = useRef(false);
   const createdRoom = useRef(null);
 
@@ -119,6 +141,7 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
 
   return <View>
     <Text style={styles.heading}>Beta Test · negen vrienden</Text>
+    <View style={styles.row}>{[['route', '1 · Route & opdrachten'], ['preview', '2 · Controleren'], ['players', '3 · Spelers & starten']].map(([id, label]) => <Action key={id} label={label} secondary={step !== id} disabled={pending} onPress={() => { setStep(id); if (id === 'preview') setPreview(createBetaSnapshot(scenario)); }} />)}</View>
     <Text style={styles.copy}>Drie telefoons, drie teams van drie. Richttijd: 60–90 minuten. De host en zes spelers zonder telefoon worden meteen geregistreerd; de twee andere leiders joinen via de PIN.</Text>
     <Text style={styles.accent}>{scenario.routeStops.length} landen · België + Italië verplicht · Easy</Text>
     {Boolean(error) && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
@@ -126,10 +149,10 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
     <View style={styles.row}>
       <Action label="Bewaar concept" disabled={pending} onPress={() => run(async () => { await saveBetaDraft(AsyncStorage, draft); setMessage('Concept bewaard op dit toestel.'); })} />
       <Action label="Herstel preset" disabled={pending} secondary onPress={() => { edit(() => createBetaPreset()); setExpanded(null); }} />
-      <Action label="Preview" disabled={pending} secondary onPress={() => run(() => setPreview(createBetaSnapshot(scenario)))} />
+      <Action label="Preview" disabled={pending} secondary onPress={() => run(() => { setPreview(createBetaSnapshot(scenario)); setStep('preview'); })} />
     </View>
-    {preview && <Preview snapshot={preview} onClose={() => setPreview(null)} />}
-    <View style={styles.card}>
+    {step === 'preview' && <><Preview snapshot={preview || createBetaSnapshot(scenario)} onClose={() => setStep('route')} /><Action label="Verder naar spelers" onPress={() => setStep('players')} /></>}
+    {step === 'players' && <View style={styles.card}>
       <Text style={styles.label}>Host · leider Team 1</Text>
       <TextInput accessibilityLabel="Hostnaam" placeholder="Hostnaam" placeholderTextColor="#a9b8c4" style={styles.input} value={draft.hostName} editable={!pending}
         onChangeText={(hostName) => updateNames({ hostName })} maxLength={40} />
@@ -145,17 +168,22 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
         resetRoot([{ name: 'Home' }, { name: 'LobbyScreen', params: { gameID: room.gameID, isHost: true, hostName: room.gameData.HostName, gameSettings: room.gameData } }]);
         onClose();
       })} />
-    </View>
+      {!namesReady && <Text style={styles.copy}>Vul de hostnaam en zes spelersnamen in om de lobby te maken. De twee andere teamleiders vullen hun naam in bij het joinen.</Text>}
+    </View>}
+    {step === 'route' && <>
     <Text style={styles.heading}>Route en opdrachten</Text>
+    <TextInput accessibilityLabel="Zoek land in route" placeholder="Zoek een land…" placeholderTextColor="#a9b8c4" style={styles.input} value={countrySearch} onChangeText={setCountrySearch} />
     <Text style={styles.copy}>Ongeldige afstanden, bochten, kruisingen en dubbele inhoud worden geweigerd. Tik op een land om de opdracht en Team 1/2/3 te kiezen.</Text>
+    {!scenario.routeStops.some((stop) => stop.name.toLowerCase().includes(countrySearch.toLowerCase())) && <Text style={styles.copy}>Geen landen gevonden.</Text>}
     {scenario.routeStops.map((stop, index) => {
+      if (!stop.name.toLowerCase().includes(countrySearch.toLowerCase())) return null;
       const plan = scenario.betaScenario.stops[stop.id];
       const isOpen = expanded === stop.id;
       const move = (offset) => edit((value) => { const next = [...ids]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return editBetaRoute(value, next); });
       return <View key={stop.id} style={styles.card}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Bewerk ${stop.name}`} onPress={() => setExpanded(isOpen ? null : stop.id)}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Bewerk ${stop.name}`} accessibilityState={{ expanded: isOpen }} onPress={() => { setExpanded(isOpen ? null : stop.id); setTextEditor(null); }}>
           <Text style={styles.label}>{index + 1}. {stop.name}{['belgium', 'italy'].includes(stop.id) ? ' ★' : ''}</Text>
-          <Text style={styles.copy}>{plan?.challenge.title || (index === 0 ? 'Start · geen opdracht' : 'Finish · geen opdracht')}</Text>
+          <Text style={styles.copy}>{plan?.challenge.title || (index === 0 ? 'Start · geen opdracht' : 'Finish · geen opdracht')}{plan ? ` · ${plan.challenge.penaltySips} drankjes` : ''} {isOpen ? '▴' : '▾'}</Text>
         </Pressable>
         {isOpen && <>
           <View style={styles.row}>
@@ -167,9 +195,22 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
           {plan && <>
             <Choice label={`Challenge ${stop.name}`} value={plan.challenge.id} disabled={pending}
               options={stop.challenges.filter((challenge) => challenge.minPlayers <= 3).map((challenge) => ({ id: challenge.id, label: challenge.title }))}
-              onChange={(id) => edit((value) => editBetaChallenge(value, stop.id, id))} />
+              onChange={(id) => { if (edit((value) => editBetaChallenge(value, stop.id, id))) setTextEditor(null); }} />
             <Text style={styles.copy}>{plan.challenge.prompt}</Text>
-            {plan.challenge.type && BETA_TEAM_IDS.map((key, teamIndex) => {
+            <Choice label={`Drankjes ${stop.name}`} value={String(plan.challenge.penaltySips)} disabled={pending}
+              options={Array.from({ length: 10 }, (_, count) => ({ id: String(count), label: `${count} ${count === 1 ? 'drankje' : 'drankjes'}` }))}
+              onChange={(count) => edit((value) => editBetaChallengeDrinks(value, stop.id, Number(count)))} />
+            <Text style={styles.copy}>Aantal slokken per betrokken speler. De spelregels van de opdracht bepalen wie drinkt en bij welk resultaat.</Text>
+            <View style={styles.row}>
+              <Action label="＋ Tekstopdracht" secondary disabled={pending} onPress={() => setTextEditor('new')} />
+              {(!plan.challenge.type || plan.challenge.type === 'ordinary') && <Action label="Bewerk tekst" secondary disabled={pending} onPress={() => setTextEditor(plan.challenge.id)} />}
+            </View>
+            {textEditor && <TextChallengeEditor key={`${stop.id}-${textEditor}`} challenge={textEditor === 'new' ? null : plan.challenge} pending={pending}
+              onCancel={() => setTextEditor(null)} onSave={(fields) => {
+                if (edit((value) => saveBetaTextChallenge(value, stop.id, { ...fields, penaltySips: plan.challenge.penaltySips }))) setTextEditor(null);
+              }} />}
+            {!plan.challenge.type && <Text style={styles.accent}>Tekstopdracht · dezelfde tekst voor alle teams</Text>}
+            {plan.challenge.type && plan.challenge.type !== 'ordinary' && BETA_TEAM_IDS.map((key, teamIndex) => {
               const options = getBetaContentOptions(stop, plan.challenge.id);
               const selected = plan.contentByTeam[key];
               const selectedId = getBetaContentId(selected);
@@ -191,6 +232,8 @@ export default function BetaTestTab({ onClose, draft, setDraft }) {
         if (added) setAddCountry('');
       }} />
     </View>
+    <Action label="Verder naar preview" disabled={pending} onPress={() => { setPreview(createBetaSnapshot(scenario)); setStep('preview'); }} />
+    </>}
   </View>;
 }
 
@@ -208,6 +251,8 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontSize: 13, fontWeight: '700', textAlign: 'center' },
   disabled: { opacity: 0.4 },
   input: { minHeight: 44, color: '#fff', backgroundColor: '#101b25', borderWidth: 1, borderColor: '#526b7e', borderRadius: 8, fontSize: 14, padding: 10, marginVertical: 5 },
+  editor: { borderTopWidth: 1, borderTopColor: '#526b7e', marginTop: 10, paddingTop: 8 },
+  multiline: { minHeight: 110, textAlignVertical: 'top' },
   choice: { marginVertical: 4 },
   option: { backgroundColor: '#26394a', padding: 12, minHeight: 44, borderBottomColor: '#526b7e', borderBottomWidth: 1 },
   selected: { backgroundColor: '#15534f' },

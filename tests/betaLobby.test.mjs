@@ -6,7 +6,7 @@ import { chooseTeamForJoin, chooseTeamForLocalPlayer, countPlayers, getLobbyRead
 import { getRoomRoute } from '../app/shared/roomNavigation.js';
 import {
   BETA_DRAFT_KEY, createBetaDraft, editBetaChallenge, editBetaRoute, editBetaTeamContent,
-  loadBetaDraft, saveBetaDraft,
+  loadBetaDraft, saveBetaDraft, saveBetaTextChallenge, editBetaChallengeDrinks,
 } from '../app/shared/dev/betaDraft.js';
 import { DEFAULT_COUNTRY_STOPS } from '../app/GameScreen/constants/countryStops.js';
 
@@ -283,4 +283,41 @@ test('editor changes challenge and exact team content without changing other tea
   assert.deepEqual(editBetaTeamContent(scenario, 'belgium', 'team1', words[5]), scenario);
   assert.throws(() => editBetaTeamContent(scenario, 'belgium', 'team2', words[5]));
   assert.throws(() => editBetaChallenge(scenario, 'greece', 'guess-country-word'));
+});
+
+
+test('beta text authoring survives storage and room creation without changing the source preset', async () => {
+  const source = createBetaPreset();
+  const before = clone(source);
+  let scenario = saveBetaTextChallenge(source, 'belgium', { title: ' Toast ', prompt: ' Say hello. ', penaltySips: 0 });
+  const id = scenario.betaScenario.stops.belgium.challenge.id;
+  scenario = saveBetaTextChallenge(scenario, 'belgium', { id, title: 'New title', prompt: 'New text', penaltySips: 4 });
+  assert.deepEqual(source, before);
+  assert.equal(scenario.routeStops.find((stop) => stop.id === 'belgium').challenges.filter((item) => item.id === id).length, 1);
+  assert.equal(scenario.betaScenario.stops.belgium.challenge.prompt, 'New text');
+  assert.deepEqual(scenario.betaScenario.stops.belgium.contentByTeam.team3, { type: 'ordinary' });
+  let saved;
+  const storage = { setItem: async (_, value) => { saved = value; }, getItem: async () => saved };
+  await saveBetaDraft(storage, { ...createBetaDraft(), scenario });
+  const loaded = await loadBetaDraft(storage);
+  const room = createBetaRoomRecords({ ...options(), scenario: loaded.scenario });
+  assert.equal(room.gameData.betaScenario.stops.belgium.challenge.penaltySips, 4);
+  assert.equal(room.gameData.betaScenario.stops.belgium.challenge.id, id);
+  assert.throws(() => saveBetaTextChallenge(source, 'greece', { title: 'a', prompt: 'b' }));
+  assert.throws(() => saveBetaTextChallenge(source, 'belgium', { title: ' ', prompt: 'b' }));
+  assert.throws(() => saveBetaTextChallenge(source, 'ireland', { id: 'guess-country-word', title: 'a', prompt: 'b' }));
+});
+
+test('drink counts apply to every selected challenge type and survive switching cards', () => {
+  const source = createBetaPreset();
+  for (const [stopId, plan] of Object.entries(source.betaScenario.stops)) {
+    const changed = editBetaChallengeDrinks(source, stopId, 0);
+    assert.equal(changed.betaScenario.stops[stopId].challenge.penaltySips, 0);
+    assert.deepEqual(changed.betaScenario.stops[stopId].contentByTeam, plan.contentByTeam);
+    const stop = changed.routeStops.find((item) => item.id === stopId);
+    const other = stop.challenges.find((item) => item.id !== plan.challenge.id && item.minPlayers <= 3 && !item.type);
+    const switched = editBetaChallenge(editBetaChallenge(changed, stopId, other.id), stopId, plan.challenge.id);
+    assert.equal(switched.betaScenario.stops[stopId].challenge.penaltySips, 0);
+  }
+  for (const count of [-1, 10, 1.5, NaN, '2']) assert.throws(() => editBetaChallengeDrinks(source, 'belgium', count));
 });

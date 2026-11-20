@@ -91,3 +91,40 @@ export const editBetaTeamContent = (scenario, stopId, teamId, contentId) => {
   plan.contentByTeam[teamId] = option.fixedContent;
   return createBetaSnapshot(next);
 };
+
+// Keep the selected plan and its country catalogue entry together in the snapshot.
+export const editBetaChallengeDrinks = (scenario, stopId, penaltySips) => {
+  if (!Number.isInteger(penaltySips) || penaltySips < 0 || penaltySips > 9) {
+    throw new Error('Kies 0 tot 9 drankjes.');
+  }
+  const next = createBetaSnapshot(scenario);
+  const plan = next.betaScenario.stops[stopId];
+  if (!plan) throw new Error('Start en finish krijgen geen opdracht.');
+  plan.challenge.penaltySips = penaltySips;
+  const stop = next.routeStops.find((item) => item.id === stopId);
+  stop.challenges = stop.challenges.map((item) => item.id === plan.challenge.id ? { ...plan.challenge } : item);
+  return createBetaSnapshot(next);
+};
+
+export const saveBetaTextChallenge = (scenario, stopId, { id, title, prompt, penaltySips = 1 }) => {
+  if (!title.trim() || !prompt.trim()) throw new Error('Vul een titel en opdrachttekst in.');
+  const next = createBetaSnapshot(scenario);
+  const stop = next.routeStops.find((item) => item.id === stopId);
+  if (!next.betaScenario.stops[stopId]) throw new Error('Start en finish krijgen geen opdracht.');
+  const existing = id && stop.challenges.find((item) => item.id === id);
+  if (id && (!existing || (existing.type && existing.type !== 'ordinary'))) {
+    throw new Error('Alleen gewone tekstopdrachten kunnen hier worden bewerkt.');
+  }
+  const challenge = existing ? { ...existing, title: title.trim(), prompt: prompt.trim() } : {
+    id: `beta-text-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    title: title.trim(), prompt: prompt.trim(),
+    penalty: 'If the team cannot do it, apply the sip penalty or choose water.',
+    penaltySips: 1, minPlayers: 1, durationSeconds: 30, expectedDurationSeconds: 30,
+    drinkRules: { success: 'none', failure: 'wholeTeam' },
+  };
+  stop.challenges = existing
+    ? stop.challenges.map((item) => item.id === id ? challenge : item)
+    : [...stop.challenges, challenge];
+  next.betaScenario.stops[stopId] = createBetaStopPlan({ stop, challengeId: challenge.id });
+  return editBetaChallengeDrinks(next, stopId, penaltySips);
+};
